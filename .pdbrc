@@ -1,0 +1,39 @@
+sticky
+import jax
+alias pt jax.tree_util.tree_map(lambda x: x.shape, %1)
+
+# Print instance variables (usage "pi classInst")
+alias pi for k in %1.__dict__.keys(): print("%1.",k,"=",%1.__dict__[k])
+# Print instance variables in self
+alias ps pi self
+alias sh %1.shape
+#
+#from model_sources import BaseExperiment, CES
+from sequential import spce, snmc
+#b snmc
+#b /Users/jacopoiollo/crispy-phd/src/estimators.py:102
+#b /Users/jacopoiollo/ces/src/model_sources.py:432
+#b /Users/jacopoiollo/miniconda3/envs/jax/lib/python3.10/site-packages/jax/_src/lax/control_flow/loops.py:1466
+#b /Users/jacopoiollo/miniconda3/envs/jax/lib/python3.10/site-packages/jax/_src/interpreters/ad.py:253
+b /Users/jacopoiollo/miniconda3/envs/jax/lib/python3.10/site-packages/blackjax/mcmc/random_walk.py:normal
+#b /Users/jacopoiollo/miniconda3/envs/jax/lib/python3.10/site-packages/blackjax/mcmc/diffusions.py:38
+#b /Users/jacopoiollo/BOED/src/optimizers.py:210
+#b /Users/jacopoiollo/BOED/src/optimizers.py:261
+
+#b 167
+b /Users/jacopoiollo/BOED/src/SMC.py:135
+#b CES.plot_particles
+
+#b /Users/jacopoiollo/crispy-phd/src/model_sources.py:282
+#b /Users/jacopoiollo/crispy-phd/src/sequential.py:141
+#c
+
+
+#flat_thetas = moved_particles["theta"]
+#source = 0
+#plt.scatter(state.particles["theta"][: ,source, 0] , y=state.particles["theta"][: ,source, 1], s=1, zorder=-1)
+#plt.colorbar()
+#plt.show()
+#plt.scatter(flat_thetas[: ,source, 0] , y=flat_thetas[: ,source, 1], s=1, zorder=-1, c=n_wei)
+#plt.colorbar()
+#plt.show()
