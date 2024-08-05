@@ -8,8 +8,10 @@ class MLP(nn.Module):
 
     @nn.compact
     def __call__(self, x, t):
-        x = jnp.concatenate([x, t], axis=-1)
-        for i, feat in enumerate(self.features):
+        t = nn.Dense(self.features[0])(t)
+        x = nn.Dense(self.features[0])(x)
+        x = x+t
+        for i, feat in enumerate(self.features[1:]):
             x = nn.Dense(feat)(x)
             if i != len(self.features) - 1:
                 x = nn.relu(x)

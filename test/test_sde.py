@@ -12,6 +12,7 @@ from functools import partial
 
 from diffuse.sde import SDE, SDEState, LinearSchedule
 import matplotlib.pyplot as plt
+import pytest
 
 
 jax.config.update("jax_enable_x64", True)
