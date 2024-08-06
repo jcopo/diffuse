@@ -6,8 +6,22 @@ import jax.numpy as jnp
 import jax
 from typing import Callable
 import einops
+import optax
 
 from diffuse.mixture import init_mixture, sampler_mixtr
+
+
+def rho_t(x, t):
+    means, covs, weights = state
+    int_b = sde.beta.integrate(t, 0.0)
+    alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
+    means = alpha * means
+    covs = alpha**2 * covs + beta
+    return pdf_mixtr(MixState(means, covs, weights), x)
+
+
+# score = jax.grad(rho_t)
+score = lambda x, t: jax.grad(rho_t)(x, t) / rho_t(x, t)
 
 
 def loss(
@@ -56,13 +70,17 @@ def loss(
 
     # None, (n_x0, n_ts,, ...), (n_ts,) -> (n_x0, n_ts, ...)
     all_paths, _ = einops.pack([x0_samples, conditional_path.position], "n * i")
-    nn_eval = jax.vmap(network.apply, in_axes=(None, 1, 0), out_axes=1)(nn_params, all_paths, ts)
+    nn_eval = jax.vmap(network.apply, in_axes=(None, 1, 0), out_axes=1)(
+        nn_params, all_paths, ts
+    )
 
     # (n_x0, n_ts, ...)
     state = SDEState(all_paths, einops.repeat(ts, "n i -> new_axis n i", new_axis=n_x0))
     # (n_x0, n_ts, ...), (n_x0, n_ts, ...) -> (n_x0, n_ts, ...)
     score_eval = jax.vmap(sde.score, in_axes=(1, None), out_axes=1)(state, state_0)
 
+    # scores = jax.vmap(sde.score, in_axes=(1, None), out_axes=1)(SDEState(all_paths, einops.repeat(ts, "n i -> new_axis n i", new_axis=n_x0)), state_0)
+    # sq_diff = (scores - score_eval) ** 2  # (n_x0, n_ts, ...)
     sq_diff = (nn_eval - score_eval) ** 2  # (n_x0, n_ts, ...)
     mean_sq_diff = jnp.mean(sq_diff, axis=0)  # (n_ts, ...)
 
@@ -86,5 +104,35 @@ if __name__ == "__main__":
     ls = loss(
         init, key, samples_mixt, sde, 100, 2.0, lambda x: jnp.ones(x.shape), model
     )
+
+    def loss_(nn_params, key):
+        samples_mixt = sampler_mixtr(key, mixt_state, n_samples)
+        return loss(
+            nn_params,
+            key,
+            samples_mixt,
+            sde,
+            200,
+            2.0,
+            lambda x: jnp.ones(x.shape),
+            model,
+        ).squeeze()
+
+    tx = optax.adam(1e-3)
+
+    @jax.jit
+    def train_step(nn_params, opt_state, key):
+        g = jax.grad(loss_)(nn_params, key)
+        updates, new_state = tx.update(g, opt_state)
+        return updates, new_state
+
+    opt_state = tx.init(init)
+    nn_params = init
+    key = jax.random.PRNGKey(0)
+    for i in range(1000):
+        key, subkey = jax.random.split(key)
+        updates, opt_state = train_step(nn_params, opt_state, subkey)
+        nn_params = optax.apply_updates(nn_params, updates)
+        print(loss_(nn_params, key))
 
     pdb.set_trace()
