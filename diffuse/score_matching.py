@@ -85,7 +85,8 @@ def score_match_loss(
     sq_diff = (nn_eval - score_eval) ** 2  # (n_x0, n_ts, ...)
     mean_sq_diff = jnp.mean(sq_diff, axis=0)  # (n_ts, ...)
 
-    return jnp.mean(lmbda(ts) * mean_sq_diff, axis=0)
+    return jnp.einsum('i,i...->...', lmbda(ts) , mean_sq_diff) / nt_samples
+    #return jnp.mean(lmbda(ts) * mean_sq_diff, axis=0)
 
 
 if __name__ == "__main__":

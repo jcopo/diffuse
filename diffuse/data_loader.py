@@ -11,7 +11,7 @@ from functools import partial
 data = jnp.load("dataset/mnist.npz")
 key = jax.random.PRNGKey(0)
 xs = data["X"]
-batch_size = 64
+batch_size = 2
 
 xs = jax.random.permutation(key, xs, axis=0)
 data = einops.rearrange(xs, "b h w -> b h w 1")
@@ -28,5 +28,5 @@ init_params = nn_unet.init(key, data[:batch_size], dt)
 
 res = nn_unet.apply(init_params, data[:batch_size], dt)
 
-loss = partial(score_match_loss, lmbda=lambda x: jnp.ones(x.shape), network=nn_unet)
-loss(init_params, key, data[:batch_size], sde, 100, 2.0)
+loss = partial(score_match_loss, lmbda=lambda x: jnp.ones(x.shape).squeeze(), network=nn_unet)
+res = loss(init_params, key, data[:batch_size], sde, 100, 2.0)

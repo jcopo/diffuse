@@ -2,6 +2,7 @@ import jax
 from jaxtyping import PyTreeDef, PRNGKeyArray
 from typing import NamedTuple, Callable
 from functools import partial
+import pdb
 
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
@@ -79,8 +80,9 @@ class SDE:
         """
         x, t = state
         x0, t0 = state_0
-        int_b = self.beta.integrate(t, t0)
+        int_b = self.beta.integrate(t, t0).squeeze()
         alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
+        pdb.set_trace()
         return -(x - alpha * x0) / beta
 
     def path(self, key: PRNGKeyArray, state: SDEState, dts: float) -> SDEState:
