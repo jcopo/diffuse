@@ -13,5 +13,5 @@ class MLP(nn.Module):
         for i, feat in enumerate(self.features[1:]):
             x = nn.Dense(feat)(x)
             if i != len(self.features) - 1:
-                x = nn.relu(x)
+                x = nn.sigmoid(x)
         return x
