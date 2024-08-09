@@ -82,7 +82,7 @@ def score_match_loss(
     score_eval = jax.vmap(sde.score, in_axes=(1, None), out_axes=1)(state, state_0)
 
     # nn_eval = jax.vmap(sde.score, in_axes=(1, None), out_axes=1)(SDEState(all_paths, einops.repeat(ts, "n i -> new_axis n i", new_axis=n_x0)), state_0)
-    sq_diff = (nn_eval - score_eval) ** 2  # (n_x0, n_ts, ...)
+    sq_diff = einops.reduce((nn_eval - score_eval) ** 2, 't n ... -> t n', 'sum') # (n_x0, n_ts)
     mean_sq_diff = jnp.mean(sq_diff, axis=0)  # (n_ts, ...)
 
     return jnp.einsum('i,i...->...', lmbda(ts) , mean_sq_diff) / nt_samples

@@ -30,3 +30,6 @@ res = nn_unet.apply(init_params, data[:batch_size], dt)
 
 loss = partial(score_match_loss, lmbda=lambda x: jnp.ones(x.shape).squeeze(), network=nn_unet)
 res = loss(init_params, key, data[:batch_size], sde, 100, 2.0)
+grad_res = jax.grad(loss)(init_params, key, data[:batch_size], sde, 100, 2.0)
+
+pdb.set_trace()
