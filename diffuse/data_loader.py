@@ -7,6 +7,8 @@ from diffuse.unet import UNet
 from diffuse.score_matching import score_match_loss
 from diffuse.sde import SDE, LinearSchedule
 from functools import partial
+import tqdm
+import optax
 
 data = jnp.load("dataset/mnist.npz")
 key = jax.random.PRNGKey(0)
@@ -31,5 +33,35 @@ res = nn_unet.apply(init_params, data[:batch_size], dt)
 loss = partial(score_match_loss, lmbda=lambda x: jnp.ones(x.shape).squeeze(), network=nn_unet)
 res = loss(init_params, key, data[:batch_size], sde, 100, 2.0)
 grad_res = jax.grad(loss)(init_params, key, data[:batch_size], sde, 100, 2.0)
+
+n_epochs = 10
+nsteps_per_epoch = 100
+until_steps = int(0.95 * n_epochs) * nsteps_per_epoch
+lr = 1e-3
+schedule = optax.cosine_decay_schedule(init_value=lr, decay_steps=until_steps, alpha=1e-2)
+optimizer = optax.adam(learning_rate=schedule)
+ema_kernel = optax.ema(0.99)
+
+def step(key, params, opt_state, ema_state, data):
+    val_loss, g = jax.value_and_grad(loss)(params, key, data, sde, 100, 2.0)
+    updates, opt_state = optimizer.update(g, opt_state)
+    params = optax.apply_updates(params, updates)
+    ema_params, ema_state = ema_kernel.update(params, ema_state)
+    return params, opt_state, ema_state, val_loss, ema_params
+
+params = init_params
+opt_state = optimizer.init(params)
+ema_state = ema_kernel.init(params)
+
+for epoch in range(n_epochs):
+    subkey, key = jax.random.split(key)
+    data = jax.random.permutation(subkey, data, axis=0)
+    p_bar = tqdm.tqdm(range(nsteps_per_epoch))
+    for i in p_bar:
+        subkey, key = jax.random.split(key)
+        params, opt_state, ema_state, val_loss, ema_params = step(subkey, params, opt_state, ema_state, data[i:i+batch_size])
+        p_bar.set_postfix({"loss=": val_loss})
+
+
 
 pdb.set_trace()

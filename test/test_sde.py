@@ -9,7 +9,9 @@ from diffuse.mixture import (
     init_mixture,
 )
 from functools import partial
+import einops
 
+import pdb
 from diffuse.sde import SDE, SDEState, LinearSchedule
 import matplotlib.pyplot as plt
 
@@ -84,7 +86,7 @@ def test_mixture():
 
     revert_sde = jax.jit(jax.vmap(partial(sde.reverso, score=score, dts=dts)))
     state_0, state_Ts = revert_sde(keys, state_f)
-    sample_mixt_T = jax.vmap(sde.path, in_axes=(0, 0, None))(keys, state_mixt, dts)
+    _, sample_mixt_T = jax.vmap(sde.path, in_axes=(0, 0, None))(keys, state_mixt, dts)
 
     # plot samples
     # fig, axs = plt.subplots(1, 3, figsize=(15, 5))
@@ -110,6 +112,23 @@ def test_mixture():
     #     plt.show(block=False)
     #     plt.pause(0.1)
     #     plt.close()
+
+    perct = [0, 0.1, 0.3, 0.7, 0.8, 0.9, 0.93, 0.9, 0.99, 1]
+    n_plots = len(perct)
+    fig, axs = plt.subplots(n_plots, 1, figsize=(10 * n_plots, n_plots))
+    #end_particles = jnp.vstack([state_mixt.position, sample_mixt_T.position]).T
+    end_particles, _ = einops.pack([state_mixt.position, sample_mixt_T.position], 'n * d')
+    for i, x in enumerate(perct):
+        k = int(x * n_steps)
+        t = k * t_final / n_steps
+        display_histogram(end_particles[:, k], axs[i])
+        state_t = SDEState(position=end_particles[:, k], t=jnp.array([t] * n_samples))
+        # axs[i].plot(space, jax.vmap(lambda x: sde.score(SDEState(position=x, t=jnp.array([t])),
+        #                                                 state_mixt))(space))
+
+        # axs[i].plot(space, jax.vmap(lambda x: rho_t(x, t_final - t))(space))
+        # axs[i].scatter(end_particles[:, k], jnp.zeros_like(end_particles[:, k]), color='red')
+    plt.show()
 
     # plot 1, 10 plots of display_histogram(state_0[1].position[t], axs[1]) in a same figute at 10 different times
     perct = [0, 0.1, 0.3, 0.7, 0.8, 0.9, 0.93, 0.9, 0.99, 1]

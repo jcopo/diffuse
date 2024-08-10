@@ -145,6 +145,20 @@ def display_histogram(samples, ax):
         color="red",
     )
 
+def display_trajectories(Y, m):
+    """
+    Color shading to show where particles ends up
+    m: number of trajectories to plot
+    """
+    P, N = Y.shape
+    idxs = jnp.round(jnp.linspace(0, P-1, m)).astype(jnp.int32)
+    sorted_idx = jnp.argsort(Y[:, -1])
+    I = sorted_idx[idxs]
+    for i, idx in enumerate(I):
+        color_marker = (i / (m - 1)) # trcks where particle ends up
+
+        plt.plot(Y[idx, :], c=[color_marker, 0, 1-color_marker], alpha=0.3, linewidth=0.5)
+
 
 if __name__ == "__main__":
     key = jax.random.PRNGKey(1)

@@ -1,6 +1,7 @@
 import pdb
 from diffuse.sde import SDE, SDEState, LinearSchedule
 from diffuse.neural_networks import MLP
+from diffuse.mixture import display_trajectories
 from jaxtyping import PyTreeDef, PRNGKeyArray
 import jax.numpy as jnp
 import jax
@@ -81,8 +82,7 @@ def score_match_loss(
     # (n_x0, n_ts, ...), (n_x0, n_ts, ...) -> (n_x0, n_ts, ...)
     score_eval = jax.vmap(sde.score, in_axes=(1, None), out_axes=1)(state, state_0)
 
-    # nn_eval = jax.vmap(sde.score, in_axes=(1, None), out_axes=1)(SDEState(all_paths, einops.repeat(ts, "n i -> new_axis n i", new_axis=n_x0)), state_0)
-    sq_diff = einops.reduce((nn_eval - score_eval) ** 2, 't n ... -> t n', 'sum') # (n_x0, n_ts)
+    sq_diff = einops.reduce((nn_eval - score_eval) ** 2, 't n ... -> t n', 'mean') # (n_x0, n_ts)
     mean_sq_diff = jnp.mean(sq_diff, axis=0)  # (n_ts, ...)
 
     return jnp.einsum('i,i...->...', lmbda(ts) , mean_sq_diff) / nt_samples
@@ -105,8 +105,12 @@ if __name__ == "__main__":
     samples_mixt = sampler_mixtr(key, mixt_state, n_samples)
 
     ls = score_match_loss(
-        init, key, samples_mixt, sde, 100, 2.0, lambda x: jnp.ones(x.shape), model
+        init, key, samples_mixt, sde, 100, 2.0, lambda x: jnp.ones(x.shape).squeeze(), model
     )
+
+    def weight_fun(t):
+        int_b = sde.beta.integrate(t, 0).squeeze()
+        return 1 - jnp.exp(-int_b)
 
     def loss_(nn_params, key):
         samples_mixt = sampler_mixtr(key, mixt_state, n_samples)
@@ -117,7 +121,7 @@ if __name__ == "__main__":
             sde,
             200,
             2.0,
-            lambda x: jnp.ones(x.shape),
+            jax.vmap(weight_fun),
             model,
         ).squeeze()
 
