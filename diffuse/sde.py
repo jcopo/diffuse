@@ -86,7 +86,7 @@ class SDE:
         return -jnp.einsum("i, i... -> i...", beta**-1, x - prod)
         return -(x - prod) / beta
 
-    def path(self, key: PRNGKeyArray, state: SDEState, dts: float) -> SDEState:
+    def path1(self, key: PRNGKeyArray, state: SDEState, dts: float) -> SDEState:
         """
         Generate a path
         """
@@ -100,6 +100,17 @@ class SDE:
         n_dt = dts.shape[0]
         keys = jax.random.split(key, n_dt)
         return jax.lax.scan(body_fun, state, (dts, keys))
+
+    def path(self, key: PRNGKeyArray, state: SDEState, ts: float) -> SDEState:
+        x, t = state
+
+        int_b = self.beta.integrate(ts, t).squeeze()
+        alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
+
+        rndm = jax.random.normal(key, (*ts.shape, *x.shape))
+        res = jax.vmap(jnp.multiply, in_axes=(0, None))(alpha, x) + jax.vmap(jnp.multiply)(beta,  rndm)
+
+        return SDEState(res, ts)
 
     def drift(self, state: SDEState) -> PyTreeDef:
         x, t = state
