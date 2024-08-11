@@ -7,6 +7,7 @@ from diffuse.unet import UNet
 from diffuse.score_matching import score_match_loss
 from diffuse.sde import SDE, LinearSchedule
 from functools import partial
+import numpy as np
 import optax
 from tqdm import tqdm
 
@@ -38,7 +39,7 @@ loss = partial(score_match_loss, lmbda=jax.vmap(weight_fun), network=nn_unet)
 
 n_epochs = 40
 
-nsteps_per_epoch = data.shape[0] // n_epochs
+nsteps_per_epoch = data.shape[0] // batch_size
 until_steps = int(0.95 * n_epochs) * nsteps_per_epoch
 lr = 2e-4
 schedule = optax.cosine_decay_schedule(init_value=lr, decay_steps=until_steps, alpha=1e-2)
@@ -59,14 +60,13 @@ ema_state = ema_kernel.init(params)
 
 for epoch in range(n_epochs):
     subkey, key = jax.random.split(key)
-    data = jax.random.permutation(subkey, data, axis=0)
+    # data = jax.random.permutation(subkey, data, axis=0)
+    idx =  jax.random.choice(subkey, data.shape[0], (nsteps_per_epoch, 2), replace=False)
     p_bar = tqdm(range(nsteps_per_epoch))
     for i in p_bar:
         subkey, key = jax.random.split(key)
-        params, opt_state, ema_state, val_loss, ema_params = step(subkey, params, opt_state, ema_state, data[i:i+batch_size])
+        params, opt_state, ema_state, val_loss, ema_params = step(subkey, params, opt_state, ema_state, data[idx[i]])
         p_bar.set_postfix({"loss=": val_loss})
 
 
-import numpy as np
 np.savez("ann.npz", params=params, ema_params=ema_params)
-
