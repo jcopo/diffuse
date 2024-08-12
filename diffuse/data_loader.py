@@ -46,6 +46,8 @@ until_steps = int(0.95 * n_epochs) * nsteps_per_epoch
 lr = 2e-4
 schedule = optax.cosine_decay_schedule(init_value=lr, decay_steps=until_steps, alpha=1e-2)
 optimizer = optax.adam(learning_rate=schedule)
+optimiser = optax.chain(optax.clip_by_global_norm(1.),
+                        optimiser)
 ema_kernel = optax.ema(0.99)
 
 @jax.jit
