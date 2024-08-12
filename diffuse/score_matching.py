@@ -78,7 +78,7 @@ def score_match_loss(
 
     # None, (n_x0, n_ts,, ...), (n_ts,) -> (n_x0, n_ts, ...)
     nn_eval = jax.vmap(network.apply, in_axes=(None, 1, 0), out_axes=1)(
-        nn_params, all_paths, ts[:, None]
+        nn_params, all_paths, ts
     )
     # (n_x0, n_ts, ...)
     #state = SDEState(all_paths, einops.repeat(ts, "n -> new_axis n", new_axis=n_x0))
