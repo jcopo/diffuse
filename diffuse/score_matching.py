@@ -60,11 +60,9 @@ def score_match_loss(
     n_x0 = x0_samples.shape[0]
     # t \sim U[0, T], (n_t, )
     ts = jnp.sort(
-        jax.random.uniform(key_t, (nt_samples + 1,), minval=1e-5, maxval=tf), axis=0
+        jax.random.uniform(key_t, (nt_samples, 1), minval=1e-5, maxval=tf), axis=0
     )
     # ts = jax.scipy.stats.uniform.ppf(jnp.arange(0,nt_samples)/nt_samples + 1/(2*nt_samples))
-    dts = ts[1:] - ts[:-1]
-    ts = ts[:-1]
     # (n_x0, n_ts, ...)
     state_0 = SDEState(x0_samples, jnp.zeros((n_x0,)))
     # p(xt|x0), (n_x0, n_ts, ...)
@@ -73,11 +71,11 @@ def score_match_loss(
     #all_paths = conditional_path.position
 
 
-    state = jax.vmap(sde.path, in_axes=(0, 0, None))(keys_x, state_0, ts)
+    state = jax.vmap(sde.path, in_axes=(0, 0, 0))(keys_x, state_0, ts)
     all_paths = state.position
 
     # None, (n_x0, n_ts,, ...), (n_ts,) -> (n_x0, n_ts, ...)
-    nn_eval = jax.vmap(network.apply, in_axes=(None, 1, 0), out_axes=1)(
+    nn_eval = jax.vmap(network.apply, in_axes=(None, 1, 1), out_axes=1)(
         nn_params, all_paths, ts
     )
     # (n_x0, n_ts, ...)

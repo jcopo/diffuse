@@ -108,7 +108,8 @@ class SDE:
         alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
 
         rndm = jax.random.normal(key, (*ts.shape, *x.shape))
-        res = jax.vmap(jnp.multiply, in_axes=(0, None))(alpha, x) + jax.vmap(jnp.multiply)(beta,  rndm)
+        # res = jax.vmap(jnp.multiply, in_axes=(0, None))(alpha, x) + jax.vmap(jnp.multiply)(beta,  rndm)
+        res = alpha * x + beta * rndm
 
         return SDEState(res, ts)
 
