@@ -58,35 +58,39 @@ def test_mixture():
         covs = alpha**2 * covs + beta
         return pdf_mixtr(MixState(means, covs, weights), x)
 
-    # score = jax.grad(rho_t)
+    # score
     score = lambda x, t: jax.grad(rho_t)(x, t) / rho_t(x, t)
 
     # samples from univariate gaussian
     n_samples = 5000
-    # init_samples = jax.random.normal(key, (n_samples, 1))
-    init_samples = jax.scipy.stats.norm.ppf(
-        jnp.arange(0, n_samples) / n_samples + 1 / (2 * n_samples)
-    )
-    print(init_samples.shape)
-    samples_mixt = sampler_mixtr(key, state, n_samples)
 
     t_final = 2.0
-    ts = jnp.array([t_final] * n_samples)
-
-    state_mixt = SDEState(position=samples_mixt, t=ts)
 
     # move to the mixture
     n_steps = 1000
     dts = jnp.array([t_final / n_steps] * (n_steps))
-    print(jnp.sum(dts))
     beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
     sde = SDE(beta=beta)
-    state_f = SDEState(position=init_samples, t=ts)
-    keys = jax.random.split(key, n_samples)
 
+    # reverse rpoceess
+    init_samples = jax.scipy.stats.norm.ppf(
+        jnp.arange(0, n_samples) / n_samples + 1 / (2 * n_samples)
+    )
+    tf = jnp.array([t_final] * n_samples)
+    state_f = SDEState(position=init_samples, t=tf)
+    keys = jax.random.split(key, n_samples)
     revert_sde = jax.jit(jax.vmap(partial(sde.reverso, score=score, dts=dts)))
     state_0, state_Ts = revert_sde(keys, state_f)
-    _, sample_mixt_T = jax.vmap(sde.path, in_axes=(0, 0, None))(keys, state_mixt, dts)
+
+    # noise proccess
+    ts = jnp.linspace(0, t_final, n_steps)
+    keys = jax.random.split(key, n_samples * n_steps).reshape((n_samples, n_steps, -1))
+    samples_mixt = sampler_mixtr(key, state, n_samples)
+    t0 = jnp.array([0.0] * n_samples)
+    state_mixt = SDEState(position=samples_mixt, t=t0)
+    sample_mixt_T = jax.vmap(
+        jax.vmap(sde.path, in_axes=(0, None, 0)), in_axes=(0, 0, None)
+    )(keys, state_mixt, ts)
 
     # plot samples
     # fig, axs = plt.subplots(1, 3, figsize=(15, 5))
@@ -101,10 +105,6 @@ def test_mixture():
 
     # print(state_0)
 
-    # for t in [0.1, 0.5, 1.0, 2., 20.]:
-    #     axs[1].plot(space, jax.vmap(lambda x: rho_t(x, t))(space))
-    # plt.show()
-
     # for i in range(n_steps):
     #     fig, axs = plt.subplots()
     #     display_histogram(state_0[1].position[-i], axs)
@@ -113,11 +113,14 @@ def test_mixture():
     #     plt.pause(0.1)
     #     plt.close()
 
+    # PLOT FORWARD TRAJECTORIES
     perct = [0, 0.1, 0.3, 0.7, 0.8, 0.9, 0.93, 0.9, 0.99, 1]
     n_plots = len(perct)
     fig, axs = plt.subplots(n_plots, 1, figsize=(10 * n_plots, n_plots))
-    #end_particles = jnp.vstack([state_mixt.position, sample_mixt_T.position]).T
-    end_particles, _ = einops.pack([state_mixt.position, sample_mixt_T.position], 'n * d')
+    # end_particles = jnp.vstack([state_mixt.position, sample_mixt_T.position]).T
+    end_particles, _ = einops.pack(
+        [state_mixt.position, sample_mixt_T.position], "n * d"
+    )
     for i, x in enumerate(perct):
         k = int(x * n_steps)
         t = k * t_final / n_steps
@@ -126,11 +129,11 @@ def test_mixture():
         # axs[i].plot(space, jax.vmap(lambda x: sde.score(SDEState(position=x, t=jnp.array([t])),
         #                                                 state_mixt))(space))
 
-        # axs[i].plot(space, jax.vmap(lambda x: rho_t(x, t_final - t))(space))
+        axs[i].plot(space, jax.vmap(lambda x: rho_t(x, t))(space))
         # axs[i].scatter(end_particles[:, k], jnp.zeros_like(end_particles[:, k]), color='red')
     plt.show()
 
-    # plot 1, 10 plots of display_histogram(state_0[1].position[t], axs[1]) in a same figute at 10 different times
+    # PLOT BACKWARD TRAJECTORIES
     perct = [0, 0.1, 0.3, 0.7, 0.8, 0.9, 0.93, 0.9, 0.99, 1]
     n_plots = len(perct)
     fig, axs = plt.subplots(n_plots, 1, figsize=(10 * n_plots, n_plots))

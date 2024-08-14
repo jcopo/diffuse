@@ -64,30 +64,35 @@ def score_match_loss(
     )
     # ts = jax.scipy.stats.uniform.ppf(jnp.arange(0,nt_samples)/nt_samples + 1/(2*nt_samples))
     # (n_x0, n_ts, ...)
-    state_0 = SDEState(x0_samples, jnp.zeros((n_x0,)))
+    state_0 = SDEState(x0_samples, jnp.zeros((n_x0, 1)))
     # p(xt|x0), (n_x0, n_ts, ...)
     keys_x = jax.random.split(key_x, n_x0)
-    #_, conditional_path = jax.vmap(sde.path, in_axes=(0, 0, None))(keys_x, state_0, dts)
-    #all_paths = conditional_path.position
-
+    # _, conditional_path = jax.vmap(sde.path, in_axes=(0, 0, None))(keys_x, state_0, dts)
+    # all_paths = conditional_path.position
 
     state = jax.vmap(sde.path, in_axes=(0, 0, 0))(keys_x, state_0, ts)
     all_paths = state.position
 
     # None, (n_x0, n_ts,, ...), (n_ts,) -> (n_x0, n_ts, ...)
-    nn_eval = jax.vmap(network.apply, in_axes=(None, 1, 1), out_axes=1)(
-        nn_params, all_paths, ts
-    )
+    # nn_eval = jax.vmap(network.apply, in_axes=(None, 0, 0))(
+    #     nn_params, all_paths, ts
+    # )
+    nn_eval = network.apply(nn_params, all_paths, ts)
+    score_eval = jax.vmap(sde.score)(state, state_0)
+    pdb.set_trace()
     # (n_x0, n_ts, ...)
-    #state = SDEState(all_paths, einops.repeat(ts, "n -> new_axis n", new_axis=n_x0))
+    # state = SDEState(all_paths, einops.repeat(ts, "n -> new_axis n", new_axis=n_x0))
     # (n_x0, n_ts, ...), (n_x0, n_ts, ...) -> (n_x0, n_ts, ...)
-    score_eval = jax.vmap(sde.score, in_axes=(1, None), out_axes=1)(state, state_0)
+    # score_eval = jax.vmap(sde.score, in_axes=(1, None), out_axes=1)(state, state_0)
 
-    sq_diff = einops.reduce((nn_eval - score_eval) ** 2, 't n ... -> t n', 'mean') # (n_x0, n_ts)
-    mean_sq_diff = jnp.mean(sq_diff, axis=0)  # (n_ts, ...)
+    sq_diff = einops.reduce(
+        (nn_eval - score_eval) ** 2, "t n ... -> t ", "mean"
+    )  # (n_ts)
 
-    return jnp.einsum('i,i...->...', lmbda(ts) , mean_sq_diff) / nt_samples
-    #return jnp.mean(lmbda(ts) * mean_sq_diff, axis=0)
+    # mean_sq_diff = jnp.mean(sq_diff, axis=0)  # (n_ts, ...)
+
+    return jnp.mean(lmbda(ts) * sq_diff, axis=0)
+    # return jnp.mean(lmbda(ts) * mean_sq_diff, axis=0)
 
 
 if __name__ == "__main__":
@@ -106,7 +111,14 @@ if __name__ == "__main__":
     samples_mixt = sampler_mixtr(key, mixt_state, n_samples)
 
     ls = score_match_loss(
-        init, key, samples_mixt, sde, 100, 2.0, lambda x: jnp.ones(x.shape).squeeze(), model
+        init,
+        key,
+        samples_mixt,
+        sde,
+        100,
+        2.0,
+        lambda x: jnp.ones(x.shape).squeeze(),
+        model,
     )
 
     def weight_fun(t):

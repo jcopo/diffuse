@@ -32,23 +32,29 @@ beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
 sde = SDE(beta)
 
 nn_unet = UNet(dt, 64, upsampling="pixel_shuffle")
-#init_params = nn_unet.init(key, data[:batch_size], dt)
-init_params = nn_unet.init(key, jnp.ones((batch_size, *shape_sample)), jnp.ones((batch_size, )))
+# init_params = nn_unet.init(key, data[:batch_size], dt)
+init_params = nn_unet.init(
+    key, jnp.ones((batch_size, *shape_sample)), jnp.ones((batch_size,))
+)
+
 
 def weight_fun(t):
     int_b = sde.beta.integrate(t, 0).squeeze()
     return 1 - jnp.exp(-int_b)
+
 
 loss = partial(score_match_loss, lmbda=jax.vmap(weight_fun), network=nn_unet)
 
 nsteps_per_epoch = data.shape[0] // batch_size
 until_steps = int(0.95 * n_epochs) * nsteps_per_epoch
 lr = 2e-4
-schedule = optax.cosine_decay_schedule(init_value=lr, decay_steps=until_steps, alpha=1e-2)
+schedule = optax.cosine_decay_schedule(
+    init_value=lr, decay_steps=until_steps, alpha=1e-2
+)
 optimizer = optax.adam(learning_rate=schedule)
-optimizer = optax.chain(optax.clip_by_global_norm(1.),
-                        optimizer)
+optimizer = optax.chain(optax.clip_by_global_norm(1.0), optimizer)
 ema_kernel = optax.ema(0.99)
+
 
 @jax.jit
 def step(key, params, opt_state, ema_state, data):
@@ -58,6 +64,7 @@ def step(key, params, opt_state, ema_state, data):
     ema_params, ema_state = ema_kernel.update(params, ema_state)
     return params, opt_state, ema_state, val_loss, ema_params
 
+
 params = init_params
 opt_state = optimizer.init(params)
 ema_state = ema_kernel.init(params)
@@ -65,12 +72,16 @@ ema_state = ema_kernel.init(params)
 for epoch in range(n_epochs):
     subkey, key = jax.random.split(key)
     # data = jax.random.permutation(subkey, data, axis=0)
-    idx =  jax.random.choice(subkey, data.shape[0], (nsteps_per_epoch, batch_size), replace=False)
+    idx = jax.random.choice(
+        subkey, data.shape[0], (nsteps_per_epoch, batch_size), replace=False
+    )
     p_bar = tqdm(range(nsteps_per_epoch))
     list_loss = []
     for i in p_bar:
         subkey, key = jax.random.split(key)
-        params, opt_state, ema_state, val_loss, ema_params = step(subkey, params, opt_state, ema_state, data[idx[i]])
+        params, opt_state, ema_state, val_loss, ema_params = step(
+            subkey, params, opt_state, ema_state, data[idx[i]]
+        )
         p_bar.set_postfix({"loss=": val_loss})
         list_loss.append(val_loss)
     print({"mean_loss=": sum(list_loss) / nsteps_per_epoch})
