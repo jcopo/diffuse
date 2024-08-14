@@ -15,7 +15,7 @@ data = jnp.load("dataset/mnist.npz")
 key = jax.random.PRNGKey(0)
 xs = data["X"]
 batch_size = 256
-n_epochs = 3000
+n_epochs = 3500
 n_t = 256
 tf = 2.0
 dt = tf / n_t
@@ -46,8 +46,8 @@ until_steps = int(0.95 * n_epochs) * nsteps_per_epoch
 lr = 2e-4
 schedule = optax.cosine_decay_schedule(init_value=lr, decay_steps=until_steps, alpha=1e-2)
 optimizer = optax.adam(learning_rate=schedule)
-optimiser = optax.chain(optax.clip_by_global_norm(1.),
-                        optimiser)
+optimizer = optax.chain(optax.clip_by_global_norm(1.),
+                        optimizer)
 ema_kernel = optax.ema(0.99)
 
 @jax.jit
@@ -67,10 +67,15 @@ for epoch in range(n_epochs):
     # data = jax.random.permutation(subkey, data, axis=0)
     idx =  jax.random.choice(subkey, data.shape[0], (nsteps_per_epoch, batch_size), replace=False)
     p_bar = tqdm(range(nsteps_per_epoch))
+    list_loss = []
     for i in p_bar:
         subkey, key = jax.random.split(key)
         params, opt_state, ema_state, val_loss, ema_params = step(subkey, params, opt_state, ema_state, data[idx[i]])
         p_bar.set_postfix({"loss=": val_loss})
+        list_loss.append(val_loss)
+    print({"mean_loss=": sum(list_loss) / nsteps_per_epoch})
 
-    if epoch + 1 % 100 == 0:
+    if (epoch + 1) % 500 == 0:
         np.savez(f"ann_{epoch}.npz", params=params, ema_params=ema_params)
+
+np.savez(f"ann_end.npz", params=params, ema_params=ema_params)
