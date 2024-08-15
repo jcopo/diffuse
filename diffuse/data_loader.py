@@ -84,7 +84,7 @@ for epoch in range(n_epochs):
         )
         p_bar.set_postfix({"loss=": val_loss})
         list_loss.append(val_loss)
-    print({"mean_loss=": sum(list_loss) / nsteps_per_epoch})
+    print(f"epoch=: {epoch} | mean_loss=: {sum(list_loss) / nsteps_per_epoch}")
 
     if (epoch + 1) % 500 == 0:
         np.savez(f"ann_{epoch}.npz", params=params, ema_params=ema_params)
