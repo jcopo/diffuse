@@ -7,6 +7,7 @@ from diffuse.mixture import (
     sampler_mixtr,
     display_histogram,
     init_mixture,
+    display_trajectories
 )
 from functools import partial
 import einops
@@ -67,7 +68,7 @@ def test_mixture():
     t_final = 2.0
 
     # move to the mixture
-    n_steps = 1000
+    n_steps = 100
     dts = jnp.array([t_final / n_steps] * (n_steps))
     beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
     sde = SDE(beta=beta)
@@ -95,26 +96,14 @@ def test_mixture():
     # plot samples
     # fig, axs = plt.subplots(1, 3, figsize=(15, 5))
     space = jnp.linspace(-3, 3, 200)
-    # pdf = jax.vmap(lambda x: pdf_mixtr(state, x))(space)
-    # axs[0].plot(space, pdf)
-    # #display_histogram(state_f.position, axs[0])
-    # display_histogram(samples_mixt, axs[0])
-    # display_histogram(state_0.position, axs[1])
-    # display_histogram(sample_mixt_T[0].position, axs[2])
-    # #axs[2].scatter(sample_0_T[0].position, jnp.zeros_like(state_0[0].position), color='red')
 
-    # print(state_0)
-
-    # for i in range(n_steps):
-    #     fig, axs = plt.subplots()
-    #     display_histogram(state_0[1].position[-i], axs)
-    #     #wait
-    #     plt.show(block=False)
-    #     plt.pause(0.1)
-    #     plt.close()
+    display_trajectories(sample_mixt_T.position.squeeze(), 100)
+    plt.show()
+    display_trajectories(state_Ts.position.squeeze(), 100)
+    plt.show()
 
     # PLOT FORWARD TRAJECTORIES
-    perct = [0, 0.1, 0.3, 0.7, 0.8, 0.9, 0.93, 0.9, 0.99, 1]
+    perct = [0, .03, .06, .08,  0.1, 0.3, 0.7, 0.8, 0.9, 1]
     n_plots = len(perct)
     fig, axs = plt.subplots(n_plots, 1, figsize=(10 * n_plots, n_plots))
     # end_particles = jnp.vstack([state_mixt.position, sample_mixt_T.position]).T

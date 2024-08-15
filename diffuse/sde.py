@@ -108,7 +108,7 @@ class SDE:
         alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
 
         rndm = jax.random.normal(key, x.shape)
-        res = alpha * x + beta * rndm
+        res = alpha * x + jnp.sqrt(beta) * rndm
         return SDEState(res, ts)
 
     def drift(self, state: SDEState) -> PyTreeDef:
@@ -129,7 +129,6 @@ class SDE:
             x, t = state
             beta_t = self.beta(tf - t)
             s = score(x, tf - t)
-            # jax.debug.print("{}", beta_t)
             return 0.5 * beta_t * x + beta_t * s
 
         def reverse_diffusion(state):

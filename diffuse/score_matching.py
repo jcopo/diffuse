@@ -85,9 +85,8 @@ def score_match_loss(
     # state = SDEState(all_paths, einops.repeat(ts, "n -> new_axis n", new_axis=n_x0))
     # (n_x0, n_ts, ...), (n_x0, n_ts, ...) -> (n_x0, n_ts, ...)
     # score_eval = jax.vmap(sde.score, in_axes=(1, None), out_axes=1)(state, state_0)
-
     sq_diff = einops.reduce(
-        (nn_eval - score_eval) ** 2, "t n ... -> t ", "mean"
+        (nn_eval - score_eval) ** 2, "t ... -> t ", "mean"
     )  # (n_ts)
 
     # mean_sq_diff = jnp.mean(sq_diff, axis=0)  # (n_ts, ...)
@@ -107,7 +106,7 @@ if __name__ == "__main__":
     sde = SDE(beta)
     key = jax.random.PRNGKey(0)
 
-    n_samples = 500
+    n_samples = 200
     mixt_state = init_mixture(key)
     samples_mixt = sampler_mixtr(key, mixt_state, n_samples)
 
@@ -116,7 +115,7 @@ if __name__ == "__main__":
         key,
         samples_mixt,
         sde,
-        100,
+        200,
         2.0,
         lambda x: jnp.ones(x.shape).squeeze(),
         model,
