@@ -59,7 +59,7 @@ def score_match_loss(
     # p(x0), n_x0
     n_x0 = x0_samples.shape[0]
     # t \sim U[0, T], (n_t, )
-    ts = jax.random.uniform(key_t, (nt_samples-1, 1), minval=1e-5, maxval=tf)
+    ts = jax.random.uniform(key_t, (nt_samples - 1, 1), minval=1e-5, maxval=tf)
 
     # stack tf to the end of ts
     ts = jnp.concatenate([ts, jnp.array([[tf]])], axis=0)

@@ -155,5 +155,4 @@ def euler_maryama_step(
     dx = drift(state) * dt + diffusion(state) * jax.random.normal(
         key, state.position.shape
     ) * jnp.sqrt(dt)
-    # jax.debug.print("{}", drift(state))
     return SDEState(state.position + dx, state.t + dt)
