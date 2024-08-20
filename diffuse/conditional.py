@@ -6,6 +6,7 @@ from diffuse.sde import SDEState, SDE, euler_maryama_step
 from dataclasses import dataclass
 from blackjax.smc.resampling import stratified
 
+
 class CondState(NamedTuple):
     x: Array # Current Markov Chain State x_0, x_1, ..., x_T
     y: Array # Current Observation Path y_0, y_1, ..., y_T
@@ -59,6 +60,7 @@ def cond_reverse_diffusion(state: CondState) -> Array:
     # stack together x and y and apply reverse diffusion
     pass
     
+
 def pmcmc_step(particles, y, y_p):
     """
     particles: samples x_k (n_particles, ...)
@@ -76,9 +78,27 @@ def pmcmc_step(particles, y, y_p):
     idx = stratified(jnp.exp(log_weights), key)
     particles = particles[idx]
 
-    # update x with SDE
+    # update particles with SDE
     particles = jax.vmap(cond_reverse_step, in_axes=(0, None, 0))(particles, dt, keys)
 
     #update marginal likelihood Z
-    log_Z = log_Z - math.log(nparticles) + _norm
+    log_Z = log_Z - jnp.log(nparticles) + _norm
 
+
+def pmcmc():
+    # generate path for y
+
+    # generate initial particles x0 from ref distribution
+
+    # filter particles x from path of y
+    # -> scan pmcmc_step over y
+
+    # accept-reject x
+
+
+def generate_cond_sample():
+    # start from obervation y0
+
+    # select starting x0
+
+    # scan pcmc_step over x0 for n_steps
