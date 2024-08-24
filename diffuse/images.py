@@ -55,6 +55,11 @@ def measure(xi: Array, img: Array, mask: SquareMask):
     return img * mask.make(xi)
 
 
+def restore(xi: Array, img: Array, mask: SquareMask, measured: Array):
+    inv_mask = 1 - mask.make(xi)
+    return img * inv_mask + measured
+
+
 def norm_measure(xi: Array, img: Array, mask: SquareMask):
     return (measure(xi, img, mask) ** 2).sum()
 
@@ -62,8 +67,8 @@ def norm_measure(xi: Array, img: Array, mask: SquareMask):
 if __name__ == "__main__":
     mask = SquareMask(10, x.shape)
     xi = jnp.array([10.0, 20.0])
-    # Create a figure with 1 row and 3 columns
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
+    # Create a figure with 2 row and 3 columns
+    fig, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2, 3, figsize=(15, 10))
 
     # Plot the first image
     im1 = ax1.imshow(mask.make(xi), cmap="gray")
@@ -76,9 +81,28 @@ if __name__ == "__main__":
     ax2.axis("off")
 
     # Plot the third image
-    im3 = ax3.imshow(mask.make(xi) * x.squeeze(), cmap="gray")
+    measured = measure(xi, x.squeeze(), mask)
+    im3 = ax3.imshow(measured, cmap="gray")
     ax3.set_title("Masked")
     ax3.axis("off")
+
+    # plot inverse mask
+    inv_mask = 1 - mask.make(xi)
+    im4 = ax4.imshow(inv_mask, cmap="gray")
+    ax4.set_title("Inverse Mask")
+    ax4.axis("off")
+
+    # plot restored image
+    restored = restore(xi, x.squeeze(), mask, 0.0 * measured)
+    im5 = ax5.imshow(restored, cmap="gray")
+    ax5.set_title("Restored")
+    ax5.axis("off")
+
+    # plot the norm of the measure
+    val = norm_measure(xi, x.squeeze(), mask)
+    im6 = ax6.imshow(x, cmap="gray")
+    ax6.set_title("Norm of the measure")
+    ax6.axis("off")
 
     plt.show()
 

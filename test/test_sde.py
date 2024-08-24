@@ -7,7 +7,7 @@ from diffuse.mixture import (
     sampler_mixtr,
     display_histogram,
     init_mixture,
-    display_trajectories
+    display_trajectories,
 )
 from functools import partial
 import einops
@@ -103,7 +103,7 @@ def test_mixture():
     plt.show()
 
     # PLOT FORWARD TRAJECTORIES
-    perct = [0, .03, .06, .08,  0.1, 0.3, 0.7, 0.8, 0.9, 1]
+    perct = [0, 0.03, 0.06, 0.08, 0.1, 0.3, 0.7, 0.8, 0.9, 1]
     n_plots = len(perct)
     fig, axs = plt.subplots(n_plots, 1, figsize=(10 * n_plots, n_plots))
     # end_particles = jnp.vstack([state_mixt.position, sample_mixt_T.position]).T

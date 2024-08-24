@@ -82,8 +82,7 @@ class SDE:
         x0, t0 = state_0
         int_b = self.beta.integrate(t, t0).squeeze()
         alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
-        # prod = jnp.einsum("i, i... -> i...", alpha, x0)
-        # return -(x - prod) / beta
+
         return -(x - alpha * x0) / beta
 
     def path1(self, key: PRNGKeyArray, state: SDEState, dts: float) -> SDEState:
@@ -102,6 +101,9 @@ class SDE:
         return jax.lax.scan(body_fun, state, (dts, keys))
 
     def path(self, key: PRNGKeyArray, state: SDEState, ts: float) -> SDEState:
+        """
+        Generate x_ts | x_t ~ N(.| exp(-0.5 \int_ts^t \beta(s) ds) x_0, 1 - exp(-\int_ts^t \beta(s) ds))
+        """
         x, t = state
 
         int_b = self.beta.integrate(ts, t)
@@ -149,11 +151,11 @@ class SDE:
         return jax.lax.scan(body_fun, state_tf_0, (dts, keys))
 
 
+
 def euler_maryama_step(
     state: SDEState, dt: float, key: PRNGKeyArray, drift: Callable, diffusion: Callable
 ) -> SDEState:
     dx = drift(state) * dt + diffusion(state) * jax.random.normal(
         key, state.position.shape
     ) * jnp.sqrt(dt)
-    # jax.debug.print("{}", drift(state))
     return SDEState(state.position + dx, state.t + dt)

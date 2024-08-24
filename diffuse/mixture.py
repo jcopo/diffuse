@@ -54,8 +54,8 @@ def init_mixture(key):
     n_mixt = 3
     d = 1
     means = jax.random.uniform(key, (n_mixt, d), minval=-3, maxval=3)
-    covs = 0.1*(jax.random.normal(key+1, (n_mixt, d, d))) ** 2
-    mix_weights = jax.random.uniform(key+2, (n_mixt,))
+    covs = 0.1 * (jax.random.normal(key + 1, (n_mixt, d, d))) ** 2
+    mix_weights = jax.random.uniform(key + 2, (n_mixt,))
     mix_weights /= jnp.sum(mix_weights)
 
     return MixState(means, covs, mix_weights)
