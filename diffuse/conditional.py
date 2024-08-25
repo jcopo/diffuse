@@ -20,9 +20,10 @@ class CondState(NamedTuple):
 
 @dataclass
 class CondSDE(SDE):
+    mask: Callable[[Array], Array]
     tf: float
     score: Callable[[Array, float], Array]
-    mask: Callable[[Array], Array]
+
 
     def reverse_drift(self, state: SDEState) -> Array:
         x, t = state
