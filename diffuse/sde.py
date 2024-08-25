@@ -1,12 +1,12 @@
-import jax
-from jaxtyping import PyTreeDef, PRNGKeyArray
-from typing import NamedTuple, Callable
-from functools import partial
 import pdb
-
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from functools import partial
+from typing import Callable, NamedTuple
+
+import jax
 import jax.numpy as jnp
+from jaxtyping import PRNGKeyArray, PyTreeDef
 
 
 class SDEState(NamedTuple):
@@ -149,7 +149,6 @@ class SDE:
         n_dt = dts.shape[0]
         keys = jax.random.split(key, n_dt)
         return jax.lax.scan(body_fun, state_tf_0, (dts, keys))
-
 
 
 def euler_maryama_step(

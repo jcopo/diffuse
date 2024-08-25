@@ -48,7 +48,7 @@ class SquareMask:
         mask = jax.nn.sigmoid(
             (-jnp.maximum(y_dist, x_dist) + mask_half_size) / softness
         )
-        return mask
+        return mask[..., None]
 
 
 def measure(xi: Array, img: Array, mask: SquareMask):
