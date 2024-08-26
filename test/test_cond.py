@@ -9,6 +9,7 @@ import numpy as np
 # Load MNIST dataset
 data = np.load("dataset/mnist.npz")
 xs = jnp.array(data["X"])
+# xs = jnp.array(data["X"])[:, 9:19, 9:19]  # Select only 10x10 pixels from the center
 xs = xs.reshape(xs.shape[0], xs.shape[1], xs.shape[2], 1)  # Add channel dimension
 batch_size = 2
 tf = 2.0
@@ -25,7 +26,9 @@ beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
 
 # Initialize ScoreNetwork (assuming you have this defined elsewhere)
 score_net = UNet(dt, 64, upsampling="pixel_shuffle")
-params = score_net.init(key, jnp.ones((batch_size, 28, 28, 1)), jnp.ones((batch_size,)))
+params = score_net.init(
+    key, jnp.ones((batch_size, xs.shape[1], xs.shape[2], 1)), jnp.ones((batch_size,))
+)
 
 
 # Define neural network score function

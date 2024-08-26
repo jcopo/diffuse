@@ -125,13 +125,13 @@ def pmcmc_step(state, ys, xi: Array, cond_sde: CondSDE):
     """
     particles, log_Z = state
     n_particles = particles.shape[0]
-    y, y_p, dt, t, key = ys
+    y, y_p, dt, key = ys
 
     # weights current particles according to likelihood of observation and normalize
-    cond_state = CondState(particles, y, xi, t)
+    cond_state = CondState(particles, y_p.position, xi, y_p.t)
     log_weights = jax.vmap(
         cond_sde.logpdf, in_axes=(None, CondState(0, None, None, None), None)
-    )(y_p, cond_state, dt)
+    )(y.position, cond_state, dt)
     _norm = jax.scipy.special.logsumexp(log_weights, axis=0)
     log_weights = log_weights - _norm
 
@@ -143,7 +143,7 @@ def pmcmc_step(state, ys, xi: Array, cond_sde: CondSDE):
     keys = jax.random.split(key, n_particles)
     particles = jax.vmap(
         cond_sde.cond_reverse_step, in_axes=(CondState(0, None, None, None), None, 0)
-    )(CondState(particles, y, xi, t), dt, keys).x
+    )(CondState(particles, y.position, xi, y.t), dt, keys).x
 
     # update marginal likelihood Z
     log_Z = log_Z - jnp.log(n_particles) + _norm
@@ -169,15 +169,15 @@ def pmcmc(
     state = SDEState(y, jnp.zeros((n_ts, 1)))
     keys = jax.random.split(key_y, n_ts)
     ys = jax.vmap(cond_sde.path, in_axes=(0, 0, 0))(keys, state, ts)
+    y_0Tm = jax.tree.map(lambda x: x[:-1], ys)
+    y_1T = jax.tree.map(lambda x: x[1:], ys)
     # generate initial particles x_T from ref distribution
     x0s = jax.random.normal(key_x, x_p.shape)
 
     # filter particles x from path of y
     step = partial(pmcmc_step, cond_sde=cond_sde, xi=xi)
     keys = jax.random.split(key, len(dts))
-    (particles, log_Z), _ = jax.lax.scan(
-        step, (x0s, 0.0), (ys.position[:-1], ys.position[1:], dts, ts[:-1], keys)
-    )
+    (particles, log_Z), _ = jax.lax.scan(step, (x0s, 0.0), (y_0Tm, y_1T, dts, keys))
 
     # accept-reject x
     return jax.lax.cond(
