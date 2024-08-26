@@ -132,6 +132,7 @@ def pmcmc_step(state, ys, xi: Array, cond_sde: CondSDE):
     log_weights = jax.vmap(
         cond_sde.logpdf, in_axes=(None, CondState(0, None, None, None), None)
     )(y.position, cond_state, dt)
+    #jax.debug.print("{}", log_weights)
     _norm = jax.scipy.special.logsumexp(log_weights, axis=0)
     log_weights = log_weights - _norm
 
@@ -180,12 +181,12 @@ def pmcmc(
     (particles, log_Z), _ = jax.lax.scan(step, (x0s, 0.0), (y_0Tm, y_1T, dts, keys))
 
     # accept-reject x
+    prob_accept = jnp.minimum(1.0, jnp.exp(log_Z - log_Z_p))
     return jax.lax.cond(
-        jnp.exp(log_Z) > jnp.exp(log_Z_p),
+        jax.random.uniform(key) < prob_accept,
         lambda: (particles, log_Z),
         lambda: (x_p, log_Z_p),
     )
-
 
 def generate_cond_sample(
     y: Array,
@@ -198,7 +199,7 @@ def generate_cond_sample(
     # start from obervatio y0
 
     # select starting x0
-    n_particles = 200
+    n_particles = 20
     x0 = jnp.zeros((n_particles, *x_shape))
 
     # scan pcmc over x0 for n_steps
