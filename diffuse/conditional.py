@@ -8,10 +8,32 @@ import jax
 import jax.numpy as jnp
 from blackjax.smc.resampling import stratified
 from jax.tree_util import register_pytree_node_class
+import matplotlib.pyplot as plt
 from jaxtyping import Array, PRNGKeyArray, PyTreeDef
 
 from diffuse.images import measure, restore
 from diffuse.sde import SDE, SDEState, euler_maryama_step
+
+
+def plt_fracts(array):
+    # Define the fractions
+    fractions = [0.0, 0.1, 0.9, 0.95, 1.0]
+    total_frames = array.shape[0]
+
+    # Create a figure with subplots
+    fig, axs = plt.subplots(1, 5, figsize=(15, 5))
+
+    for idx, fraction in enumerate(fractions):
+        # Calculate the frame index
+        frame_index = int(fraction * total_frames)
+
+        # Plot the image
+        axs[idx].imshow(array[frame_index], cmap="gray")
+        axs[idx].set_title(f"Frame at {fraction*100}% of total")
+        axs[idx].axis("off")  # Turn off axis labels
+
+    plt.tight_layout()
+    plt.show()
 
 
 @register_pytree_node_class
@@ -125,13 +147,13 @@ def pmcmc_step(state, ys, xi: Array, cond_sde: CondSDE):
     """
     particles, log_Z = state
     n_particles = particles.shape[0]
-    y, y_p, dt, key = ys
+    u, u_next, dt, key = ys
 
     # weights current particles according to likelihood of observation and normalize
-    cond_state = CondState(particles, y_p.position, xi, y_p.t)
+    cond_state = CondState(particles, u.position, xi, u.t)
     log_weights = jax.vmap(
         cond_sde.logpdf, in_axes=(None, CondState(0, None, None, None), None)
-    )(y.position, cond_state, dt)
+    )(u_next.position, cond_state, dt)
     # jax.debug.print("{}", log_weights)
     _norm = jax.scipy.special.logsumexp(log_weights, axis=0)
     log_weights = log_weights - _norm
@@ -144,7 +166,7 @@ def pmcmc_step(state, ys, xi: Array, cond_sde: CondSDE):
     keys = jax.random.split(key, n_particles)
     particles = jax.vmap(
         cond_sde.cond_reverse_step, in_axes=(CondState(0, None, None, None), None, 0)
-    )(CondState(particles, y.position, xi, y.t), dt, keys).x
+    )(CondState(particles, u.position, xi, u.t), dt, keys).x
 
     # update marginal likelihood Z
     log_Z = log_Z - jnp.log(n_particles) + _norm
@@ -170,22 +192,25 @@ def pmcmc(
     state = SDEState(y, jnp.zeros((n_ts, 1)))
     keys = jax.random.split(key_y, n_ts)
     ys = jax.vmap(cond_sde.path, in_axes=(0, 0, 0))(keys, state, ts)
-    y_0Tm = jax.tree.map(lambda x: x[:-1], ys)
-    y_1T = jax.tree.map(lambda x: x[1:], ys)
+
+    # u time reversal of y
+    us = SDEState(ys.position[::-1], ys.t)
+    u_0Tm = jax.tree.map(lambda x: x[:-1], us)
+    u_1T = jax.tree.map(lambda x: x[1:], us)
     # generate initial particles x_T from ref distribution
     x0s = jax.random.normal(key_x, x_p.shape)
 
     # filter particles x from path of y
     step = partial(pmcmc_step, cond_sde=cond_sde, xi=xi)
     keys = jax.random.split(key, len(dts))
-    (particles, log_Z), _ = jax.lax.scan(step, (x0s, 0.0), (y_0Tm, y_1T, dts, keys))
+    (particles, log_Z), _ = jax.lax.scan(step, (x0s, 0.0), (u_0Tm, u_1T, dts, keys))
 
     # accept-reject x
-    prob_accept = jnp.minimum(1.0, jnp.exp(log_Z - log_Z_p))
+    prob_accept = jnp.minimum(0.0, log_Z - log_Z_p)
     return jax.lax.cond(
-        jax.random.uniform(key) < prob_accept,
-        lambda: (particles, log_Z),
+        jax.random.uniform(key) < jnp.exp(prob_accept),
         lambda: (x_p, log_Z_p),
+        lambda: (particles, log_Z),
     )
 
 
@@ -197,8 +222,6 @@ def generate_cond_sample(
     cond_sde: CondSDE,
     x_shape: Tuple,
 ):
-    # start from obervatio y0
-
     # select starting x0
     n_particles = 20
     x0 = jnp.zeros((n_particles, *x_shape))
