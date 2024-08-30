@@ -10,7 +10,7 @@ Structure of the repository:
     - `conditional.py`: implementation of the conditional sampling procedure
 
 - `vraie_vie`: contains the code for the medical image application in anomaly detection on WMH dataset 🧠
-    -`mni_coregistration.py`: Coregister the original WMH dataset into the MNI space 👩‍🔬
-    -`create_data.py`: Creates the dataloader that iterates on the slices of each subjects 🚀
+    - `mni_coregistration.py`: Coregister the original WMH dataset into the MNI space 👩‍🔬
+    - `create_data.py`: Creates the dataloader that iterates on the slices of each subjects 🚀
 
 - `test`: contains the test scripts for the Diffuse tool with a test on a toy example with Gaussian Mixtures
