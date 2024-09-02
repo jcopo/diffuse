@@ -85,7 +85,7 @@ class CondSDE(SDE):
             float: The log probability density of the observation.
         """
         x_p, y_p, xi, t_p = state_p
-        mean = y_p + cond_reverse_drift(state_p, self) * dt
+        mean = y_p + measure(xi, cond_reverse_drift(state_p, self), self.mask)* dt
         std = jnp.sqrt(dt) * cond_reverse_diffusion(state_p, self)
 
         return jax.scipy.stats.norm.logpdf(obs, mean, std).sum()
@@ -106,8 +106,14 @@ class CondSDE(SDE):
             x, t = state
             return cond_reverse_diffusion(CondState(x, y, xi, t), self)
 
+        y = measure(xi, y, self.mask)
+        img = restore(xi, x, self.mask, y)
+        #jax.debug.print("meas{}\n", measure(xi, img, self.mask))
+        # jax.debug.print("y{}\n", y.shape)
+        #jax.debug.print("diff{}\n", measure(xi, img, self.mask) - y )
+
         x, _ = euler_maryama_step(
-            SDEState(x, t), dt, key, revese_drift, reverse_diffusion
+            SDEState(img, t), dt, key, revese_drift, reverse_diffusion
         )
         y = measure(xi, x, self.mask)
         return CondState(x, y, xi, t - dt)
@@ -149,6 +155,12 @@ def pmcmc_step(state, ys, xi: Array, cond_sde: CondSDE):
     n_particles = particles.shape[0]
     u, u_next, dt, key = ys
 
+    # update particles with SDE
+    keys = jax.random.split(key, n_particles)
+    particles = jax.vmap(
+        cond_sde.cond_reverse_step, in_axes=(CondState(0, None, None, None), None, 0)
+    )(CondState(particles, u.position, xi, u.t), dt, keys).x
+
     # weights current particles according to likelihood of observation and normalize
     cond_state = CondState(particles, u.position, xi, u.t)
     log_weights = jax.vmap(
@@ -160,13 +172,10 @@ def pmcmc_step(state, ys, xi: Array, cond_sde: CondSDE):
 
     # resample particles according to weights
     idx = stratified(key, jnp.exp(log_weights), n_particles)
-    particles = particles[idx]
+    #jax.debug.print("{}", idx)
+    #particles = particles[idx]
 
-    # update particles with SDE
-    keys = jax.random.split(key, n_particles)
-    particles = jax.vmap(
-        cond_sde.cond_reverse_step, in_axes=(CondState(0, None, None, None), None, 0)
-    )(CondState(particles, u.position, xi, u.t), dt, keys).x
+
 
     # update marginal likelihood Z
     log_Z = log_Z - jnp.log(n_particles) + _norm
@@ -182,7 +191,7 @@ def pmcmc(
     xi: Array,
     cond_sde: CondSDE,
 ):
-    n_ts = 100
+    n_ts = 300
     ts = jnp.linspace(0.0, cond_sde.tf, n_ts)
     dts = jnp.diff(ts)
     key_y, key_x = jax.random.split(key)
@@ -223,7 +232,7 @@ def generate_cond_sample(
     x_shape: Tuple,
 ):
     # select starting x0
-    n_particles = 20
+    n_particles = 100
     x0 = jnp.zeros((n_particles, *x_shape))
 
     # scan pcmc over x0 for n_steps

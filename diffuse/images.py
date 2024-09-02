@@ -19,6 +19,7 @@ xs = einops.rearrange(xs, "b h w -> b h w 1")
 
 
 x = xs[0]
+x = jax.random.normal(jax.random.PRNGKey(0), x.shape)
 
 
 @dataclass
@@ -27,38 +28,18 @@ class SquareMask:
     img_shape: tuple
 
     def get(self, img: Array, xi: Array):
-        # return part of the image that is within the square mask left side corner at xi
-        x = int(jnp.clip(xi[0], 0, img.shape[0] - self.size))
-        y = int(jnp.clip(xi[1], 0, img.shape[1] - self.size))
-        return img[x : x + self.size, y : y + self.size]
-
-    def make(self, xi: Array) -> Array:
-        """Create a differentiable square mask."""
-        height, width, *_ = self.img_shape
-        y, x = jnp.mgrid[:height, :width]
-
-        # Calculate distances from the center
-        y_dist = jnp.abs(y - xi[0])
-        x_dist = jnp.abs(x - xi[1])
-
-        # Create a soft mask using sigmoid function
-        mask_half_size = self.size // 2
-        softness = 0.1  # Adjust this value to control the softness of the edges
-
-        mask = jax.nn.sigmoid(
-            (-jnp.maximum(y_dist, x_dist) + mask_half_size) / softness
-        )
-        return mask[..., None]
-
-
-def measure(xi: Array, img: Array, mask: SquareMask):
-    return img * mask.make(xi)
-
+        # Use jnp.floor instead of int for JAX compatibility
+        x = jnp.floor(jnp.clip(xi[0] - self.size // 2, 0, self.img_shape[0] - self.size)).astype(jnp.int32)
+        y = jnp.floor(jnp.clip(xi[1] - self.size // 2, 0, self.img_shape[1] - self.size)).astype(jnp.int32)
+        return jax.lax.dynamic_slice(img, (x, y, 0), (self.size, self.size, img.shape[-1]))
 
 def restore(xi: Array, img: Array, mask: SquareMask, measured: Array):
-    inv_mask = 1 - mask.make(xi)
-    return img * inv_mask + measured
+    x = jnp.floor(jnp.clip(xi[0] - mask.size // 2, 0, img.shape[0] - mask.size)).astype(jnp.int32)
+    y = jnp.floor(jnp.clip(xi[1] - mask.size // 2, 0, img.shape[1] - mask.size)).astype(jnp.int32)
+    return jax.lax.dynamic_update_slice(img, measured, (x, y, 0))
 
+def measure(xi: Array, img: Array, mask: SquareMask):
+    return mask.get(img, xi)
 
 if __name__ == "__main__":
     mask = SquareMask(10, x.shape)
@@ -67,7 +48,8 @@ if __name__ == "__main__":
     fig, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2, 3, figsize=(15, 10))
 
     # Plot the first image
-    im1 = ax1.imshow(mask.make(xi), cmap="gray")
+    measured = measure(xi, x, mask)
+    im1 = ax1.imshow(measured, cmap="gray")
     ax1.set_title("Measured")
     ax1.axis("off")
 
@@ -77,31 +59,29 @@ if __name__ == "__main__":
     ax2.axis("off")
 
     # Plot the third image
-    measured = measure(xi, x, mask)
-    im3 = ax3.imshow(measured, cmap="gray")
-    ax3.set_title("Masked")
+    im3 = ax3.imshow(x, cmap="gray")
+    ax3.add_patch(plt.Rectangle((xi[1] - mask.size // 2, xi[0] - mask.size // 2), 
+                                mask.size, mask.size, fill=False, edgecolor='red'))
+    ax3.set_title("Original with Measurement Area")
     ax3.axis("off")
 
-    # plot inverse mask
-    inv_mask = 1 - mask.make(xi)
-    im4 = ax4.imshow(inv_mask, cmap="gray")
-    ax4.set_title("Inverse Mask")
+    # Remove the inverse mask plot
     ax4.axis("off")
 
     # plot restored image
-    restored = restore(xi, x, mask, 0.0 * measured)
+    restored = restore(xi, x, mask, 0.5 * jnp.ones_like(measured))
     im5 = ax5.imshow(restored, cmap="gray")
     ax5.set_title("Restored")
     ax5.axis("off")
 
     def norm_measure(xi: Array, img: Array, mask: SquareMask):
-        return (measure(xi, img, mask) ** 2).sum()
+        return jnp.sum(measure(xi, img, mask) ** 2)
 
     # plot the norm of the measure
-    val = norm_measure(xi, x, mask)
     im6 = ax6.imshow(x, cmap="gray")
     ax6.set_title("Norm of the measure")
     ax6.axis("off")
+    print(measured)
 
     plt.show()
 

@@ -9,6 +9,8 @@ __pycache__/
 *.png
 *.gif
 
+sandbox.ipynb
+
 # Distribution / packaging
 .Python
 build/

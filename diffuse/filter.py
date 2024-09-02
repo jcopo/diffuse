@@ -45,7 +45,7 @@ def filter_step(
 
     # resample particles according to weights
     idx = stratified(key_weights, jnp.exp(log_weights), n_particles)
-    particles_next = particles_next[idx]
+    #particles_next = particles_next[idx]
 
     log_Z = log_Z - jnp.log(n_particles) + _norm
 
@@ -61,6 +61,7 @@ def generate_cond_sample(
     x_shape: Tuple,
 ):
     n_ts = 300
+    n_particles = 100
     ts = jnp.linspace(0.0, cond_sde.tf, n_ts)
     dts = jnp.diff(ts)
     key_y, key_x = jax.random.split(key)
@@ -79,7 +80,7 @@ def generate_cond_sample(
     x_T = jax.random.normal(key_x, (n_particles, *x_shape))
 
     # scan pcmc over x0 for n_steps
-    keys = jax.random.split(key, n_steps)
+    keys = jax.random.split(key, n_ts-1)
 
     def step(state, itr):
         x_p, log_Z_p = state
