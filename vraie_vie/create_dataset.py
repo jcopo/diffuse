@@ -92,7 +92,7 @@ class vol2slice(Dataset):
                 dim=-1,
             )
 
-            padding = (0, 0, 0, 3, 0, 1) 
+            padding = (0, 0, 0, 3, 0, 1)
             padded_tensor = F.pad(data_masked, padding, "constant", 0)
 
             return padded_tensor
