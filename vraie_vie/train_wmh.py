@@ -7,15 +7,17 @@ import optax
 
 from create_dataset import WMH
 
-from ..diffuse.score_matching import score_match_loss
-from ..diffuse.sde import SDE, LinearSchedule
-from ..diffuse.unet import UNet
+import os
+import sys
+sys.path.append(os.path.abspath('..'))
+
+from diffuse.score_matching import score_match_loss
+from diffuse.sde import SDE, LinearSchedule
+from diffuse.unet import UNet
 
 import numpy as np
 
-import os
 
-import sys
 from tqdm import tqdm
 
 
