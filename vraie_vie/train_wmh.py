@@ -19,6 +19,9 @@ import sys
 from tqdm import tqdm
 
 
+jax.config.update("jax_enable_x64", False)
+
+
 def step(key, params, opt_state, ema_state, data, optimizer, ema_kernel, sde, cfg):
     val_loss, g = jax.value_and_grad(loss)(
         params, key, data, sde, cfg["n_t"], cfg["tf"]
