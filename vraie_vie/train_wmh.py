@@ -25,21 +25,6 @@ from tqdm import tqdm
 jax.config.update("jax_enable_x64", False)
 
 
-def step(key, params, opt_state, ema_state, data, optimizer, ema_kernel, sde, cfg):
-    val_loss, g = jax.value_and_grad(loss)(
-        params, key, data, sde, cfg["n_t"], cfg["tf"]
-    )
-    updates, opt_state = optimizer.update(g, opt_state)
-    params = optax.apply_updates(params, updates)
-    ema_params, ema_state = ema_kernel.update(params, ema_state)
-    return params, opt_state, ema_state, val_loss, ema_params
-
-
-def weight_fun(t):
-    int_b = sde.beta.integrate(t, 0).squeeze()
-    return 1 - jnp.exp(-int_b)
-
-
 if __name__ == "__main__":
     config = {
         "modality": "FLAIR",
@@ -73,7 +58,20 @@ if __name__ == "__main__":
         jnp.ones((config["batch_size"],)),
     )
 
+    def weight_fun(t):
+        int_b = sde.beta.integrate(t, 0).squeeze()
+        return 1 - jnp.exp(-int_b)
+
     loss = partial(score_match_loss, lmbda=jax.vmap(weight_fun), network=nn_unet)
+
+    def step(key, params, opt_state, ema_state, data, optimizer, ema_kernel, sde, cfg):
+        val_loss, g = jax.value_and_grad(loss)(
+            params, key, data, sde, cfg["n_t"], cfg["tf"]
+        )
+        updates, opt_state = optimizer.update(g, opt_state)
+        params = optax.apply_updates(params, updates)
+        ema_params, ema_state = ema_kernel.update(params, ema_state)
+        return params, opt_state, ema_state, val_loss, ema_params
 
     until_steps = int(0.95 * config["n_epochs"]) * len(train_loader)
     schedule = optax.cosine_decay_schedule(
@@ -113,13 +111,17 @@ if __name__ == "__main__":
             np.savez(
                 os.path.join(config["save_path"], f"ann_{epoch}.npz"),
                 params=params,
-                ema_params=ema_params,
-                opt_state=opt_state,
+                ema_state=ema_state,
+                opt_state_1=opt_state[0],
+                opt_state_2=opt_state[1][0],
+                opt_state_3=opt_state[1][1],
             )
 
     np.savez(
         os.path.join(config["save_path"], f"ann_end.npz"),
         params=params,
-        ema_params=ema_params,
-        opt_state=opt_state,
+        ema_state=ema_state,
+        opt_state_1=opt_state[0],
+        opt_state_2=opt_state[1][0],
+        opt_state_3=opt_state[1][1],
     )
