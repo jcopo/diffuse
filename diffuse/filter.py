@@ -13,18 +13,22 @@ from jaxtyping import Array, PRNGKeyArray, PyTreeDef
 
 from diffuse.images import measure, restore
 from diffuse.sde import SDE, SDEState, euler_maryama_step
-from diffuse.conditional import CondSDE, CondState, cond_reverse_diffusion, cond_reverse_drift
-
+from diffuse.conditional import (
+    CondSDE,
+    CondState,
+    cond_reverse_diffusion,
+    cond_reverse_drift,
+)
 
 
 def filter_step(
-    particles: Array, 
-    log_Z: float, 
-    key: PRNGKeyArray, 
-    u: SDEState, 
-    u_next: SDEState, 
-    xi: Array, 
-    cond_sde: CondSDE
+    particles: Array,
+    log_Z: float,
+    key: PRNGKeyArray,
+    u: SDEState,
+    u_next: SDEState,
+    xi: Array,
+    cond_sde: CondSDE,
 ) -> Tuple[Array, float]:
     dt = u_next.t - u.t
     # update particles with SDE
@@ -46,12 +50,12 @@ def filter_step(
     # resample particles according to weights
     # maybe resample based on ESS crit ?
     idx = stratified(key_weights, jnp.exp(log_weights), n_particles)
-    #particles_next = particles_next[idx]
+    # particles_next = particles_next[idx]
 
     log_Z = log_Z - jnp.log(n_particles) + _norm
 
     return particles_next, log_Z
-    
+
 
 def generate_cond_sample(
     y: Array,
@@ -77,11 +81,11 @@ def generate_cond_sample(
     us = SDEState(ys.position[::-1], ys.t)
     u_0Tm = jax.tree.map(lambda x: x[:-1], us)
     u_1T = jax.tree.map(lambda x: x[1:], us)
-    
+
     x_T = jax.random.normal(key_x, (n_particles, *x_shape))
 
     # scan pcmc over x0 for n_steps
-    keys = jax.random.split(key, n_ts-1)
+    keys = jax.random.split(key, n_ts - 1)
 
     def step(state, itr):
         x_p, log_Z_p = state

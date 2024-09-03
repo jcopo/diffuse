@@ -7,31 +7,22 @@ import optax
 
 from create_dataset import WMH
 
-from ..diffuse.score_matching import score_match_loss
-from ..diffuse.sde import SDE, LinearSchedule
-from ..diffuse.unet import UNet
+import os
+import sys
+
+sys.path.append(os.path.abspath(".."))
+
+from diffuse.score_matching import score_match_loss
+from diffuse.sde import SDE, LinearSchedule
+from diffuse.unet import UNet
 
 import numpy as np
 
-import os
 
-import sys
 from tqdm import tqdm
 
 
-def step(key, params, opt_state, ema_state, data, optimizer, ema_kernel, sde, cfg):
-    val_loss, g = jax.value_and_grad(loss)(
-        params, key, data, sde, cfg["n_t"], cfg["tf"]
-    )
-    updates, opt_state = optimizer.update(g, opt_state)
-    params = optax.apply_updates(params, updates)
-    ema_params, ema_state = ema_kernel.update(params, ema_state)
-    return params, opt_state, ema_state, val_loss, ema_params
-
-
-def weight_fun(t):
-    int_b = sde.beta.integrate(t, 0).squeeze()
-    return 1 - jnp.exp(-int_b)
+jax.config.update("jax_enable_x64", False)
 
 
 if __name__ == "__main__":
@@ -60,15 +51,27 @@ if __name__ == "__main__":
 
     nn_unet = UNet(config["tf"] / config["n_t"], 64, upsampling="pixel_shuffle")
 
+    key, subkey = jax.random.split(key)
     init_params = nn_unet.init(
-        key,
+        subkey,
         jnp.ones((config["batch_size"], *train_loader.dataset[0].shape)),
         jnp.ones((config["batch_size"],)),
     )
 
-    loss = jax.jit(
-        partial(score_match_loss, lmbda=jax.vmap(weight_fun), network=nn_unet)
-    )
+    def weight_fun(t):
+        int_b = sde.beta.integrate(t, 0).squeeze()
+        return 1 - jnp.exp(-int_b)
+
+    loss = partial(score_match_loss, lmbda=jax.vmap(weight_fun), network=nn_unet)
+
+    def step(key, params, opt_state, ema_state, data, optimizer, ema_kernel, sde, cfg):
+        val_loss, g = jax.value_and_grad(loss)(
+            params, key, data, sde, cfg["n_t"], cfg["tf"]
+        )
+        updates, opt_state = optimizer.update(g, opt_state)
+        params = optax.apply_updates(params, updates)
+        ema_params, ema_state = ema_kernel.update(params, ema_state)
+        return params, opt_state, ema_state, val_loss, ema_params
 
     until_steps = int(0.95 * config["n_epochs"]) * len(train_loader)
     schedule = optax.cosine_decay_schedule(
@@ -79,8 +82,8 @@ if __name__ == "__main__":
     optimizer = optax.chain(optax.clip_by_global_norm(1.0), optimizer)
     ema_kernel = optax.ema(0.99)
 
-    batch_update = partial(
-        step, optimizer=optimizer, ema_kernel=ema_kernel, sde=sde, cfg=config
+    batch_update = jax.jit(
+        partial(step, optimizer=optimizer, ema_kernel=ema_kernel, sde=sde, cfg=config)
     )
 
     params = init_params
@@ -108,13 +111,17 @@ if __name__ == "__main__":
             np.savez(
                 os.path.join(config["save_path"], f"ann_{epoch}.npz"),
                 params=params,
-                ema_params=ema_params,
-                opt_state=opt_state,
+                ema_state=ema_state,
+                opt_state_1=opt_state[0],
+                opt_state_2=opt_state[1][0],
+                opt_state_3=opt_state[1][1],
             )
 
     np.savez(
         os.path.join(config["save_path"], f"ann_end.npz"),
         params=params,
-        ema_params=ema_params,
-        opt_state=opt_state,
+        ema_state=ema_state,
+        opt_state_1=opt_state[0],
+        opt_state_2=opt_state[1][0],
+        opt_state_3=opt_state[1][1],
     )

@@ -52,6 +52,7 @@ class SquareMask:
         # return jnp.where(mask > 0.5, 1.0, 0.0)[..., None]
         return mask[..., None]
 
+
 def measure(xi: Array, img: Array, mask: SquareMask):
     return img * mask.make(xi)
 
@@ -59,6 +60,7 @@ def measure(xi: Array, img: Array, mask: SquareMask):
 def restore(xi: Array, img: Array, mask: SquareMask, measured: Array):
     inv_mask = 1 - mask.make(xi)
     return img * inv_mask + measured
+
 
 
 if __name__ == "__main__":

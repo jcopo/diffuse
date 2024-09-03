@@ -9,7 +9,9 @@
 #SBATCH --time=20:00:00
 #SBATCH --output=%x_%j.out
 #SBATCH --error=%x_%j.err
+#SBATCH -C a100
 #SBATCH -A hlp@a100
+
 
 module purge
 

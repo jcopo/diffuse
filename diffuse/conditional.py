@@ -85,8 +85,12 @@ class CondSDE(SDE):
             float: The log probability density of the observation.
         """
         x_p, y_p, xi, t_p = state_p
+<<<<<<< HEAD
         #mean = y_p + cond_reverse_drift(state_p, self) * dt
         mean = y_p + measure(xi, cond_reverse_drift(state_p, self), self.mask)* dt
+=======
+        mean = y_p + measure(xi, cond_reverse_drift(state_p, self), self.mask) * dt
+>>>>>>> e7cf17bb9f4b3f9f196f501a4e5e63da9a427fef
         std = jnp.sqrt(dt) * cond_reverse_diffusion(state_p, self)
 
         return jax.scipy.stats.norm.logpdf(obs, mean, std).sum()
@@ -109,9 +113,9 @@ class CondSDE(SDE):
 
         y = measure(xi, y, self.mask)
         img = restore(xi, x, self.mask, y)
-        #jax.debug.print("meas{}\n", measure(xi, img, self.mask))
+        # jax.debug.print("meas{}\n", measure(xi, img, self.mask))
         # jax.debug.print("y{}\n", y.shape)
-        #jax.debug.print("diff{}\n", measure(xi, img, self.mask) - y )
+        # jax.debug.print("diff{}\n", measure(xi, img, self.mask) - y )
 
         x, _ = euler_maryama_step(
             SDEState(img, t), dt, key, revese_drift, reverse_diffusion
@@ -184,10 +188,8 @@ def pmcmc_step(state, ys, xi: Array, cond_sde: CondSDE):
 
     # resample particles according to weights
     idx = stratified(key, jnp.exp(log_weights), n_particles)
-    #jax.debug.print("{}", idx)
-    #particles = particles[idx]
-
-
+    # jax.debug.print("{}", idx)
+    # particles = particles[idx]
 
     # update marginal likelihood Z
     log_Z = log_Z - jnp.log(n_particles) + _norm
