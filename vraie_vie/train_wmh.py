@@ -60,8 +60,9 @@ if __name__ == "__main__":
 
     nn_unet = UNet(config["tf"] / config["n_t"], 64, upsampling="pixel_shuffle")
 
+    key, subkey = jax.random.split(key)
     init_params = nn_unet.init(
-        key,
+        subkey,
         jnp.ones((config["batch_size"], *train_loader.dataset[0].shape)),
         jnp.ones((config["batch_size"],)),
     )

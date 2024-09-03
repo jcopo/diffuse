@@ -29,17 +29,30 @@ class SquareMask:
 
     def get(self, img: Array, xi: Array):
         # Use jnp.floor instead of int for JAX compatibility
-        x = jnp.floor(jnp.clip(xi[0] - self.size // 2, 0, self.img_shape[0] - self.size)).astype(jnp.int32)
-        y = jnp.floor(jnp.clip(xi[1] - self.size // 2, 0, self.img_shape[1] - self.size)).astype(jnp.int32)
-        return jax.lax.dynamic_slice(img, (x, y, 0), (self.size, self.size, img.shape[-1]))
+        x = jnp.floor(
+            jnp.clip(xi[0] - self.size // 2, 0, self.img_shape[0] - self.size)
+        ).astype(jnp.int32)
+        y = jnp.floor(
+            jnp.clip(xi[1] - self.size // 2, 0, self.img_shape[1] - self.size)
+        ).astype(jnp.int32)
+        return jax.lax.dynamic_slice(
+            img, (x, y, 0), (self.size, self.size, img.shape[-1])
+        )
+
 
 def restore(xi: Array, img: Array, mask: SquareMask, measured: Array):
-    x = jnp.floor(jnp.clip(xi[0] - mask.size // 2, 0, img.shape[0] - mask.size)).astype(jnp.int32)
-    y = jnp.floor(jnp.clip(xi[1] - mask.size // 2, 0, img.shape[1] - mask.size)).astype(jnp.int32)
+    x = jnp.floor(jnp.clip(xi[0] - mask.size // 2, 0, img.shape[0] - mask.size)).astype(
+        jnp.int32
+    )
+    y = jnp.floor(jnp.clip(xi[1] - mask.size // 2, 0, img.shape[1] - mask.size)).astype(
+        jnp.int32
+    )
     return jax.lax.dynamic_update_slice(img, measured, (x, y, 0))
+
 
 def measure(xi: Array, img: Array, mask: SquareMask):
     return mask.get(img, xi)
+
 
 if __name__ == "__main__":
     mask = SquareMask(10, x.shape)
@@ -60,8 +73,15 @@ if __name__ == "__main__":
 
     # Plot the third image
     im3 = ax3.imshow(x, cmap="gray")
-    ax3.add_patch(plt.Rectangle((xi[1] - mask.size // 2, xi[0] - mask.size // 2), 
-                                mask.size, mask.size, fill=False, edgecolor='red'))
+    ax3.add_patch(
+        plt.Rectangle(
+            (xi[1] - mask.size // 2, xi[0] - mask.size // 2),
+            mask.size,
+            mask.size,
+            fill=False,
+            edgecolor="red",
+        )
+    )
     ax3.set_title("Original with Measurement Area")
     ax3.axis("off")
 
