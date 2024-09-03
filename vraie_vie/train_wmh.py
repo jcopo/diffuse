@@ -9,7 +9,8 @@ from create_dataset import WMH
 
 import os
 import sys
-sys.path.append(os.path.abspath('..'))
+
+sys.path.append(os.path.abspath(".."))
 
 from diffuse.score_matching import score_match_loss
 from diffuse.sde import SDE, LinearSchedule
@@ -72,9 +73,7 @@ if __name__ == "__main__":
         jnp.ones((config["batch_size"],)),
     )
 
-    loss = jax.jit(
-        partial(score_match_loss, lmbda=jax.vmap(weight_fun), network=nn_unet)
-    )
+    loss = partial(score_match_loss, lmbda=jax.vmap(weight_fun), network=nn_unet)
 
     until_steps = int(0.95 * config["n_epochs"]) * len(train_loader)
     schedule = optax.cosine_decay_schedule(
@@ -85,8 +84,8 @@ if __name__ == "__main__":
     optimizer = optax.chain(optax.clip_by_global_norm(1.0), optimizer)
     ema_kernel = optax.ema(0.99)
 
-    batch_update = partial(
-        step, optimizer=optimizer, ema_kernel=ema_kernel, sde=sde, cfg=config
+    batch_update = jax.jit(
+        partial(step, optimizer=optimizer, ema_kernel=ema_kernel, sde=sde, cfg=config)
     )
 
     params = init_params
