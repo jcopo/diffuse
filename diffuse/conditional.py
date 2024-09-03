@@ -85,12 +85,8 @@ class CondSDE(SDE):
             float: The log probability density of the observation.
         """
         x_p, y_p, xi, t_p = state_p
-<<<<<<< HEAD
         #mean = y_p + cond_reverse_drift(state_p, self) * dt
         mean = y_p + measure(xi, cond_reverse_drift(state_p, self), self.mask)* dt
-=======
-        mean = y_p + measure(xi, cond_reverse_drift(state_p, self), self.mask) * dt
->>>>>>> e7cf17bb9f4b3f9f196f501a4e5e63da9a427fef
         std = jnp.sqrt(dt) * cond_reverse_diffusion(state_p, self)
 
         return jax.scipy.stats.norm.logpdf(obs, mean, std).sum()
