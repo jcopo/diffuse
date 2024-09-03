@@ -85,6 +85,7 @@ class CondSDE(SDE):
             float: The log probability density of the observation.
         """
         x_p, y_p, xi, t_p = state_p
+        #mean = y_p + cond_reverse_drift(state_p, self) * dt
         mean = y_p + measure(xi, cond_reverse_drift(state_p, self), self.mask)* dt
         std = jnp.sqrt(dt) * cond_reverse_diffusion(state_p, self)
 
@@ -122,8 +123,19 @@ class CondSDE(SDE):
 def cond_reverse_drift(state: CondState, cond_sde: CondSDE) -> Array:
     # stack together x and y and apply reverse drift
     x, y, xi, t = state
-    img = restore(xi, x, cond_sde.mask, y)
-    return cond_sde.reverse_drift(SDEState(img, t))
+    #img = restore(xi, x, cond_sde.mask, y)
+    #return cond_sde.reverse_drift(SDEState(img, t))
+    drift_x = cond_sde.reverse_drift(SDEState(x, t))
+    beta_t = cond_sde.beta(cond_sde.tf - t)
+    meas_x = measure(xi, x, cond_sde.mask)
+    alpha_t = jnp.exp(cond_sde.beta.integrate(t, 0.))
+    # here if needed we average over y
+    drift_y = beta_t * (y - meas_x) / alpha_t
+    #f = lambda y: beta_t * (y - meas_x) / alpha_t
+    #drifts = jax.vmap(f)(y)
+    #drift_y = drifts.mean(axis=0)
+    return drift_x + drift_y
+
 
 
 def cond_reverse_diffusion(state: CondState, cond_sde: CondSDE) -> Array:

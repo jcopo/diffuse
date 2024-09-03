@@ -44,6 +44,7 @@ def filter_step(
     log_weights = log_weights - _norm
 
     # resample particles according to weights
+    # maybe resample based on ESS crit ?
     idx = stratified(key_weights, jnp.exp(log_weights), n_particles)
     #particles_next = particles_next[idx]
 
