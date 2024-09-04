@@ -7,8 +7,8 @@
 #SBATCH --cpus-per-task=10
 #SBATCH --hint=nomultithread
 #SBATCH --time=20:00:00
-#SBATCH --output=%x_%j.out
-#SBATCH --error=%x_%j.err
+#SBATCH --output=sliced.out
+#SBATCH --error=sliced.err
 #SBATCH -C a100
 #SBATCH -A hlp@a100
 
