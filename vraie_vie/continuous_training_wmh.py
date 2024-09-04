@@ -47,7 +47,7 @@ if __name__ == "__main__":
     train_loader = wmh.get_train_dataloader()
 
     checkpoint = jnp.load(
-        os.path.join(config["save_path"], f"ann_{config["begin_epoch"]}.npz"),
+        os.path.join(config["save_path"], f"ann_{config['begin_epoch']}.npz"),
         allow_pickle=True,
     )
 
