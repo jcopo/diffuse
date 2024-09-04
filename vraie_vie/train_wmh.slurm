@@ -7,8 +7,8 @@
 #SBATCH --cpus-per-task=10
 #SBATCH --hint=nomultithread
 #SBATCH --time=20:00:00
-#SBATCH --output=%x_%j.out
-#SBATCH --error=%x_%j.err
+#SBATCH --output=base.out
+#SBATCH --error=base.err
 #SBATCH -C a100
 #SBATCH -A hlp@a100
 
@@ -22,4 +22,4 @@ conda init
 source ~/.bash_profile
 conda activate aoas
 
-python -u /lustre/fswork/projects/rech/hlp/uha64uw/aistat24/diffuse/vraie_vie/train_wmh.py
+python -u /lustre/fswork/projects/rech/hlp/uha64uw/aistat24/diffuse/vraie_vie/continuous_training_wmh.py
