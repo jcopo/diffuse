@@ -16,8 +16,6 @@ from diffuse.sde import SDEState, euler_maryama_step
 class ImplicitState(NamedTuple):
     thetas: Array
     cntrst_thetas: Array
-    log_Z: float
-    log_Z_cntrst: float
     key: PRNGKeyArray
     opt_state: optax.OptState
 
@@ -67,7 +65,7 @@ def calculate_drift_expt_post(cond_sde, t, xi, x, y):
 
 def particle_step(particles, rng_key, drift_y, cond_sde, dt, t):
     def reverse_drift(state):
-        return cond_sde.cond_reverse_drift(state) + drift_y
+        return cond_sde.reverse_drift(state) + drift_y
 
     particles, _ = euler_maryama_step(
         SDEState(particles, t), dt, rng_key, reverse_drift, cond_sde.reverse_diffusion
@@ -76,26 +74,26 @@ def particle_step(particles, rng_key, drift_y, cond_sde, dt, t):
     return particles
 
 
-def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, n_meas:int, meas_hist:Array, cond_sde:CondSDE, optx_opt:GradientTransformation, ts:Array, dt:float):
+def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, cond_sde:CondSDE, optx_opt:GradientTransformation, ts:Array, dt:float):
 
     thetas, cntrst_thetas, design, opt_state = state
     # update joint distribution
     #   1 - conditional sde on joint -> samples theta
     #   2 - get values y from samples of joint
     key_theta, key_y, key_cntrst, key_grad = jax.random.split(rng_key, 4)
-    past_y = get_past(meas_hist, n_meas)
 
     def update_joint(t, thetas, ys, key):
         drift_y = calculate_drift_y(cond_sde, t, design, thetas, ys)
         thetas = particle_step(thetas, key, drift_y, cond_sde, dt, t)
         return thetas
 
-    thetas = jax.vmap(update_joint, in_axes=(0, None, 0, 0))(ts, thetas, past_y, key_theta)
+    keys_time = jax.random.split(key_theta, ts.shape[0])
+    thetas = jax.vmap(update_joint)(ts, thetas, past_y.position, keys_time)
 
     # get ys
     ys = jax.vmap(measure, in_axes=(None, 0, None))(design, thetas, cond_sde.mask)
-    keys = jax.random.split(key_y, ts.shape[0])
-    ys = jax.vmap(cond_sde.path, in_axes=(0, 0, 0))(keys, state, ts)
+    #keys = jax.random.split(key_y, ts.shape[0])
+    #ys = jax.vmap(cond_sde.path, in_axes=(0, 0, 0))(keys, state, ts)
     
     # update expected posterior
     #   1 - use y values to update post
@@ -105,7 +103,8 @@ def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, n_meas:int, meas_hist:
         cntrst_thetas = particle_step(cntrst_thetas, key_cntrst, drift_y, cond_sde, dt, t)
         return cntrst_thetas
 
-    cntrst_thetas = jax.vmap(update_expected_posterior, in_axes=(0, None, None, 0))(ts, cntrst_thetas, ys, key_cntrst)
+    keys_time_c = jax.random.split(key_cntrst, ts.shape[0])
+    cntrst_thetas = jax.vmap(update_expected_posterior)(ts, cntrst_thetas, ys, keys_time_c)
 
     # get EIG gradient estimator
     #  1 - evaluate score_f on thetas and contrastives_theta
