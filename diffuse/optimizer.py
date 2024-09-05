@@ -1,5 +1,6 @@
 from functools import partial
 from typing import NamedTuple
+import pdb
 
 import jax
 import jax.numpy as jnp
@@ -16,26 +17,26 @@ from diffuse.sde import SDEState, euler_maryama_step
 class ImplicitState(NamedTuple):
     thetas: Array
     cntrst_thetas: Array
-    key: PRNGKeyArray
+    xi: PRNGKeyArray
     opt_state: optax.OptState
 
 
-def logprob_y(theta, y, design):
+def logprob_y(theta, y, design, cond_sde):
     f_y = measure(design, theta, cond_sde.mask)
     return jax.scipy.stats.norm.logpdf(y, f_y, 1.)
-
 
 def grad_log_prob(
     rng_key: PRNGKeyArray,
     theta: Array,
     cntrst_theta: Array,
     design: Array,
+    cond_sde
 ):
     # sample y from p(y, theta_)
     y_ref = measure(design, theta, cond_sde.mask)
-    logprob_ref = logprob_y(theta, y_ref, design)
-    logprob_target = jax.vmap(logprob_y, in_axes=(None, 0, None))(
-        cntrst_theta, y_ref, design
+    logprob_ref = logprob_y(theta, y_ref, design, cond_sde)
+    logprob_target = jax.vmap(logprob_y, in_axes=(None, 0, None, None))(
+        cntrst_theta, y_ref, design, cond_sde
     )
     # logprob_target = jax.scipy.special.logsumexp(logprob_target, )
     logprob_means = jnp.mean(logprob_target, axis=1, keepdims=True)
@@ -57,7 +58,9 @@ def calculate_drift_y(cond_sde, t, xi, x, y):
 
 
 def calculate_drift_expt_post(cond_sde, t, xi, x, y):
-    drifts = calculate_drift_y(cond_sde, t, xi, x, y)
+    #pdb.set_trace()
+    drifts = jax.vmap(calculate_drift_y, in_axes=(None, None, None, None, 0))(cond_sde, t, xi, x, y)
+    #drifts = calculate_drift_y(cond_sde, t, xi, x, y)
     drift_y = drifts.mean(axis=0)
     return drift_y
 
@@ -88,7 +91,8 @@ def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, cond_sde
         return thetas
 
     keys_time = jax.random.split(key_theta, ts.shape[0])
-    thetas = jax.vmap(update_joint)(ts, thetas, past_y.position, keys_time)
+    thetas.at[1:].set(jax.vmap(update_joint)(ts, thetas, past_y.position, keys_time)[:-1])
+    #pdb.set_trace()
 
     # get ys
     ys = jax.vmap(measure, in_axes=(None, 0, None))(design, thetas, cond_sde.mask)
@@ -104,14 +108,15 @@ def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, cond_sde
         return cntrst_thetas
 
     keys_time_c = jax.random.split(key_cntrst, ts.shape[0])
-    cntrst_thetas = jax.vmap(update_expected_posterior)(ts, cntrst_thetas, ys, keys_time_c)
+    #d_cntrst_thetas = jax.vmap(update_expected_posterior)(ts, cntrst_thetas, ys, keys_time_c)
+    cntrst_thetas.at[1:].set(jax.vmap(update_expected_posterior)(ts, cntrst_thetas, ys, keys_time_c)[:-1])
 
     # get EIG gradient estimator
     #  1 - evaluate score_f on thetas and contrastives_theta
     #  2 - update design parameters with optax
     grad_xi_score = jax.grad(grad_log_prob, argnums=3, has_aux=True)
     grad_xi, ys = grad_xi_score(
-        key_grad, thetas, cntrst_thetas, design, ys, cond_sde
+        key_grad, thetas[-1], cntrst_thetas[-1], design, cond_sde
     )
     updates, opt_state = optx_opt.update(grad_xi, opt_state, design)
     design = optax.apply_updates(design, updates)
