@@ -1,2 +1,0 @@
-2024/09/03 16:28:07 Failed to connect to InfluxDB: Get "https://idrsrv04-ib0:8086/health": dial tcp 10.148.1.59:8086: connect: connection refused
-slurmstepd: error: *** JOB 1600446 ON jean-zay-iam24 CANCELLED AT 2024-09-04T12:28:28 DUE TO TIME LIMIT ***
