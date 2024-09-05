@@ -28,7 +28,8 @@ jax.config.update("jax_enable_x64", False)
 if __name__ == "__main__":
     config = {
         "modality": "FLAIR",
-        "slice_size_template": 91,
+        "slice_size_template": 49,
+        "begin_slice": 26,
         "flair_template_path": "/lustre/fswork/projects/rech/hlp/uha64uw/aistat24/WMH/MNI-FLAIR-2.0mm.nii.gz",
         "path_dataset": "/lustre/fswork/projects/rech/hlp/uha64uw/aistat24/WMH",
         "save_path": "/lustre/fswork/projects/rech/hlp/uha64uw/aistat24/WMH/models_sliced/",
