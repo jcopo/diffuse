@@ -69,7 +69,7 @@ class vol2slice(Dataset):
 
     def __getitem__(self, idx):
         idx_subject = idx // self.cfg["slice_size_template"]
-        idx_slice = idx % self.cfg["slice_size_template"]
+        idx_slice = idx % self.cfg["slice_size_template"] + self.cfg["begin_slice"]
 
         subject = self.ds.__getitem__(idx_subject)
 
@@ -78,21 +78,15 @@ class vol2slice(Dataset):
         if self.type == "Training":
             subject["mask"][tio.DATA] = subject["mask"][tio.DATA][0, ..., idx_slice]
 
-            # First version without concatenating the mask
-
-            # return subject["vol"][tio.DATA], subject["mask"][tio.DATA].type(
-            #     torch.float32
-            # )
-
             data_masked = torch.concatenate(
                 [
-                    subject["vol"][tio.DATA][26:76, :, None],
-                    subject["mask"][tio.DATA][26:76, :, None].type(torch.float32),
+                    subject["vol"][tio.DATA][..., None],
+                    subject["mask"][tio.DATA][..., None].type(torch.float32),
                 ],
                 dim=-1,
             )
 
-            padding = (0, 0, 0, 3, 0, 2)
+            padding = (0, 0, 0, 3, 0, 1)
             padded_tensor = F.pad(data_masked, padding, "constant", 0)
 
             return padded_tensor
