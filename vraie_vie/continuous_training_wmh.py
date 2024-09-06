@@ -39,7 +39,7 @@ if __name__ == "__main__":
         "n_t": 32,
         "tf": 2.0,
         "lr": 2e-4,
-        "begin_epoch": 480,
+        "begin_epoch": 215,
     }
 
     wmh = WMH(config)
@@ -53,17 +53,13 @@ if __name__ == "__main__":
 
     params = checkpoint["params"].item()
 
-    ema_state = EmaState(
-        count=checkpoint["ema_state"][0], ema=checkpoint["ema_state"][1]
-    )
+    ema_state = EmaState(count=checkpoint["ema_state"][0], ema=checkpoint["ema_state"][1])
 
     opt_state = (
         EmptyState(),
         (
             ScaleByAdamState(
-                count=checkpoint["opt_state_2"][0],
-                mu=checkpoint["opt_state_2"][1],
-                nu=checkpoint["opt_state_2"][2],
+                count=checkpoint["opt_state_2"][0], mu=checkpoint["opt_state_2"][1], nu=checkpoint["opt_state_2"][2]
             ),
             ScaleByScheduleState(checkpoint["opt_state_3"][0]),
         ),
