@@ -29,7 +29,8 @@ jax.config.update("jax_enable_x64", False)
 if __name__ == "__main__":
     config = {
         "modality": "FLAIR",
-        "slice_size_template": 91,
+        "slice_size_template": 49,
+        "begin_slice": 26,
         "flair_template_path": "/lustre/fswork/projects/rech/hlp/uha64uw/aistat24/WMH/MNI-FLAIR-2.0mm.nii.gz",
         "path_dataset": "/lustre/fswork/projects/rech/hlp/uha64uw/aistat24/WMH",
         "save_path": "/lustre/fswork/projects/rech/hlp/uha64uw/aistat24/WMH/models/",
@@ -53,13 +54,17 @@ if __name__ == "__main__":
 
     params = checkpoint["params"].item()
 
-    ema_state = EmaState(count=checkpoint["ema_state"][0], ema=checkpoint["ema_state"][1])
+    ema_state = EmaState(
+        count=checkpoint["ema_state"][0], ema=checkpoint["ema_state"][1]
+    )
 
     opt_state = (
         EmptyState(),
         (
             ScaleByAdamState(
-                count=checkpoint["opt_state_2"][0], mu=checkpoint["opt_state_2"][1], nu=checkpoint["opt_state_2"][2]
+                count=checkpoint["opt_state_2"][0],
+                mu=checkpoint["opt_state_2"][1],
+                nu=checkpoint["opt_state_2"][2],
             ),
             ScaleByScheduleState(checkpoint["opt_state_3"][0]),
         ),

@@ -32,7 +32,7 @@ if __name__ == "__main__":
         "begin_slice": 26,
         "flair_template_path": "/lustre/fswork/projects/rech/hlp/uha64uw/aistat24/WMH/MNI-FLAIR-2.0mm.nii.gz",
         "path_dataset": "/lustre/fswork/projects/rech/hlp/uha64uw/aistat24/WMH",
-        "save_path": "/lustre/fswork/projects/rech/hlp/uha64uw/aistat24/WMH/models_sliced/",
+        "save_path": "/lustre/fswork/projects/rech/hlp/uha64uw/aistat24/WMH/models/",
         "n_epochs": 4000,
         "batch_size": 32,
         "num_workers": 0,
