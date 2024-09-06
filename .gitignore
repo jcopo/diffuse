@@ -160,3 +160,7 @@ cython_debug/
 runs/*
 .DS_Store
 .ruff_cache/
+
+# Slurm outputs
+*.err
+*.out

@@ -39,7 +39,6 @@ if __name__ == "__main__":
         "n_t": 32,
         "tf": 2.0,
         "lr": 2e-4,
-
         "begin_epoch": 215,
     }
 
@@ -47,7 +46,10 @@ if __name__ == "__main__":
     wmh.setup()
     train_loader = wmh.get_train_dataloader()
 
-    checkpoint = jnp.load(os.path.join(config["save_path"], f"ann_{config["begin_epoch"]}.npz"), allow_pickle=True)
+    checkpoint = jnp.load(
+        os.path.join(config["save_path"], f"ann_{config['begin_epoch']}.npz"),
+        allow_pickle=True,
+    )
 
     params = checkpoint["params"].item()
 

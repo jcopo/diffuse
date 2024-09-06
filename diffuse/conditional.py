@@ -114,7 +114,7 @@ class CondSDE(SDE):
         # jax.debug.print("diff{}\n", measure(xi, img, self.mask) - y )
 
         x, _ = euler_maryama_step(
-            SDEState(img, t), dt, key, revese_drift, reverse_diffusion
+            SDEState(x, t), dt, key, revese_drift, reverse_diffusion
         )
         y = measure(xi, x, self.mask)
         return CondState(x, y, xi, t - dt)
@@ -128,7 +128,7 @@ def cond_reverse_drift(state: CondState, cond_sde: CondSDE) -> Array:
     drift_x = cond_sde.reverse_drift(SDEState(x, t))
     beta_t = cond_sde.beta(cond_sde.tf - t)
     meas_x = measure(xi, x, cond_sde.mask)
-    alpha_t = jnp.exp(cond_sde.beta.integrate(t, 0.))
+    alpha_t = jnp.exp(cond_sde.beta.integrate(0., t))
     # here if needed we average over y
     drift_y = beta_t * (y - meas_x) / alpha_t
     #f = lambda y: beta_t * (y - meas_x) / alpha_t
