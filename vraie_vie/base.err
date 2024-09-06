@@ -1,4 +1,0 @@
-  File "/lustre/fswork/projects/rech/hlp/uha64uw/aistat24/diffuse/vraie_vie/continuous_training_wmh.py", line 50
-    os.path.join(config["save_path"], f"ann_{config["begin_epoch"]}.npz"),
-                                                     ^^^^^^^^^^^
-SyntaxError: f-string: unmatched '['
