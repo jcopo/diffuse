@@ -63,8 +63,8 @@ def generate_cond_sample(
     key: PRNGKeyArray,
     cond_sde: CondSDE,
     x_shape: Tuple,
+    n_ts:int
 ):
-    n_ts = 100
     n_particles = 40
     ts = jnp.linspace(0.0, cond_sde.tf, n_ts)
     key_y, key_x = jax.random.split(key)
