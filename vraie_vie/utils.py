@@ -13,8 +13,7 @@ def slice_inverse_fourier(fourier_transform):
 @jax.custom_vjp
 def generate_mask(key, w, s):
     normalized_vector = w / w.sum()
-    subkey, _ = jax.random.split(key)
-    uniform_vector = jax.random.uniform(subkey, shape=w.shape, minval=0, maxval=1)
+    uniform_vector = jax.random.uniform(key, shape=w.shape, minval=0, maxval=1)
     return jnp.where(s * normalized_vector < uniform_vector, 0, 1)
 
 
