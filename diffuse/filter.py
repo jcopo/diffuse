@@ -63,9 +63,9 @@ def generate_cond_sample(
     key: PRNGKeyArray,
     cond_sde: CondSDE,
     x_shape: Tuple,
-    n_ts:int
+    n_ts:int,
+    n_particles:int
 ):
-    n_particles = 40
     ts = jnp.linspace(0.0, cond_sde.tf, n_ts)
     key_y, key_x = jax.random.split(key)
 
@@ -92,4 +92,10 @@ def generate_cond_sample(
         return n_state, n_state
 
     end_state, hist = jax.lax.scan(step, (x_T, 0.0), (keys, u_0Tm, u_1T))
-    return end_state, hist
+
+    positions, log_zs = hist
+    positions = jnp.concatenate([x_T[None], positions])
+    log_zs = jnp.concatenate([jnp.zeros((1,)), log_zs])
+
+
+    return end_state, (positions, log_zs)

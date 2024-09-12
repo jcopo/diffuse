@@ -125,7 +125,7 @@ class SDE:
         self, key: PRNGKeyArray, state_tf: SDEState, score: Callable, dts: float
     ) -> SDEState:
         x_tf, tf = state_tf
-        state_tf_0 = SDEState(x_tf, 0.0)
+        state_tf_0 = SDEState(x_tf, jnp.array([0.]))
 
         def reverse_drift(state):
             x, t = state
@@ -148,7 +148,10 @@ class SDE:
 
         n_dt = dts.shape[0]
         keys = jax.random.split(key, n_dt)
-        return jax.lax.scan(body_fun, state_tf_0, (dts, keys))
+        state_f, history = jax.lax.scan(body_fun, state_tf_0, (dts, keys))
+        # stack initial state into history
+        history = jax.tree_map(lambda arr, x: jnp.concatenate([arr[None], x]), state_tf_0, history)
+        return state_f, history
 
 
 def euler_maryama_step(
