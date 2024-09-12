@@ -115,21 +115,24 @@ def main(key):
     cntrst_thetas = state_Ts.position[:, n_samples:]
     implicit_state = ImplicitState(thetas, cntrst_thetas, design, opt_state)
 
+    joint_y = y
     for n_meas in range(num_meas):
-        plt.imshow(joint_y, cmap="gray")
-        plt.show()
 
         key_noise = jax.random.split(key, n_t)
         state_0 = SDEState(joint_y, jnp.zeros_like(y))
         past_y = jax.vmap(sde.path, in_axes=(0, None, 0))(key_noise, state_0, ts)
 
-        optimal_state, _ = optimize_design(key_step, implicit_state, past_y, optimizer, cond_sde, ts, dt)
+        optimal_state, opt_hist = optimize_design(key_step, implicit_state, past_y, optimizer, cond_sde, ts, dt)
 
         new_measurement = measure(optimal_state.xi, ground_truth, mask)
         measurement_history = measurement_history.at[n_meas].set(new_measurement)
 
         #print(f"Design: {optimal_state.xi}, Measurement: {new_measurement}")
         print(f"Design_start: {design} Design_end:{optimal_state.xi}")
+        plt.imshow(ground_truth, cmap="gray")
+        plt.scatter(opt_hist[:, 0], opt_hist[:, 1], marker='+')
+        plt.show()
+
 
         # reinitiazize implicit state
         # y = measurement_history[:n_meas+2].sum(axis=0)
@@ -143,9 +146,9 @@ def main(key):
         key_step, _ = jax.random.split(key_step)
 
         implicit_state = ImplicitState(thetas, optimal_state.cntrst_thetas, design, opt_state)
-    print(f"Final measurement history: {measurement_history}")
 
+    return implicit_state
 
 
 rng_key = key = jax.random.PRNGKey(0)
-main(rng_key)
+state = main(rng_key)
