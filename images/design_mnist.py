@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from diffuse.filter import generate_cond_sample
 from diffuse.sde import SDE, SDEState
 from diffuse.conditional import CondSDE
-from diffuse.images import SquareMask, measure
+from diffuse.images import SquareMask, measure, restore
 from diffuse.optimizer import ImplicitState, impl_step
 from diffuse.sde import LinearSchedule
 from diffuse.unet import UNet
@@ -74,61 +74,7 @@ def optimize_design(
     return new_state, hist_xi
 
 
-def initialize_experiment(key):
-    # Load MNIST dataset
-    data = np.load("dataset/mnist.npz")
-    xs = jnp.array(data["X"])
-    xs = xs.reshape(xs.shape[0], xs.shape[1], xs.shape[2], 1)  # Add channel dimension
-
-    # Initialize parameters
-    tf = 2.0
-    n_t = 299
-
-    # Define beta schedule and SDE
-    beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
-
-    # Initialize ScoreNetwork
-    score_net = UNet(tf / n_t, 64, upsampling="pixel_shuffle")
-    nn_trained = jnp.load("ann_2999.npz", allow_pickle=True)
-    params = nn_trained["params"].item()
-
-    # Define neural network score function
-    def nn_score(x, t):
-        return score_net.apply(params, x, t)
-
-    # Set up mask and measurement
-    ground_truth = jax.random.choice(key, xs)
-    mask = SquareMask(10, ground_truth.shape)
-
-    # Set up conditional SDE
-    cond_sde = CondSDE(beta=beta, mask=mask, tf=2.0, score=nn_score)
-    sde = SDE(beta=beta)
-
-    return sde, cond_sde, mask, ground_truth, tf, n_t, nn_score
-
-
-def optimize_design(
-    key_step: PRNGKeyArray,
-    implicit_state: ImplicitState,
-    past_y: Array,
-    optimizer: GradientTransformation,
-    cond_sde: CondSDE,
-    ts: Array,
-    dt: float,
-):
-    opt_steps = 5_000
-    keys_opt = jax.random.split(key_step, opt_steps)
-
-    def step(new_state, key):
-        new_state = impl_step(
-            new_state, key, past_y, cond_sde=cond_sde, optx_opt=optimizer, ts=ts, dt=dt
-        )
-        return new_state, new_state.xi
-
-    new_state, hist_xi = jax.lax.scan(step, implicit_state, keys_opt)
-    return new_state, hist_xi
-
-
+#@jax.jit
 def main(key):
     key_init, key_step = jax.random.split(key)
     sde, cond_sde, mask, ground_truth, tf, n_t, nn_score = initialize_experiment(key_init)
@@ -170,12 +116,11 @@ def main(key):
     implicit_state = ImplicitState(thetas, cntrst_thetas, design, opt_state)
 
     for n_meas in range(num_meas):
-        y = (measurement_history[:n_meas+1]).sum(axis=0)
-        plt.imshow(y, cmap="gray")
+        plt.imshow(joint_y, cmap="gray")
         plt.show()
 
         key_noise = jax.random.split(key, n_t)
-        state_0 = SDEState(y, jnp.zeros_like(y))
+        state_0 = SDEState(joint_y, jnp.zeros_like(y))
         past_y = jax.vmap(sde.path, in_axes=(0, None, 0))(key_noise, state_0, ts)
 
         optimal_state, _ = optimize_design(key_step, implicit_state, past_y, optimizer, cond_sde, ts, dt)
@@ -187,16 +132,20 @@ def main(key):
         print(f"Design_start: {design} Design_end:{optimal_state.xi}")
 
         # reinitiazize implicit state
-        y = measurement_history[:n_meas+2].sum(axis=0)
+        # y = measurement_history[:n_meas+2].sum(axis=0)
+        joint_y = restore(optimal_state.xi, joint_y, mask, new_measurement)
+
         design = jax.random.uniform(key_step, (2,), minval=0, maxval=28)
         opt_state = optimizer.init(design)
         key_t, key_c = jax.random.split(key_step)
-        thetas = generate_cond_sample(y, design, key_t, cond_sde, ground_truth.shape, n_t, n_samples)[1][0]
-        cntrst_thetas = generate_cond_sample(y, design, key_c, cond_sde, ground_truth.shape, n_t, n_samples_cntrst)[1][0]
+        thetas = generate_cond_sample(joint_y, design, key_t, cond_sde, ground_truth.shape, n_t, n_samples)[1][0]
+        cntrst_thetas = generate_cond_sample(joint_y, design, key_c, cond_sde, ground_truth.shape, n_t, n_samples_cntrst)[1][0]
         key_step, _ = jax.random.split(key_step)
 
         implicit_state = ImplicitState(thetas, optimal_state.cntrst_thetas, design, opt_state)
     print(f"Final measurement history: {measurement_history}")
 
-rng_key = jax.random.PRNGKey(0)
+
+
+rng_key = key = jax.random.PRNGKey(0)
 main(rng_key)
