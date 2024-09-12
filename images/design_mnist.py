@@ -105,39 +105,43 @@ def main(key):
     # denoise
     revert_sde = partial(sde.reverso, score=nn_score, dts=dts)
 
+    # make right shape
     keys = jax.random.split(key_init, n_samples+n_samples_cntrst)
     _, state_Ts = jax.vmap(revert_sde)(keys, state_f)
     state_Ts = jax.tree.map(lambda arr: einops.rearrange(arr, 'n h ... -> h n ...'), state_Ts)
-    #_, state_Ts = revert_sde(key_init, state_f)
 
     # init thetas
     thetas = state_Ts.position[:, :n_samples]
     cntrst_thetas = state_Ts.position[:, n_samples:]
     implicit_state = ImplicitState(thetas, cntrst_thetas, design, opt_state)
 
+    # stock in joint_y all measurements
     joint_y = y
+
     for n_meas in range(num_meas):
 
+        # make noised path for measurements
         key_noise = jax.random.split(key, n_t)
         state_0 = SDEState(joint_y, jnp.zeros_like(y))
         past_y = jax.vmap(sde.path, in_axes=(0, None, 0))(key_noise, state_0, ts)
 
+        # optimize design
         optimal_state, opt_hist = optimize_design(key_step, implicit_state, past_y, optimizer, cond_sde, ts, dt)
 
+        # make new measurement
         new_measurement = measure(optimal_state.xi, ground_truth, mask)
         measurement_history = measurement_history.at[n_meas].set(new_measurement)
 
-        #print(f"Design: {optimal_state.xi}, Measurement: {new_measurement}")
+        # logging
         print(f"Design_start: {design} Design_end:{optimal_state.xi}")
         plt.imshow(ground_truth, cmap="gray")
         plt.scatter(opt_hist[:, 0], opt_hist[:, 1], marker='+')
         plt.show()
 
-
-        # reinitiazize implicit state
-        # y = measurement_history[:n_meas+2].sum(axis=0)
+        # add measured data to joint_y
         joint_y = restore(optimal_state.xi, joint_y, mask, new_measurement)
 
+        # reinitiazize implicit state
         design = jax.random.uniform(key_step, (2,), minval=0, maxval=28)
         opt_state = optimizer.init(design)
         key_t, key_c = jax.random.split(key_step)
