@@ -11,7 +11,6 @@ from jax.tree_util import register_pytree_node_class
 import matplotlib.pyplot as plt
 from jaxtyping import Array, PRNGKeyArray, PyTreeDef
 
-from diffuse.images import measure, restore
 from diffuse.sde import SDE, SDEState, euler_maryama_step
 
 
@@ -56,6 +55,8 @@ class CondState(NamedTuple):
 @dataclass
 class CondSDE(SDE):
     mask: Callable[[Array], Array]
+    measure: Callable[[Array, Array, Callable[[Array], Array]], Array]
+    restore: Callable[[Array, Array, Callable[[Array], Array], Array], Array]
     tf: float
     score: Callable[[Array, float], Array]
 
@@ -86,7 +87,7 @@ class CondSDE(SDE):
         """
         x_p, y_p, xi, t_p = state_p
         #mean = y_p + cond_reverse_drift(state_p, self) * dt
-        mean = y_p + measure(xi, cond_reverse_drift(state_p, self), self.mask)* dt
+        mean = y_p + self.measure(xi, cond_reverse_drift(state_p, self), self.mask)* dt
         std = jnp.sqrt(dt) * cond_reverse_diffusion(state_p, self)
 
         return jax.scipy.stats.norm.logpdf(obs, mean, std).sum()
@@ -107,8 +108,8 @@ class CondSDE(SDE):
             x, t = state
             return cond_reverse_diffusion(CondState(x, y, xi, t), self)
 
-        y = measure(xi, y, self.mask)
-        img = restore(xi, x, self.mask, y)
+        y = self.measure(xi, y, self.mask)
+        img = self.restore(xi, x, self.mask, y)
         # jax.debug.print("meas{}\n", measure(xi, img, self.mask))
         # jax.debug.print("y{}\n", y.shape)
         # jax.debug.print("diff{}\n", measure(xi, img, self.mask) - y )
@@ -116,7 +117,7 @@ class CondSDE(SDE):
         x, _ = euler_maryama_step(
             SDEState(x, t), dt, key, revese_drift, reverse_diffusion
         )
-        y = measure(xi, x, self.mask)
+        y = self.measure(xi, x, self.mask)
         return CondState(x, y, xi, t - dt)
 
 
@@ -127,7 +128,7 @@ def cond_reverse_drift(state: CondState, cond_sde: CondSDE) -> Array:
     #return cond_sde.reverse_drift(SDEState(img, t))
     drift_x = cond_sde.reverse_drift(SDEState(x, t))
     beta_t = cond_sde.beta(cond_sde.tf - t)
-    meas_x = measure(xi, x, cond_sde.mask)
+    meas_x = cond_sde.measure(xi, x, cond_sde.mask)
     alpha_t = jnp.exp(cond_sde.beta.integrate(0., t))
     # here if needed we average over y
     drift_y = beta_t * (y - meas_x) / alpha_t
@@ -141,7 +142,7 @@ def cond_reverse_drift(state: CondState, cond_sde: CondSDE) -> Array:
 def cond_reverse_diffusion(state: CondState, cond_sde: CondSDE) -> Array:
     # stack together x and y and apply reverse diffusion
     x, y, xi, t = state
-    img = restore(xi, x, cond_sde.mask, y)
+    img = cond_sde.restore(xi, x, cond_sde.mask, y)
     return cond_sde.reverse_diffusion(SDEState(img, t))
 
 
