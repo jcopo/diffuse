@@ -6,6 +6,7 @@ import pdb
 import einops
 import jax
 import jax.numpy as jnp
+import jax.scipy as jsp
 from blackjax.smc.resampling import stratified
 from jax.tree_util import register_pytree_node_class
 import matplotlib.pyplot as plt
@@ -20,6 +21,27 @@ from diffuse.conditional import (
     cond_reverse_drift,
 )
 
+def ess(log_weights: Array) -> float:
+    return jnp.exp(log_ess(log_weights))
+
+
+def log_ess(log_weights: Array) -> float:
+    """Compute the effective sample size.
+
+    Parameters
+    ----------
+    log_weights: 1D Array
+        log-weights of the sample
+
+    Returns
+    -------
+    log_ess: float
+        The logarithm of the effective sample size
+
+    """
+    return 2 * jsp.special.logsumexp(log_weights) - jsp.special.logsumexp(
+        2 * log_weights
+    )
 
 def filter_step(
     particles: Array,
@@ -50,6 +72,8 @@ def filter_step(
     # resample particles according to weights
     # maybe resample based on ESS crit ?
     idx = stratified(key_weights, jnp.exp(log_weights), n_particles)
+    ess_val = ess(log_weights)
+    particles_next = jax.lax.cond(ess_val < 0.5 * n_particles, lambda x: x[idx], lambda x: x, particles_next)
     # particles_next = particles_next[idx]
 
     log_Z = log_Z - jnp.log(n_particles) + _norm
