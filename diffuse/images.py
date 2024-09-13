@@ -13,14 +13,6 @@ from tqdm import tqdm
 from dataclasses import dataclass
 from jaxtyping import PyTreeDef, PRNGKeyArray, Array
 
-data = jnp.load("dataset/mnist.npz")
-xs = data["X"]
-xs = einops.rearrange(xs, "b h w -> b h w 1")
-
-
-x = xs[0]
-#x = jax.random.normal(jax.random.PRNGKey(0), x.shape)
-
 
 @dataclass
 class SquareMask:
@@ -64,6 +56,14 @@ def restore(xi: Array, img: Array, mask: SquareMask, measured: Array):
 
 
 if __name__ == "__main__":
+    data = jnp.load("dataset/mnist.npz")
+    xs = data["X"]
+    xs = einops.rearrange(xs, "b h w -> b h w 1")
+
+
+    x = xs[0]
+    #x = jax.random.normal(jax.random.PRNGKey(0), x.shape)
+
     mask = SquareMask(10, x.shape)
     xi = jnp.array([10.0, 20.0])
     # Create a figure with 2 row and 3 columns
