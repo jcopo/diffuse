@@ -10,7 +10,6 @@ from optax import GradientTransformation
 
 from diffuse.conditional import CondSDE, CondState
 from diffuse.filter import filter_step, generate_cond_sample
-from diffuse.images import measure
 from diffuse.sde import SDEState, euler_maryama_step
 
 
@@ -22,7 +21,7 @@ class ImplicitState(NamedTuple):
 
 
 def logprob_y(theta, y, design, cond_sde):
-    f_y = measure(design, theta, cond_sde.mask)
+    f_y = cond_sde.mask.measure(design, theta)
     return jax.scipy.stats.norm.logpdf(y, f_y, 1.)
 
 def grad_log_prob(
@@ -33,7 +32,7 @@ def grad_log_prob(
     cond_sde
 ):
     # sample y from p(y, theta_)
-    y_ref = measure(design, theta, cond_sde.mask)
+    y_ref = cond_sde.mask.measure(design, theta)
     logprob_ref = logprob_y(theta, y_ref, design, cond_sde)
     logprob_target = jax.vmap(logprob_y, in_axes=(None, 0, None, None))(
         cntrst_theta, y_ref, design, cond_sde
@@ -51,7 +50,7 @@ def grad_log_prob(
 
 def calculate_drift_y(cond_sde, t, xi, x, y):
     beta_t = cond_sde.beta(cond_sde.tf - t)
-    meas_x = measure(xi, x, cond_sde.mask)
+    meas_x = cond_sde.mask.measure(xi, x)
     alpha_t = jnp.exp(cond_sde.beta.integrate(0., t))
     drift_y = beta_t * (y - meas_x) / alpha_t
     return drift_y
@@ -65,7 +64,6 @@ def calculate_drift_expt_post(cond_sde, t, xi, x, y):
     return drift_y
 
 
-
 def particle_step(particles, rng_key, drift_y, cond_sde, dt, t):
     def reverse_drift(state):
         return cond_sde.reverse_drift(state) + drift_y
@@ -73,7 +71,7 @@ def particle_step(particles, rng_key, drift_y, cond_sde, dt, t):
     particles, _ = euler_maryama_step(
         SDEState(particles, t), dt, rng_key, reverse_drift, cond_sde.reverse_diffusion
     )
-    
+
     return particles
 
 
@@ -95,10 +93,10 @@ def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, cond_sde
     #pdb.set_trace()
 
     # get ys
-    ys = jax.vmap(measure, in_axes=(None, 0, None))(design, thetas, cond_sde.mask)
+    ys = jax.vmap(cond_sde.mask.measure, in_axes=(None, 0))(design, thetas)
     #keys = jax.random.split(key_y, ts.shape[0])
     #ys = jax.vmap(cond_sde.path, in_axes=(0, 0, 0))(keys, state, ts)
-    
+
     # update expected posterior
     #   1 - use y values to update post
     #   2 - Get samples contrastive theta

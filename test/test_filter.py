@@ -6,7 +6,7 @@ import pdb
 
 from diffuse.conditional import CondSDE, CondState
 from diffuse.filter import generate_cond_sample
-from diffuse.images import SquareMask, measure
+from diffuse.images import SquareMask
 from diffuse.sde import SDE, LinearSchedule
 from diffuse.unet import UNet
 from diffuse.optimizer import impl_step
@@ -21,16 +21,16 @@ def plotter_line(array):
     n = len(fractions)
     # Create a figure with subplots
     fig, axs = plt.subplots(1, n, figsize=(n*3, n))
-    
+
     for idx, fraction in enumerate(fractions):
         # Calculate the frame index
         frame_index = int(fraction * total_frames)
-        
+
         # Plot the image
         axs[idx].imshow(array[frame_index], cmap="gray")
         axs[idx].set_title(f"Frame at {fraction*100}% of total")
         axs[idx].axis('off')  # Turn off axis labels
-        
+
     plt.tight_layout()
     plt.show()
 
@@ -76,9 +76,9 @@ mask = SquareMask(10, x.shape)
 xi = jnp.array([10.0, 20.0])
 cond_sde = CondSDE(beta=beta, mask=mask, tf=2.0, score=nn_score)
 #y = measure(xi, x, mask)
-past_y = measure(xi, x, mask)
+past_y = mask.measure(xi, x)
 
-y = jax.vmap(measure, in_axes=(None, 0, None))(xi, xs[0:40], mask)
+y = jax.vmap(mask.measure, in_axes=(None, 0))(xi, xs[0:40])
 
 key_noise = jax.random.split(key, n_t)
 state_0 = SDEState(past_y, jnp.zeros_like(past_y))

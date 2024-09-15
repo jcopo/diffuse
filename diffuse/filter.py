@@ -12,7 +12,6 @@ from jax.tree_util import register_pytree_node_class
 import matplotlib.pyplot as plt
 from jaxtyping import Array, PRNGKeyArray, PyTreeDef
 
-from diffuse.images import measure, restore
 from diffuse.sde import SDE, SDEState, euler_maryama_step
 from diffuse.conditional import (
     CondSDE,
@@ -52,6 +51,7 @@ def filter_step(
     xi: Array,
     cond_sde: CondSDE,
 ) -> Tuple[Array, float]:
+    # u is time reversed y: u(t) = y(T - t)
     dt = u_next.t - u.t
     # update particles with SDE
     n_particles = particles.shape[0]

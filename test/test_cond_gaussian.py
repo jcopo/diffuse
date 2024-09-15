@@ -2,7 +2,6 @@ import jax
 import jax.numpy as jnp
 from functools import partial
 from diffuse.conditional import CondSDE, generate_cond_sample
-from diffuse.images import measure, restore
 from diffuse.sde import LinearSchedule
 import matplotlib.pyplot as plt
 import numpy as np
@@ -61,7 +60,7 @@ def main():
     cond_sde = CondSDE(mask=mask, tf=1.0, score=score_network, beta=beta)
 
     # Create observation by applying mask and adding noise
-    y = measure(jnp.zeros_like(x), x, mask)
+    y = mask.measure(jnp.zeros_like(x), x)
     noise = 0.1 * jax.random.normal(jax.random.PRNGKey(0), y.shape)
     y_noisy = y  # + noise
 
