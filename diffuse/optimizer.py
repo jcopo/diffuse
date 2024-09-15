@@ -18,14 +18,10 @@ class ImplicitState(NamedTuple):
     thetas: Array
     cntrst_thetas: Array
     design: Array
-    design: Array
     opt_state: optax.OptState
 
 
 def logprob_y(theta, y, design, cond_sde):
-    """
-    log p(y | theta, design)
-    """
     """
     log p(y | theta, design)
     """
@@ -34,16 +30,11 @@ def logprob_y(theta, y, design, cond_sde):
 
 
 def information_gain(
-
-def information_gain(
     theta: Array,
     cntrst_theta: Array,
     design: Array,
     cond_sde
 ):
-    r"""
-    Estimator \sum_i log p(y_i | theta_i, design) - \sum_j w_{ij} log p(y_i | theta_j, design)
-    """
     r"""
     Estimator \sum_i log p(y_i | theta_i, design) - \sum_j w_{ij} log p(y_i | theta_j, design)
     """
@@ -73,7 +64,6 @@ def calculate_drift_y(cond_sde:CondSDE, sde_state:SDEState, design:Array, y:Arra
     x, t = sde_state
     beta_t = cond_sde.beta(cond_sde.tf - t)
     meas_x = cond_sde.mask.measure(design, x)
-    meas_x = cond_sde.mask.measure(design, x)
     alpha_t = jnp.exp(cond_sde.beta.integrate(0., t))
     drift_y = beta_t * (y - meas_x) / alpha_t
     return drift_y
@@ -86,7 +76,6 @@ def calculate_drift_expt_post(cond_sde:CondSDE, sde_state:SDEState, design:Array
     to add for conditional diffusioon
     """
     #pdb.set_trace()
-    drifts = jax.vmap(calculate_drift_y, in_axes=(None, None, None, 0))(cond_sde, sde_state, design, y)
     drifts = jax.vmap(calculate_drift_y, in_axes=(None, None, None, 0))(cond_sde, sde_state, design, y)
     #drifts = calculate_drift_y(cond_sde, t, xi, x, y)
     drift_y = drifts.mean(axis=0)
@@ -119,30 +108,15 @@ def logpdf_change_y(x_sde_state:SDEState, y, y_next, drift_y:Array, cond_sde:Con
     return jax.scipy.stats.multivariate_normal.logpdf(y_next, mean, cov).sum()
 
 
-def logpdf_change_y(x_sde_state:SDEState, y_next:SDEState, drift_y:Array, cond_sde:CondSDE):
-    r"""
-    log p(y_new | y_old, x_old)
-    with y_{k-1} | y_{k}, x_k ~ N(.| y_k + rev_drift*dt, sqrt(dt)*rev_diff)
-    """
-    dt = y_next.t - x_sde_state.t
-    cov = cond_sde.reverse_diffusion() * jnp.sqrt(dt)
-    mean = y_next.position + (cond_sde.reverse_drift(x_sde_state) + drift_y) * dt
-    return jax.scipy.stats.multivariate_normal.logpdf(y_next.position, mean, cov).sum()
-
-
 def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, cond_sde:CondSDE, optx_opt:GradientTransformation, ts:Array, dt:float):
 
     thetas, cntrst_thetas, design, opt_state = state
     sde_state = SDEState(thetas, ts)
     cntrst_sde_state = SDEState(cntrst_thetas, ts)
 
-    sde_state = SDEState(thetas, ts)
-    cntrst_sde_state = SDEState(cntrst_thetas, ts)
-
     # update joint distribution
     #   1 - conditional sde on joint -> samples theta
     #   2 - get values y from samples of joint
-    key_theta, key_cntrst = jax.random.split(rng_key)
     key_theta, key_cntrst = jax.random.split(rng_key)
 
     def update_joint(sde_state, ys, ys_next, key):
@@ -180,9 +154,7 @@ def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, cond_sde
     #  1 - evaluate score_f on thetas and contrastives_theta
     #  2 - update design parameters with optax
     grad_xi_score = jax.grad(information_gain, argnums=2, has_aux=True)
-    grad_xi_score = jax.grad(information_gain, argnums=2, has_aux=True)
     grad_xi, ys = grad_xi_score(
-        thetas[-1], cntrst_thetas[-1], design, cond_sde
         thetas[-1], cntrst_thetas[-1], design, cond_sde
     )
     updates, opt_state = optx_opt.update(grad_xi, opt_state, design)
