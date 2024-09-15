@@ -68,10 +68,10 @@ def optimize_design(
         new_state = impl_step(
             new_state, key, past_y, cond_sde=cond_sde, optx_opt=optimizer, ts=ts, dt=dt
         )
-        return new_state, new_state.xi
+        return new_state, new_state.design
 
-    new_state, hist_xi = jax.lax.scan(step, implicit_state, keys_opt)
-    return new_state, hist_xi
+    new_state, hist_design = jax.lax.scan(step, implicit_state, keys_opt)
+    return new_state, hist_design
 
 
 #@jax.jit
@@ -130,17 +130,17 @@ def main(key):
         optimal_state, opt_hist = optimize_design(key_step, implicit_state, past_y, optimizer, cond_sde, ts, dt)
 
         # make new measurement
-        new_measurement = cond_sde.mask.measure(optimal_state.xi, ground_truth)
+        new_measurement = cond_sde.mask.measure(optimal_state.design, ground_truth)
         measurement_history = measurement_history.at[n_meas].set(new_measurement)
 
         # logging
-        print(f"Design_start: {design} Design_end:{optimal_state.xi}")
+        print(f"Design_start: {design} Design_end:{optimal_state.design}")
         plt.imshow(ground_truth, cmap="gray")
         plt.scatter(opt_hist[:, 0], opt_hist[:, 1], marker='+')
         plt.show()
 
         # add measured data to joint_y
-        joint_y = cond_sde.mask.restore(optimal_state.xi, joint_y, new_measurement)
+        joint_y = cond_sde.mask.restore(optimal_state.design, joint_y, new_measurement)
 
         # reinitiazize implicit state
         design = jax.random.uniform(key_step, (2,), minval=0, maxval=28)
