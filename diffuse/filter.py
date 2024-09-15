@@ -73,7 +73,7 @@ def filter_step(
     # maybe resample based on ESS crit ?
     idx = stratified(key_weights, jnp.exp(log_weights), n_particles)
     ess_val = ess(log_weights)
-    particles_next = jax.lax.cond(ess_val < 0.5 * n_particles, lambda x: x[idx], lambda x: x, particles_next)
+    #particles_next = jax.lax.cond(ess_val < 0.5 * n_particles, lambda x: x[idx], lambda x: x, particles_next)
     # particles_next = particles_next[idx]
 
     log_Z = log_Z - jnp.log(n_particles) + _norm
@@ -94,6 +94,7 @@ def generate_cond_sample(
     key_y, key_x = jax.random.split(key)
 
     # generate path for y
+    pdb.set_trace()
     y = einops.repeat(y, "... -> ts ... ", ts=n_ts)
     state = SDEState(y, jnp.zeros((n_ts, 1)))
     keys = jax.random.split(key_y, n_ts)
