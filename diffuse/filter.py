@@ -94,7 +94,6 @@ def generate_cond_sample(
     key_y, key_x = jax.random.split(key)
 
     # generate path for y
-    pdb.set_trace()
     y = einops.repeat(y, "... -> ts ... ", ts=n_ts)
     state = SDEState(y, jnp.zeros((n_ts, 1)))
     keys = jax.random.split(key_y, n_ts)
