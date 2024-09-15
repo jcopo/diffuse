@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from diffuse.filter import generate_cond_sample
 from diffuse.sde import SDE, SDEState
 from diffuse.conditional import CondSDE
-from diffuse.images import SquareMask, measure, restore
+from diffuse.images import SquareMask
 from diffuse.optimizer import ImplicitState, impl_step
 from diffuse.sde import LinearSchedule
 from diffuse.unet import UNet
@@ -86,7 +86,7 @@ def main(key):
     # init design and measurement hist
     design = jax.random.uniform(key_init, (2,), minval=0, maxval=28)
     design_0 = jnp.zeros_like(design)
-    y = measure(design_0, ground_truth, mask)
+    y = cond_sde.mask.measure(design_0, ground_truth)
 
     measurement_history = jnp.zeros((num_meas, *y.shape))
     measurement_history = measurement_history.at[0].set(y)
@@ -124,12 +124,13 @@ def main(key):
         key_noise = jax.random.split(key, n_t)
         state_0 = SDEState(joint_y, jnp.zeros_like(y))
         past_y = jax.vmap(sde.path, in_axes=(0, None, 0))(key_noise, state_0, ts)
+        past_y = SDEState(past_y.position[::-1], past_y.t)
 
         # optimize design
         optimal_state, opt_hist = optimize_design(key_step, implicit_state, past_y, optimizer, cond_sde, ts, dt)
 
         # make new measurement
-        new_measurement = measure(optimal_state.xi, ground_truth, mask)
+        new_measurement = cond_sde.mask.measure(optimal_state.xi, ground_truth)
         measurement_history = measurement_history.at[n_meas].set(new_measurement)
 
         # logging
@@ -139,7 +140,7 @@ def main(key):
         plt.show()
 
         # add measured data to joint_y
-        joint_y = restore(optimal_state.xi, joint_y, mask, new_measurement)
+        joint_y = cond_sde.mask.restore(optimal_state.xi, joint_y, new_measurement)
 
         # reinitiazize implicit state
         design = jax.random.uniform(key_step, (2,), minval=0, maxval=28)

@@ -19,12 +19,6 @@ class SquareMask:
     size: int
     img_shape: tuple
 
-    def get(self, img: Array, xi: Array):
-        # return part of the image that is within the square mask left side corner at xi
-        x = int(jnp.clip(xi[0], 0, img.shape[0] - self.size))
-        y = int(jnp.clip(xi[1], 0, img.shape[1] - self.size))
-        return img[x : x + self.size, y : y + self.size]
-
     def make(self, xi: Array) -> Array:
         """Create a differentiable square mask."""
         height, width, *_ = self.img_shape
@@ -45,13 +39,13 @@ class SquareMask:
         return mask[..., None]
 
 
-def measure(xi: Array, img: Array, mask: SquareMask):
-    return img * mask.make(xi)
+    def measure(self, xi: Array, img: Array):
+        return img * self.make(xi)
 
 
-def restore(xi: Array, img: Array, mask: SquareMask, measured: Array):
-    inv_mask = 1 - mask.make(xi)
-    return img * inv_mask + measured
+    def restore(self, xi: Array, img: Array, measured: Array):
+        inv_mask = 1 - self.make(xi)
+        return img * inv_mask + measured
 
 
 
@@ -80,7 +74,7 @@ if __name__ == "__main__":
     ax2.axis("off")
 
     # Plot the third image
-    measured = measure(xi, x, mask)
+    measured = mask.measure(xi, x)
     im3 = ax3.imshow(measured, cmap="gray")
     ax3.set_title("Masked")
     ax3.axis("off")
@@ -92,13 +86,13 @@ if __name__ == "__main__":
     ax4.axis("off")
 
     # plot restored image
-    restored = restore(xi, x, mask, 0.0 * measured)
+    restored = mask.restore(xi, x, 0.0 * measured)
     im5 = ax5.imshow(restored, cmap="gray")
     ax5.set_title("Restored")
     ax5.axis("off")
 
     def norm_measure(xi: Array, img: Array, mask: SquareMask):
-        return (measure(xi, img, mask) ** 2).sum()
+        return (mask.measure(xi, img) ** 2).sum()
 
     # plot the norm of the measure
     im6 = ax6.imshow(x, cmap="gray")
