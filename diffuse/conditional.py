@@ -99,7 +99,7 @@ class CondSDE(SDE):
         x_{k-1} | x_k, y_k ~ N(.| x_k + rev_drift*dt, sqrt(dt)*rev_diff)
         """
         x, y, xi, t = state
-
+        x = jnp.real(x)
         def revese_drift(state):
             x, t = state
             return cond_reverse_drift(CondState(x, y, xi, t), self)
@@ -107,12 +107,6 @@ class CondSDE(SDE):
         def reverse_diffusion(state):
             x, t = state
             return cond_reverse_diffusion(CondState(x, y, xi, t), self)
-
-        y = self.measure(xi, y, self.mask)
-        img = self.restore(xi, x, self.mask, y)
-        # jax.debug.print("meas{}\n", measure(xi, img, self.mask))
-        # jax.debug.print("y{}\n", y.shape)
-        # jax.debug.print("diff{}\n", measure(xi, img, self.mask) - y )
 
         x, _ = euler_maryama_step(
             SDEState(x, t), dt, key, revese_drift, reverse_diffusion
