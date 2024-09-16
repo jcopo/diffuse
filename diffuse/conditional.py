@@ -120,7 +120,7 @@ class CondSDE(SDE):
 def cond_reverse_drift(state: CondState, cond_sde: CondSDE) -> Array:
     # stack together x and y and apply reverse drift
     x, y, xi, t = state
-    img = cond_sde.mask.restore(xi, x, cond_sde.mask, y)
+    img = cond_sde.mask.restore(xi, x, y)
     return cond_sde.reverse_drift(SDEState(img, t))
     # drift_x = cond_sde.reverse_drift(SDEState(x, t))
     # beta_t = cond_sde.beta(cond_sde.tf - t)
