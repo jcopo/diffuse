@@ -63,8 +63,6 @@ def filter_step(
         cond_sde.cond_reverse_step, in_axes=(CondState(0, None, None, None), None, 0)
     )(CondState(particles, u.position, xi, u.t), dt, keys).x
 
-    particles_next = particles_next.astype(particles.dtype)
-
     # weights current particles according to likelihood of observation and normalize
     cond_state = CondState(particles, u.position, xi, u.t)
     log_weights = jax.vmap(

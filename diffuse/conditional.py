@@ -55,8 +55,6 @@ class CondState(NamedTuple):
 @dataclass
 class CondSDE(SDE):
     mask: Callable[[Array], Array]
-    measure: Callable[[Array, Array, Callable[[Array], Array]], Array]
-    restore: Callable[[Array, Array, Callable[[Array], Array], Array], Array]
     tf: float
     score: Callable[[Array, float], Array]
 
@@ -99,7 +97,6 @@ class CondSDE(SDE):
         x_{k-1} | x_k, y_k ~ N(.| x_k + rev_drift*dt, sqrt(dt)*rev_diff)
         """
         x, y, xi, t = state
-        x = jnp.real(x)
 
         def revese_drift(state):
             x, t = state
