@@ -32,17 +32,17 @@ def make_bwd(_, grad_output):
 
 _make.defvjp(make_fwd, make_bwd)
 
+_make_jit = jax.jit(_make, static_argnames=['shape'])
 
 @dataclass
 class maskFourier:
     s: int
     img_shape: tuple
     key: PRNGKeyArray
-    _make_func: Callable
 
     def make(self, w: Array):
         _, subkey = jax.random.split(self.key)
-        return self._make_func(w, self.s, subkey)
+        return _make_jit(w, self.s, self.img_shape, subkey)
 
     def measure(self, w: Array, x: Array):
         mask = self.make(w)
