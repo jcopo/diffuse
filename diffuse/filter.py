@@ -12,7 +12,6 @@ from jax.tree_util import register_pytree_node_class
 import matplotlib.pyplot as plt
 from jaxtyping import Array, PRNGKeyArray, PyTreeDef
 
-from diffuse.images import measure, restore
 from diffuse.sde import SDE, SDEState, euler_maryama_step
 from diffuse.conditional import (
     CondSDE,
@@ -20,6 +19,7 @@ from diffuse.conditional import (
     cond_reverse_diffusion,
     cond_reverse_drift,
 )
+
 
 def ess(log_weights: Array) -> float:
     return jnp.exp(log_ess(log_weights))
@@ -43,6 +43,7 @@ def log_ess(log_weights: Array) -> float:
         2 * log_weights
     )
 
+
 def filter_step(
     particles: Array,
     log_Z: float,
@@ -52,6 +53,7 @@ def filter_step(
     xi: Array,
     cond_sde: CondSDE,
 ) -> Tuple[Array, float]:
+    # u is time reversed y: u(t) = y(T - t)
     dt = u_next.t - u.t
     # update particles with SDE
     n_particles = particles.shape[0]
@@ -75,7 +77,7 @@ def filter_step(
     # maybe resample based on ESS crit ?
     idx = stratified(key_weights, jnp.exp(log_weights), n_particles)
     ess_val = ess(log_weights)
-    particles_next = jax.lax.cond(ess_val < 0.5 * n_particles, lambda x: x[idx], lambda x: x, particles_next)
+    # particles_next = jax.lax.cond(ess_val < 0.5 * n_particles, lambda x: x[idx], lambda x: x, particles_next)
     # particles_next = particles_next[idx]
 
     log_Z = log_Z - jnp.log(n_particles) + _norm
@@ -89,8 +91,8 @@ def generate_cond_sample(
     key: PRNGKeyArray,
     cond_sde: CondSDE,
     x_shape: Tuple,
-    n_ts:int,
-    n_particles:int
+    n_ts: int,
+    n_particles: int,
 ):
     ts = jnp.linspace(0.0, cond_sde.tf, n_ts)
     key_y, key_x = jax.random.split(key)
@@ -122,6 +124,5 @@ def generate_cond_sample(
     positions, log_zs = hist
     positions = jnp.concatenate([x_T[None], positions])
     log_zs = jnp.concatenate([jnp.zeros((1,)), log_zs])
-
 
     return end_state, (positions, log_zs)

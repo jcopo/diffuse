@@ -86,8 +86,8 @@ class CondSDE(SDE):
             float: The log probability density of the observation.
         """
         x_p, y_p, xi, t_p = state_p
-        #mean = y_p + cond_reverse_drift(state_p, self) * dt
-        mean = y_p + self.measure(xi, cond_reverse_drift(state_p, self), self.mask)* dt
+        # mean = y_p + cond_reverse_drift(state_p, self) * dt
+        mean = y_p + self.mask.measure(xi, cond_reverse_drift(state_p, self)) * dt
         std = jnp.sqrt(dt) * cond_reverse_diffusion(state_p, self)
 
         return jax.scipy.stats.norm.logpdf(obs, mean, std).sum()
@@ -100,6 +100,7 @@ class CondSDE(SDE):
         """
         x, y, xi, t = state
         x = jnp.real(x)
+
         def revese_drift(state):
             x, t = state
             return cond_reverse_drift(CondState(x, y, xi, t), self)
@@ -108,35 +109,38 @@ class CondSDE(SDE):
             x, t = state
             return cond_reverse_diffusion(CondState(x, y, xi, t), self)
 
+        # jax.debug.print("meas{}\n", measure(xi, img, self.mask))
+        # jax.debug.print("y{}\n", y.shape)
+        # jax.debug.print("diff{}\n", measure(xi, img, self.mask) - y )
+
         x, _ = euler_maryama_step(
             SDEState(x, t), dt, key, revese_drift, reverse_diffusion
         )
-        y = self.measure(xi, x, self.mask)
+        y = self.mask.measure(xi, x)
         return CondState(x, y, xi, t - dt)
 
 
 def cond_reverse_drift(state: CondState, cond_sde: CondSDE) -> Array:
     # stack together x and y and apply reverse drift
     x, y, xi, t = state
-    #img = restore(xi, x, cond_sde.mask, y)
-    #return cond_sde.reverse_drift(SDEState(img, t))
+    # img = restore(xi, x, cond_sde.mask, y)
+    # return cond_sde.reverse_drift(SDEState(img, t))
     drift_x = cond_sde.reverse_drift(SDEState(x, t))
     beta_t = cond_sde.beta(cond_sde.tf - t)
-    meas_x = cond_sde.measure(xi, x, cond_sde.mask)
-    alpha_t = jnp.exp(cond_sde.beta.integrate(0., t))
+    meas_x = cond_sde.mask.measure(xi, x)
+    alpha_t = jnp.exp(cond_sde.beta.integrate(0.0, t))
     # here if needed we average over y
     drift_y = beta_t * (y - meas_x) / alpha_t
-    #f = lambda y: beta_t * (y - meas_x) / alpha_t
-    #drifts = jax.vmap(f)(y)
-    #drift_y = drifts.mean(axis=0)
+    # f = lambda y: beta_t * (y - meas_x) / alpha_t
+    # drifts = jax.vmap(f)(y)
+    # drift_y = drifts.mean(axis=0)
     return drift_x + drift_y
-
 
 
 def cond_reverse_diffusion(state: CondState, cond_sde: CondSDE) -> Array:
     # stack together x and y and apply reverse diffusion
     x, y, xi, t = state
-    img = cond_sde.restore(xi, x, cond_sde.mask, y)
+    img = cond_sde.mask.restore(xi, x, y)
     return cond_sde.reverse_diffusion(SDEState(img, t))
 
 

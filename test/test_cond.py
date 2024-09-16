@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 from diffuse.sde import SDE, LinearSchedule
-from diffuse.images import SquareMask, measure
+from diffuse.images import SquareMask
 from diffuse.conditional import CondSDE, generate_cond_sample
 from diffuse.unet import UNet
 import numpy as np
@@ -44,7 +44,7 @@ x = xs[0]
 mask = SquareMask(10, x.shape)
 # x = state_Ts.position[-1]
 xi = jnp.array([10.0, 20.0])
-y = measure(xi, x, mask)
+y = mask.measure(xi, x)
 cond_sde = CondSDE(beta=beta, mask=mask, tf=2.0, score=nn_score)
 
 generate_cond_sample(y, xi, key, 100, cond_sde, x.shape)
