@@ -16,7 +16,7 @@ def slice_inverse_fourier(fourier_transform):
 @jax.custom_vjp
 def _make(w: Array, s: int, shape: tuple, key: PRNGKeyArray):
     normalized_vector = w / w.sum()
-    uniform_vector = jax.random.uniform(key, shape=shape, minval=0, maxval=1)
+    uniform_vector = jax.random.uniform(key, shape=(92, 112), minval=0, maxval=1) # 💀 trop laid mais problème avec static
     return jnp.where(s * normalized_vector < uniform_vector, 1, 0)
 
 
