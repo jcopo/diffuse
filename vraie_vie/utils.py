@@ -39,7 +39,7 @@ class maskFourier:
     key: PRNGKeyArray
 
     def make(self, w: Array):
-        subkey = self._key_mngr()
+        _, subkey = jax.random.split(self.key)
         return _make(w, self.s, subkey)
 
     def measure(self, w: Array, x: Array):
@@ -66,8 +66,3 @@ class maskFourier:
         final = jnp.stack([img, anomaly_map], axis=-1)
 
         return final
-
-    def _key_mngr(self):
-        key, subkey = jax.random.split(self.key)
-        self.key = key
-        return subkey
