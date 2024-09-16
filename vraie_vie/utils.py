@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray, Array
+from typing import Callable
 
 
 def slice_fourier(mri_slice):
@@ -13,17 +14,17 @@ def slice_inverse_fourier(fourier_transform):
 
 
 @jax.custom_vjp
-def _make(w: Array, s: int, key: PRNGKeyArray):
+def _make(w: Array, s: int, shape: tuple, key: PRNGKeyArray):
     normalized_vector = w / w.sum()
-    uniform_vector = jax.random.uniform(key, shape=(92, 112), minval=0, maxval=1)
+    uniform_vector = jax.random.uniform(key, shape=shape, minval=0, maxval=1)
     return jnp.where(s * normalized_vector < uniform_vector, 1, 0)
 
 
-def make_fwd(w: Array, s: int, key: PRNGKeyArray):
+def make_fwd(w: Array, s: int, shape: tuple, key: PRNGKeyArray):
     normalized_vector = w / w.sum()
-    uniform_vector = jax.random.uniform(key, shape=(92, 112), minval=0, maxval=1)
+    uniform_vector = jax.random.uniform(key, shape=shape, minval=0, maxval=1)
     output = jnp.where(s * normalized_vector < uniform_vector, 1, 0)
-    return output, (w, s, key)
+    return output, (w, s, shape, key)
 
 
 def make_bwd(_, grad_output):
@@ -37,10 +38,11 @@ class maskFourier:
     s: int
     img_shape: tuple
     key: PRNGKeyArray
+    _make_func: Callable
 
     def make(self, w: Array):
         _, subkey = jax.random.split(self.key)
-        return _make(w, self.s, subkey)
+        return self._make_func(w, self.s, subkey)
 
     def measure(self, w: Array, x: Array):
         mask = self.make(w)
