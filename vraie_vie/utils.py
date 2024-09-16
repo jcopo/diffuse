@@ -43,17 +43,14 @@ class maskFourier:
         return _make(w, self.s, self.img_shape, subkey)
 
     def measure(self, w: Array, x: Array):
-        subkey = self._key_mngr()
-        mask = self.make(w, self.s, self.img_shape, subkey)
+        mask = self.make(w)
         fourier_x = mask * slice_fourier(x[..., 0])
         zero_channel = jnp.zeros_like(fourier_x)
         return jnp.stack([fourier_x, zero_channel], axis=-1)
 
     def restore(self, w: Array, x: Array, measured: Array):
-        subkey = self._key_mngr()
-
         # On crée le masque inverse
-        inv_mask = 1 - self.make(w, self.s, self.img_shape, subkey)
+        inv_mask = 1 - self.make(w)
 
         # On calcule la transformée de Fourier de l'image
         fourier_x = slice_fourier(x[..., 0])
