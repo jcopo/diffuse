@@ -40,7 +40,7 @@ class maskFourier:
 
     def make(self, w: Array):
         subkey = self._key_mngr()
-        return jax.jit(lambda w, s, shape, key: _make(w, s, shape, key), static_argnums=(2, ))(w, self.s, self.img_shape, subkey)
+        return jax.jit(_make, static_argnums=(1, 2))(w, self.s, self.img_shape, subkey)
 
     def measure(self, w: Array, x: Array):
         mask = self.make(w)
