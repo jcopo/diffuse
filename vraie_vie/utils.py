@@ -13,17 +13,17 @@ def slice_inverse_fourier(fourier_transform):
 
 
 @jax.custom_vjp
-def _make(w: Array, s: int, shape: tuple, key: PRNGKeyArray):
+def _make(w: Array, s: int, key: PRNGKeyArray):
     normalized_vector = w / w.sum()
-    uniform_vector = jax.random.uniform(key, shape=shape, minval=0, maxval=1)
+    uniform_vector = jax.random.uniform(key, shape=(92, 112), minval=0, maxval=1)
     return jnp.where(s * normalized_vector < uniform_vector, 1, 0)
 
 
-def make_fwd(w: Array, s: int, shape: tuple, key: PRNGKeyArray):
+def make_fwd(w: Array, s: int, key: PRNGKeyArray):
     normalized_vector = w / w.sum()
-    uniform_vector = jax.random.uniform(key, shape=shape, minval=0, maxval=1)
+    uniform_vector = jax.random.uniform(key, shape=(92, 112), minval=0, maxval=1)
     output = jnp.where(s * normalized_vector < uniform_vector, 1, 0)
-    return output, (w, s, shape, key)
+    return output, (w, s, key)
 
 
 def make_bwd(_, grad_output):
@@ -40,7 +40,7 @@ class maskFourier:
 
     def make(self, w: Array):
         subkey = self._key_mngr()
-        return jax.jit(_make, static_argnums=(1, 2))(w, self.s, self.img_shape, subkey)
+        return _make(w, self.s, subkey)
 
     def measure(self, w: Array, x: Array):
         mask = self.make(w)
