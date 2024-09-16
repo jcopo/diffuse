@@ -22,7 +22,7 @@ def _make(w: Array, s: int, shape: tuple, key: PRNGKeyArray):
 
 def make_fwd(w: Array, s: int, shape: tuple, key: PRNGKeyArray):
     normalized_vector = w / w.sum()
-    uniform_vector = jax.random.uniform(key, shape=shape, minval=0, maxval=1)
+    uniform_vector = jax.random.uniform(key, shape=(92, 112), minval=0, maxval=1) # 💀 trop laid mais problème avec static
     output = jnp.where(s * normalized_vector < uniform_vector, 1, 0)
     return output, (w, s, shape, key)
 
@@ -32,7 +32,6 @@ def make_bwd(_, grad_output):
 
 _make.defvjp(make_fwd, make_bwd)
 
-_make_jit = jax.jit(_make, static_argnames=['shape'])
 
 @dataclass
 class maskFourier:
@@ -42,7 +41,7 @@ class maskFourier:
 
     def make(self, w: Array):
         _, subkey = jax.random.split(self.key)
-        return _make_jit(w, self.s, self.img_shape, subkey)
+        return _make(w, self.s, self.img_shape, subkey)
 
     def measure(self, w: Array, x: Array):
         mask = self.make(w)
