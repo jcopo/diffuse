@@ -68,7 +68,7 @@ class CondSDE(SDE):
         x, t = state
         return jnp.sqrt(self.beta(self.tf - t))
 
-    def logpdf(self, obs: Array, state_p: CondState, dt: float):
+    def logpdf(self, obs: Array, state_p: CondState, dt: float, key: PRNGKeyArray):
         """
         y_{k-1} | y_{k}, x_k ~ N(.| y_k + rev_drift*dt, sqrt(dt)*rev_diff)
         Args:
@@ -85,7 +85,7 @@ class CondSDE(SDE):
         """
         x_p, y_p, xi, t_p = state_p
         # mean = y_p + cond_reverse_drift(state_p, self) * dt
-        mean = y_p + self.mask.measure(xi, cond_reverse_drift(state_p, self)) * dt
+        mean = y_p + self.mask.measure(xi, cond_reverse_drift(state_p, self, key), key) * dt
         std = jnp.sqrt(dt) * cond_reverse_diffusion(state_p, self)
 
         return jax.scipy.stats.norm.logpdf(obs, mean, std).sum()
@@ -100,7 +100,7 @@ class CondSDE(SDE):
 
         def revese_drift(state):
             x, t = state
-            return cond_reverse_drift(CondState(x, y, xi, t), self)
+            return cond_reverse_drift(CondState(x, y, xi, t), self, key)
 
         def reverse_diffusion(state):
             x, t = state
@@ -113,25 +113,23 @@ class CondSDE(SDE):
         x, _ = euler_maryama_step(
             SDEState(x, t), dt, key, revese_drift, reverse_diffusion
         )
-        y = self.mask.measure(xi, x)
+        y = self.mask.measure(xi, x, key)
         return CondState(x, y, xi, t - dt)
 
 
-def cond_reverse_drift(state: CondState, cond_sde: CondSDE) -> Array:
+def cond_reverse_drift(state: CondState, cond_sde: CondSDE, key: PRNGKeyArray) -> Array:
     # stack together x and y and apply reverse drift
     x, y, xi, t = state
-    img = cond_sde.mask.restore(xi, x, y)
-    return cond_sde.reverse_drift(SDEState(img, t))
-    # drift_x = cond_sde.reverse_drift(SDEState(x, t))
-    # beta_t = cond_sde.beta(cond_sde.tf - t)
-    # meas_x = cond_sde.mask.measure(xi, x)
-    # alpha_t = jnp.exp(cond_sde.beta.integrate(0.0, t))
-    # here if needed we average over y
-    # drift_y = beta_t * (y - meas_x) / alpha_t
-    # f = lambda y: beta_t * (y - meas_x) / alpha_t
-    # drifts = jax.vmap(f)(y)
-    # drift_y = drifts.mean(axis=0)
-    # return drift_x + drift_y
+    # img = cond_sde.mask.restore(xi, x, y)
+    # return cond_sde.reverse_drift(SDEState(img, t))
+    
+    drift_x = cond_sde.reverse_drift(SDEState(x, t))
+    beta_t = cond_sde.beta(cond_sde.tf - t)
+    meas_x = cond_sde.mask.measure(xi, x, key)
+    alpha_t = jnp.exp(cond_sde.beta.integrate(0., t))
+
+    drift_y = beta_t * cond_sde.mask.restore(xi, jnp.zeros_like(x), (y - meas_x), key) / alpha_t
+    return drift_x + drift_y
 
 
 def cond_reverse_diffusion(state: CondState, cond_sde: CondSDE) -> Array:
@@ -172,8 +170,8 @@ def pmcmc_step(state, ys, xi: Array, cond_sde: CondSDE):
     # weights current particles according to likelihood of observation and normalize
     cond_state = CondState(particles, u.position, xi, u.t)
     log_weights = jax.vmap(
-        cond_sde.logpdf, in_axes=(None, CondState(0, None, None, None), None)
-    )(u_next.position, cond_state, dt)
+        cond_sde.logpdf, in_axes=(None, CondState(0, None, None, None), None, 0)
+    )(u_next.position, cond_state, dt, key)
     # jax.debug.print("{}", log_weights)
     _norm = jax.scipy.special.logsumexp(log_weights, axis=0)
     log_weights = log_weights - _norm

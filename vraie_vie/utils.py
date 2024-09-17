@@ -32,26 +32,24 @@ def make_bwd(_, grad_output):
 
 _make.defvjp(make_fwd, make_bwd)
 
-
 @dataclass
 class maskFourier:
     s: int
     img_shape: tuple
     key: PRNGKeyArray
 
-    def make(self, w: Array):
-        _, subkey = jax.random.split(self.key)
-        return _make(w, self.s, self.img_shape, subkey)
+    def make(self, w: Array, key: PRNGKeyArray):
+        return _make(w, self.s, self.img_shape, key)
 
-    def measure(self, w: Array, x: Array):
-        mask = self.make(w)
+    def measure(self, w: Array, x: Array, key: PRNGKeyArray):
+        mask = self.make(w, key)
         fourier_x = mask * slice_fourier(x[..., 0])
         zero_channel = jnp.zeros_like(fourier_x)
         return jnp.stack([fourier_x, zero_channel], axis=-1)
 
-    def restore(self, w: Array, x: Array, measured: Array):
+    def restore(self, w: Array, x: Array, measured: Array, key: PRNGKeyArray):
         # On crée le masque inverse
-        inv_mask = 1 - self.make(w)
+        inv_mask = 1 - self.make(w, key)
 
         # On calcule la transformée de Fourier de l'image
         fourier_x = slice_fourier(x[..., 0])
