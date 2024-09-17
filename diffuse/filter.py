@@ -67,7 +67,7 @@ def filter_step(
     cond_state = CondState(particles, u.position, xi, u.t)
     log_weights = jax.vmap(
         cond_sde.logpdf, in_axes=(None, CondState(0, None, None, None), None)
-    )(u_next.position, cond_state, dt)
+    )(u_next.position, cond_state, dt, key)
     _norm = jax.scipy.special.logsumexp(log_weights, axis=0)
     log_weights = log_weights - _norm
 
