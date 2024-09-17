@@ -36,7 +36,6 @@ _make.defvjp(make_fwd, make_bwd)
 class maskFourier:
     s: int
     img_shape: tuple
-    key: PRNGKeyArray
 
     def make(self, w: Array, key: PRNGKeyArray):
         return _make(w, self.s, self.img_shape, key)
