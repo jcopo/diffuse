@@ -45,14 +45,17 @@ def information_gain(
         cntrst_theta, y_ref, design, cond_sde
     )
     # logprob_target = jax.scipy.special.logsumexp(logprob_target, )
-    logprob_means = jnp.mean(logprob_target, axis=1, keepdims=True)
+    logprob_means = jnp.mean(logprob_target, axis=0, keepdims=True)
     log_weights = jax.lax.stop_gradient(logprob_target - logprob_means)
+    #_norm = jax.scipy.special.logsumexp(log_weights, keepdims=True)
     _norm = jax.scipy.special.logsumexp(log_weights, axis=1, keepdims=True)
-    weights = jnp.exp(log_weights - _norm)
+    log_weights = log_weights - _norm
 
-    weighted_logprobs = jnp.mean(weights * logprob_target, axis=1)
+    weighted_logprobs = jnp.mean(log_weights + logprob_target, axis=1)
 
     return (logprob_ref - weighted_logprobs).mean(), y_ref
+    #return (logprob_ref - logprob_means).mean(), y_ref
+
 
 
 def calculate_drift_y(cond_sde:CondSDE, sde_state:SDEState, design:Array, y:Array):
