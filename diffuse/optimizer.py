@@ -43,27 +43,22 @@ def information_gain(theta: Array, cntrst_theta: Array, design: Array, cond_sde)
     )
     # logprob_target = jax.scipy.special.logsumexp(logprob_target, )
     logprob_means = jnp.mean(logprob_target, axis=0, keepdims=True)
+    logprob_means = jnp.mean(logprob_target, axis=0, keepdims=True)
     log_weights = jax.lax.stop_gradient(logprob_target - logprob_means)
-    # _norm = jax.scipy.special.logsumexp(log_weights, keepdims=True)
+    #_norm = jax.scipy.special.logsumexp(log_weights, keepdims=True)
     _norm = jax.scipy.special.logsumexp(log_weights, axis=1, keepdims=True)
+    log_weights = log_weights - _norm
     log_weights = log_weights - _norm
 
     weighted_logprobs = jnp.mean(log_weights + logprob_target, axis=1)
+    weighted_logprobs = jnp.mean(log_weights + logprob_target, axis=1)
 
     return (logprob_ref - weighted_logprobs).mean(), y_ref
-    # return (logprob_ref - logprob_means).mean(), y_ref
+    #return (logprob_ref - logprob_means).mean(), y_ref
 
 
-def update_joint(
-    sde_state: SDEState,
-    ys: Array,
-    ys_next: Array,
-    key: PRNGKeyArray,
-    cond_sde: CondSDE,
-    mask_history: Array,
-    design: Array,
-    dt: float,
-):
+
+def calculate_drift_y(cond_sde:CondSDE, sde_state:SDEState, design:Array, y:Array):
     r"""
     simulate \theta according to conditional sde:
     \(
