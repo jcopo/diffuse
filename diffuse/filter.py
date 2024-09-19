@@ -66,8 +66,8 @@ def filter_step(
     # weights current particles according to likelihood of observation and normalize
     cond_state = CondState(particles, u.position, xi, u.t)
     log_weights = jax.vmap(
-        cond_sde.logpdf, in_axes=(None, CondState(0, None, None, None), None, None)
-    )(u_next.position, cond_state, dt, key)
+        cond_sde.logpdf, in_axes=(None, CondState(0, None, None, None), None)
+    )(u_next.position, cond_state, dt)
     _norm = jax.scipy.special.logsumexp(log_weights, axis=0)
     log_weights = log_weights - _norm
 
