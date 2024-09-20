@@ -101,12 +101,10 @@ def cond_reverse_drift(state: CondState, cond_sde: CondSDE) -> Array:
     meas_x = cond_sde.mask.measure(xi, x)
     alpha_t = jnp.exp(cond_sde.beta.integrate(0.0, t))
     # here if needed we average over y
-    drift_y = (
-        beta_t * cond_sde.mask.restore(xi, jnp.zeros_like(x), y - meas_x) / alpha_t
-    )
-    # f = lambda y: beta_t * (y - meas_x) / alpha_t
-    # drifts = jax.vmap(f)(y)
-    # drift_y = drifts.mean(axis=0)
+    drift_y = beta_t * cond_sde.mask.restore(xi, jnp.zeros_like(x), y - meas_x) / alpha_t
+    #f = lambda y: beta_t * (y - meas_x) / alpha_t
+    #drifts = jax.vmap(f)(y)
+    #drift_y = drifts.mean(axis=0)
     return drift_x + drift_y
 
 

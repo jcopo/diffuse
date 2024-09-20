@@ -60,91 +60,58 @@ def information_gain(theta: Array, cntrst_theta: Array, design: Array, cond_sde)
 
 def calculate_drift_y(cond_sde:CondSDE, sde_state:SDEState, design:Array, y:Array):
     r"""
-    simulate \theta according to conditional sde:
-    \(
-    \theta_{t+dt} = \[ -\beta(t) / 2 \theta_t - \beta(t) \nabla_\theta log p(y^t_past | \theta_t, \xi_past) - \beta(t) \nabla_\theta \log p(\theta_t) \]dt + \sqrt(\beta(t) )DWt
-    \)
+    Term
+    \beta(t)  \nabla_\thetab \log p(\yb^t|\thetab'_t, \xib)
+    to add for conditional diffusioon
     """
-    drift_past = calculate_past_contribution_score(
-        cond_sde, sde_state, mask_history, ys
-    )
-    logpdf = partial(
-        logpdf_change_y,
-        y_next=ys_next,
-        design=mask_history,
-        cond_sde=cond_sde,
-        dt=dt,
-    )
-    positions = particle_step(sde_state, key, drift_past, cond_sde, dt, logpdf)
-
-    return positions
+    x, t = sde_state
+    beta_t = cond_sde.beta(cond_sde.tf - t)
+    meas_x = cond_sde.mask.measure(design, x)
+    alpha_t = jnp.exp(cond_sde.beta.integrate(0., t))
+    drift_y = beta_t * cond_sde.mask.restore(design, jnp.zeros_like(x), (y - meas_x)) / alpha_t
+    return drift_y
 
 
-def update_expected_posterior(
-    cntrst_sde_state: SDEState,
-    ys: Array,
-    ys_next: Array,
-    y_measured: Array,
-    key: PRNGKeyArray,
-    cond_sde: CondSDE,
-    mask_history: Array,
-    design: Array,
-    dt: float,
-):
+def calculate_drift_expt_post(cond_sde:CondSDE, sde_state:SDEState, design:Array, y:Array):
     r"""
-    simulate \theta according to conditional sde for expected posterior:
-    .. math::
-        $$
-        \theta_{t+dt} = \[ -\beta(t) / 2 \theta_t - \beta(t) \nabla_\theta log p(y_past^t | \theta_t, \xi_past) - \beta(t) \sum_1^N \nabla_\theta log p(y_i^t | \theta_t, \xi) / N - \beta(t) \nabla_\theta \log p(\theta_t) \]dt + \sqrt(\beta(t) )DWt
-        $$
+    Term
+    \beta(t)  \sum_{n=1}^N \nu_n \nabla_\thetab \log p(\yb_n^t|\thetab'_t, \xib)
+    to add for conditional diffusioon
     """
-    drift_past = calculate_past_contribution_score(
-        cond_sde, cntrst_sde_state, mask_history, y_measured
+    #pdb.set_trace()
+    drifts = jax.vmap(calculate_drift_y, in_axes=(None, None, None, 0))(cond_sde, sde_state, design, y)
+    #drifts = calculate_drift_y(cond_sde, t, xi, x, y)
+    drift_y = drifts.mean(axis=0)
+    return drift_y
+
+
+def particle_step(sde_state, rng_key, drift_y, cond_sde, dt, y, ys_next):
+    def reverse_drift(state):
+        return cond_sde.reverse_drift(state) + drift_y
+
+    sde_state = euler_maryama_step(
+        sde_state, dt, rng_key, reverse_drift, cond_sde.reverse_diffusion
     )
-    drift_y = calculate_drift_expt_post(cond_sde, cntrst_sde_state, design, ys)
-    logpdf = partial(
-        logpdf_change_expected,
-        y_next=ys_next,
-        design=mask_history,
-        cond_sde=cond_sde,
-        dt=dt,
-    )
-    positions, weights = particle_step(
-        cntrst_sde_state, key, drift_y + drift_past, cond_sde, dt, logpdf
-    )
-
-    return positions, weights
+    lgpdf = partial(logpdf_change_y, y=y, y_next=ys_next, drift_y=drift_y, cond_sde=cond_sde, dt=dt)
+    weights = jax.vmap(lgpdf, in_axes=(SDEState(0, None),))(sde_state)
+    _norm = jax.scipy.special.logsumexp(weights, axis=0)
+    weights = jnp.exp(weights - _norm)
+    idx = stratified(rng_key, weights, sde_state.position.shape[0])
+    position = sde_state.position[idx]
+    return position, weights[idx]
 
 
-def calculate_and_apply_gradient(
-    thetas: Array,
-    cntrst_thetas: Array,
-    design: Array,
-    cond_sde: CondSDE,
-    optx_opt: GradientTransformation,
-    opt_state: optax.OptState,
-):
-    grad_xi_score = jax.grad(information_gain, argnums=2, has_aux=True)
-    grad_xi, ys = grad_xi_score(thetas[-1], cntrst_thetas, design, cond_sde)
-    updates, new_opt_state = optx_opt.update(grad_xi, opt_state, design)
-    new_design = optax.apply_updates(design, updates)
-
-    return new_design, new_opt_state, ys
-
-
-def impl_step(
-    state: ImplicitState,
-    rng_key: PRNGKeyArray,
-    past_y: Array,
-    mask_history: Array,
-    cond_sde: CondSDE,
-    optx_opt: GradientTransformation,
-    ts: Array,
-    dt: float,
-):
+def logpdf_change_y(x_sde_state:SDEState, y, y_next, drift_y:Array, cond_sde:CondSDE, dt):
+    r"""
+    log p(y_new | y_old, x_old)
+    with y_{k-1} | y_{k}, x_k ~ N(.| y_k + rev_drift*dt, sqrt(dt)*rev_diff)
     """
-    Implicit step with parallel update
-    """
+    cov = cond_sde.reverse_diffusion(x_sde_state) * jnp.sqrt(dt)
+    mean = y + (cond_sde.reverse_drift(x_sde_state) + drift_y) * dt
+    return jax.scipy.stats.multivariate_normal.logpdf(y_next, mean, cov).sum()
+
+
+def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, cond_sde:CondSDE, optx_opt:GradientTransformation, ts:Array, dt:float):
 
     thetas, cntrst_thetas, design, opt_state = state
     sde_state = SDEState(thetas, ts)
