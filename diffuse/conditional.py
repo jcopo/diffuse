@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from jaxtyping import Array, PRNGKeyArray, PyTreeDef
 
 from diffuse.sde import SDE, SDEState, euler_maryama_step
+from diffuse.images import SquareMask
 
 
 def plt_fracts(array):
@@ -54,7 +55,7 @@ class CondState(NamedTuple):
 
 @dataclass
 class CondSDE(SDE):
-    mask: Callable[[Array], Array]
+    mask: SquareMask
     tf: float
     score: Callable[[Array, float], Array]
 

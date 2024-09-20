@@ -1,5 +1,5 @@
 from functools import partial
-from typing import NamedTuple
+from typing import NamedTuple, Tuple
 import pdb
 
 import jax
@@ -7,9 +7,9 @@ import jax.numpy as jnp
 import optax
 from jaxtyping import Array, PRNGKeyArray
 from optax import GradientTransformation
+import einops
 
-from diffuse.conditional import CondSDE, CondState
-from diffuse.filter import filter_step, generate_cond_sample
+from diffuse.conditional import CondSDE
 from diffuse.sde import SDEState, euler_maryama_step
 from diffuse.filter import stratified
 
@@ -72,6 +72,20 @@ def calculate_drift_y(cond_sde:CondSDE, sde_state:SDEState, design:Array, y:Arra
     return drift_y
 
 
+def calculate_past_contribution_score(cond_sde:CondSDE, sde_state:SDEState, mask_history:Array, y:Array):
+    r"""
+    Term
+    \beta(t)  \nabla_\thetab \log p(\yb^t|\thetab'_t, \xib)
+    to add for conditional diffusioon
+    """
+    x, t = sde_state
+    beta_t = cond_sde.beta(cond_sde.tf - t)
+    meas_x = cond_sde.mask.measure_from_mask(mask_history, x)
+    alpha_t = jnp.exp(cond_sde.beta.integrate(0., t))
+    drift_y = beta_t * cond_sde.mask.restore_from_mask(mask_history, jnp.zeros_like(x), (y - meas_x)) / alpha_t
+    return drift_y
+
+
 def calculate_drift_expt_post(cond_sde:CondSDE, sde_state:SDEState, design:Array, y:Array):
     r"""
     Term
@@ -111,7 +125,59 @@ def logpdf_change_y(x_sde_state:SDEState, y, y_next, drift_y:Array, cond_sde:Con
     return jax.scipy.stats.multivariate_normal.logpdf(y_next, mean, cov).sum()
 
 
-def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, cond_sde:CondSDE, optx_opt:GradientTransformation, ts:Array, dt:float):
+def generate_cond_sampleV2(
+    y: Array,
+    mask_history:Array,
+    key: PRNGKeyArray,
+    cond_sde: CondSDE,
+    x_shape: Tuple,
+    n_ts:int,
+    n_particles:int
+):
+    ts = jnp.linspace(0.0, cond_sde.tf, n_ts)
+    key_y, key_x = jax.random.split(key)
+
+    def update_joint(sde_state, ys, ys_next, key):
+        dt = ys_next.t - ys.t
+        drift_past = calculate_past_contribution_score(cond_sde, sde_state, mask_history, ys)
+        positions = particle_step(sde_state, key, drift_past, cond_sde, dt, ys, ys_next)
+        return positions
+
+    # generate path for y
+    y = einops.repeat(y, "... -> ts ... ", ts=n_ts)
+    state = SDEState(y, jnp.zeros((n_ts, 1)))
+    keys = jax.random.split(key_y, n_ts)
+    ys = jax.vmap(cond_sde.path, in_axes=(0, 0, 0))(keys, state, ts)
+
+    # u time reversal of y
+    us = SDEState(ys.position[::-1], ys.t)
+
+    u_0Tm = jax.tree.map(lambda x: x[:-1], us)
+    u_1T = jax.tree.map(lambda x: x[1:], us)
+
+    x_T = jax.random.normal(key_x, (n_particles, *x_shape))
+    state_x = SDEState(x_T, jnp.zeros((n_ts, 1)))
+    weights = jnp.zeros((n_particles,))
+    # scan pcmc over x0 for n_steps
+    keys = jax.random.split(key, n_ts - 1)
+
+    def step(state, itr):
+        state_xt, weights = state
+        key, u, u_next = itr
+        n_state = update_joint(state_xt, u, u_next, key)
+        return n_state, (n_state, weights)
+
+    end_state, hist = jax.lax.scan(step, (state_x, weights), (keys, u_0Tm, u_1T))
+
+    positions, log_zs = hist
+    positions = jnp.concatenate([x_T[None], positions])
+    log_zs = jnp.concatenate([jnp.zeros((1,)), log_zs])
+
+
+    return end_state, (positions, log_zs)
+
+
+def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, mask_history:Array, cond_sde:CondSDE, optx_opt:GradientTransformation, ts:Array, dt:float):
 
     thetas, cntrst_thetas, design, opt_state = state
     sde_state = SDEState(thetas, ts)
@@ -123,8 +189,8 @@ def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, cond_sde
     key_theta, key_cntrst = jax.random.split(rng_key)
 
     def update_joint(sde_state, ys, ys_next, key):
-        drift_y = calculate_drift_y(cond_sde, sde_state, design, ys)
-        positions = particle_step(sde_state, key, drift_y, cond_sde, dt, ys, ys_next)
+        drift_past = calculate_past_contribution_score(cond_sde, sde_state, mask_history, ys)
+        positions = particle_step(sde_state, key, drift_past, cond_sde, dt, ys, ys_next)
         return positions
 
     keys_time = jax.random.split(key_theta, ts.shape[0]-1)
@@ -142,7 +208,8 @@ def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, cond_sde
     #   1 - use y values to update post
     #   2 - Get samples contrastive theta
     def update_expected_posterior(cntrst_sde_state, ys, ys_next, key):
-        drift_y = calculate_drift_expt_post(cond_sde, cntrst_sde_state, design, ys)
+        drift_past = calculate_past_contribution_score(cond_sde, cntrst_sde_state, mask_history, ys)
+        drift_y = calculate_drift_expt_post(cond_sde, cntrst_sde_state, design, ys) + drift_past
         positions = particle_step(cntrst_sde_state, key, drift_y, cond_sde, dt, ys, ys_next)
         return positions
 
