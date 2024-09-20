@@ -13,6 +13,27 @@ from tqdm import tqdm
 from dataclasses import dataclass
 from jaxtyping import PyTreeDef, PRNGKeyArray, Array
 
+def plotter_line(array):
+    total_frames = len(array)
+
+    # Define the fractions
+    fractions = [0., 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, .95, 1.]
+    n = len(fractions)
+    # Create a figure with subplots
+    fig, axs = plt.subplots(1, n, figsize=(n*3, n))
+
+    for idx, fraction in enumerate(fractions):
+        # Calculate the frame index
+        frame_index = int(fraction * total_frames)
+
+        # Plot the image
+        axs[idx].imshow(array[frame_index], cmap="gray")
+        axs[idx].set_title(f"Frame at {fraction*100}% of total")
+        axs[idx].axis('off')  # Turn off axis labels
+
+    plt.tight_layout()
+    plt.show()
+
 
 @dataclass
 class SquareMask:

@@ -68,7 +68,7 @@ def calculate_drift_y(cond_sde:CondSDE, sde_state:SDEState, design:Array, y:Arra
     beta_t = cond_sde.beta(cond_sde.tf - t)
     meas_x = cond_sde.mask.measure(design, x)
     alpha_t = jnp.exp(cond_sde.beta.integrate(0., t))
-    drift_y = beta_t * (y - meas_x) / alpha_t
+    drift_y = beta_t * cond_sde.mask.restore(design, jnp.zeros_like(x), (y - meas_x)) / alpha_t
     return drift_y
 
 

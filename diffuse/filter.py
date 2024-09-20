@@ -12,6 +12,7 @@ from jax.tree_util import register_pytree_node_class
 import matplotlib.pyplot as plt
 from jaxtyping import Array, PRNGKeyArray, PyTreeDef
 
+from diffuse.images import plotter_line
 from diffuse.sde import SDE, SDEState, euler_maryama_step
 from diffuse.conditional import (
     CondSDE,
@@ -73,7 +74,7 @@ def filter_step(
     # maybe resample based on ESS crit ?
     idx = stratified(key_weights, jnp.exp(log_weights), n_particles)
     ess_val = ess(log_weights)
-    #particles_next = jax.lax.cond(ess_val < 0.5 * n_particles, lambda x: x[idx], lambda x: x, particles_next)
+    #particles_next = jax.lax.cond(ess_val < 0.2 * n_particles, lambda x: x[idx], lambda x: x, particles_next)
     # particles_next = particles_next[idx]
 
     log_Z = log_Z - jnp.log(n_particles) + _norm
@@ -101,6 +102,7 @@ def generate_cond_sample(
 
     # u time reversal of y
     us = SDEState(ys.position[::-1], ys.t)
+
     u_0Tm = jax.tree.map(lambda x: x[:-1], us)
     u_1T = jax.tree.map(lambda x: x[1:], us)
 
