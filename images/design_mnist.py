@@ -56,6 +56,7 @@ def optimize_design(
     key_step: PRNGKeyArray,
     implicit_state: ImplicitState,
     past_y: Array,
+    mask_history: Array,
     optimizer: GradientTransformation,
     ts: Array,
     dt: float,
@@ -66,7 +67,7 @@ def optimize_design(
 
     def step(new_state, key):
         new_state = impl_step(
-            new_state, key, past_y, cond_sde=cond_sde, optx_opt=optimizer, ts=ts, dt=dt
+            new_state, key, past_y, mask_history, cond_sde=cond_sde, optx_opt=optimizer, ts=ts, dt=dt
         )
         return new_state, new_state.design
 
@@ -118,6 +119,7 @@ def main(key):
 
     # stock in joint_y all measurements
     joint_y = y
+    mask_history = mask.make(design)
     design_step = jax.jit(partial(optimize_design, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde))
     for n_meas in range(num_meas):
 
@@ -130,15 +132,16 @@ def main(key):
 
 
         # optimize design
-        optimal_state, hist_implicit = design_step(key_opt, implicit_state, past_y)
+        optimal_state, hist_implicit = design_step(key_opt, implicit_state, past_y, mask_history)
         opt_hist = hist_implicit
 
         # make new measurement
         new_measurement = cond_sde.mask.measure(optimal_state.design, ground_truth)
         measurement_history = measurement_history.at[n_meas].set(new_measurement)
 
-        # add measured data to joint_y
+        # add measured data to joint_y and update history of mask location
         joint_y = cond_sde.mask.restore(optimal_state.design, joint_y, new_measurement)
+        mask_history = cond_sde.mask.restore(optimal_state.design, mask_history, jnp.ones_like(new_measurement))
         print(joint_y[10, 20])
 
         # logging

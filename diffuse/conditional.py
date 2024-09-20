@@ -6,7 +6,28 @@ from typing import Callable, NamedTuple
 from jaxtyping import Array, PRNGKeyArray
 
 from diffuse.sde import SDE, SDEState, euler_maryama_step
-from vraie_vie.utils import maskSpiral
+from diffuse.images import SquareMask
+
+
+def plt_fracts(array):
+    # Define the fractions
+    fractions = [0.0, 0.1, 0.9, 0.95, 1.0]
+    total_frames = array.shape[0]
+
+    # Create a figure with subplots
+    fig, axs = plt.subplots(1, 5, figsize=(15, 5))
+
+    for idx, fraction in enumerate(fractions):
+        # Calculate the frame index
+        frame_index = int(fraction * total_frames)
+
+        # Plot the image
+        axs[idx].imshow(array[frame_index], cmap="gray")
+        axs[idx].set_title(f"Frame at {fraction*100}% of total")
+        axs[idx].axis("off")  # Turn off axis labels
+
+    plt.tight_layout()
+    plt.show()
 
 
 @register_pytree_node_class
@@ -28,7 +49,7 @@ class CondState(NamedTuple):
 
 @dataclass
 class CondSDE(SDE):
-    mask: maskSpiral
+    mask: SquareMask
     tf: float
     score: Callable[[Array, float], Array]
 
