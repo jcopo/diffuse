@@ -238,7 +238,7 @@ def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, mask_his
     keys_time = jax.random.split(key_theta, ts.shape[0]-1)
     sde_state = jax.tree_map(lambda x: x[1:], sde_state)
     position, weights = jax.vmap(update_joint)(sde_state, past_y.position[:-1], past_y.position[1:], keys_time)
-    thetas.at[1:].set(position)
+    thetas = thetas.at[1:].set(position)
     #pdb.set_trace()
 
     # get ys
@@ -261,7 +261,7 @@ def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, mask_his
     #pdb.set_trace()
     position, weights = jax.vmap(update_expected_posterior)(cntrst_sde_state, ys[:-1], ys[1:], past_y.position[1:], keys_time_c)
     #d_cntrst_thetas = jax.vmap(update_expected_posterior)(ts, cntrst_thetas, ys, keys_time_c)
-    cntrst_thetas.at[1:].set(position)
+    cntrst_thetas = cntrst_thetas.at[1:].set(position)
 
     # get EIG gradient estimator
     #  1 - evaluate score_f on thetas and contrastives_theta
