@@ -12,7 +12,7 @@ from diffuse.filter import generate_cond_sample
 from diffuse.sde import SDE, SDEState
 from diffuse.conditional import CondSDE
 from diffuse.images import SquareMask
-from diffuse.optimizer import ImplicitState, impl_step
+from diffuse.optimizer import ImplicitState, impl_step, generate_cond_sampleV2
 from diffuse.sde import LinearSchedule
 from diffuse.unet import UNet
 import einops
@@ -83,7 +83,7 @@ def main(key):
     dt = tf / (n_t - 1)
     num_meas = 6
     n_samples = 30
-    n_samples_cntrst = 30
+    n_samples_cntrst = 40
 
     # init design and measurement hist
     design = jax.random.uniform(key_init, (2,), minval=0, maxval=28)
@@ -163,14 +163,16 @@ def main(key):
         opt_state = optimizer.init(design)
         key_t, key_c = jax.random.split(key_gen)
         thetas = generate_cond_sample(joint_y, optimal_state.design, key_t, cond_sde, ground_truth.shape, n_t, n_samples)[1][0]
-        cntrst_thetas = generate_cond_sample(joint_y, optimal_state.design, key_c, cond_sde, ground_truth.shape, n_t, n_samples_cntrst)[1][0]
+
+        thetas = generate_cond_sampleV2(joint_y, mask_history, key_t, cond_sde, ground_truth.shape, n_t, n_samples)[1][0]
+        cntrst_thetas = generate_cond_sampleV2(joint_y, mask_history, key_c, cond_sde, ground_truth.shape, n_t, n_samples_cntrst)[1][0]
         key_step, _ = jax.random.split(key_step)
 
         implicit_state = ImplicitState(thetas, cntrst_thetas, design, opt_state)
-        for i in range(20):
-            plotter_line(implicit_state.thetas[:, i])
+        # for i in range(20):
+        #     plotter_line(implicit_state.thetas[:, i])
 
-        return implicit_state
+
 
 
 rng_key = key = jax.random.PRNGKey(0)

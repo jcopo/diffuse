@@ -4,6 +4,7 @@ import pdb
 
 import jax
 import jax.numpy as jnp
+import jax.scipy as jsp
 import optax
 from jaxtyping import Array, PRNGKeyArray
 from optax import GradientTransformation
@@ -12,6 +13,29 @@ import einops
 from diffuse.conditional import CondSDE
 from diffuse.sde import SDEState, euler_maryama_step
 from diffuse.filter import stratified
+
+
+def ess(log_weights: Array) -> float:
+    return jnp.exp(log_ess(log_weights))
+
+
+def log_ess(log_weights: Array) -> float:
+    """Compute the effective sample size.
+
+    Parameters
+    ----------
+    log_weights: 1D Array
+        log-weights of the sample
+
+    Returns
+    -------
+    log_ess: float
+        The logarithm of the effective sample size
+
+    """
+    return 2 * jsp.special.logsumexp(log_weights) - jsp.special.logsumexp(
+        2 * log_weights
+    )
 
 
 class ImplicitState(NamedTuple):
@@ -99,20 +123,23 @@ def calculate_drift_expt_post(cond_sde:CondSDE, sde_state:SDEState, design:Array
     return drift_y
 
 
-def particle_step(sde_state, rng_key, drift_y, cond_sde, dt, y, ys_next):
+def particle_step(sde_state, rng_key, drift_y, cond_sde, dt, y, ys_next, logpdf):
     def reverse_drift(state):
         return cond_sde.reverse_drift(state) + drift_y
 
     sde_state = euler_maryama_step(
         sde_state, dt, rng_key, reverse_drift, cond_sde.reverse_diffusion
     )
-    lgpdf = partial(logpdf_change_y, y=y, y_next=ys_next, drift_y=drift_y, cond_sde=cond_sde, dt=dt)
-    weights = jax.vmap(lgpdf, in_axes=(SDEState(0, None),))(sde_state)
+    weights = jax.vmap(logpdf, in_axes=(SDEState(0, None),))(sde_state)
     _norm = jax.scipy.special.logsumexp(weights, axis=0)
-    weights = jnp.exp(weights - _norm)
-    idx = stratified(rng_key, weights, sde_state.position.shape[0])
-    position = sde_state.position[idx]
-    return position, weights[idx]
+    log_weights = weights - _norm
+    weights = jnp.exp(log_weights)
+
+    ess_val = ess(log_weights)
+    n_particles = sde_state.position.shape[0]
+    idx = stratified(rng_key, weights, n_particles)
+    return jax.lax.cond(ess_val < 0.2 * n_particles, lambda x: (x[idx], weights[idx]), lambda x: (x, weights[idx]), sde_state.position)
+    return position, weights
 
 
 def logpdf_change_y(x_sde_state:SDEState, y, y_next, drift_y:Array, cond_sde:CondSDE, dt):
@@ -123,6 +150,16 @@ def logpdf_change_y(x_sde_state:SDEState, y, y_next, drift_y:Array, cond_sde:Con
     cov = cond_sde.reverse_diffusion(x_sde_state) * jnp.sqrt(dt)
     mean = y + (cond_sde.reverse_drift(x_sde_state) + drift_y) * dt
     return jax.scipy.stats.multivariate_normal.logpdf(y_next, mean, cov).sum()
+
+
+def logpdf_change_expected(x_sde_state:SDEState, y, y_next, drift_y:Array, cond_sde:CondSDE, dt):
+    r"""
+    \sum log p(y_n | y_old, x_old) / N
+    with y_{k-1} | y_{k}, x_k ~ N(.| y_k + rev_drift*dt, sqrt(dt)*rev_diff)
+    """
+    logpdf = partial(logpdf_change_y, drift_y=drift_y, cond_sde=cond_sde, dt=dt)
+    logliks = jax.vmap(logpdf, in_axes=(None, 0, 0))(x_sde_state, y, y_next)
+    return logliks.mean()
 
 
 def generate_cond_sampleV2(
@@ -138,10 +175,12 @@ def generate_cond_sampleV2(
     key_y, key_x = jax.random.split(key)
 
     def update_joint(sde_state, ys, ys_next, key):
+        _, t = sde_state
         dt = ys_next.t - ys.t
-        drift_past = calculate_past_contribution_score(cond_sde, sde_state, mask_history, ys)
-        positions = particle_step(sde_state, key, drift_past, cond_sde, dt, ys, ys_next)
-        return positions
+        drift_past = calculate_past_contribution_score(cond_sde, sde_state, mask_history, ys.position)
+        logpdf = partial(logpdf_change_y, y=ys.position, y_next=ys_next.position, drift_y=drift_past, cond_sde=cond_sde, dt=dt)
+        positions, weights = particle_step(sde_state, key, drift_past, cond_sde, dt, ys, ys_next, logpdf)
+        return SDEState(positions, t + dt), weights
 
     # generate path for y
     y = einops.repeat(y, "... -> ts ... ", ts=n_ts)
@@ -156,7 +195,7 @@ def generate_cond_sampleV2(
     u_1T = jax.tree.map(lambda x: x[1:], us)
 
     x_T = jax.random.normal(key_x, (n_particles, *x_shape))
-    state_x = SDEState(x_T, jnp.zeros((n_ts, 1)))
+    state_x = SDEState(x_T, 0.)
     weights = jnp.zeros((n_particles,))
     # scan pcmc over x0 for n_steps
     keys = jax.random.split(key, n_ts - 1)
@@ -164,17 +203,19 @@ def generate_cond_sampleV2(
     def step(state, itr):
         state_xt, weights = state
         key, u, u_next = itr
+        keys = jax.random.split(key, n_ts)
         n_state = update_joint(state_xt, u, u_next, key)
-        return n_state, (n_state, weights)
+        #n_state = jax.vmap(update_joint, in_axes=(SDEState(None, 0), 0, 0, 0))(state_xt, u, u_next, keys)
+        return n_state, n_state
 
     end_state, hist = jax.lax.scan(step, (state_x, weights), (keys, u_0Tm, u_1T))
 
-    positions, log_zs = hist
+    (positions, _), weights = hist
     positions = jnp.concatenate([x_T[None], positions])
-    log_zs = jnp.concatenate([jnp.zeros((1,)), log_zs])
+    weights = jnp.concatenate([jnp.zeros((1, n_particles)), weights])
 
 
-    return end_state, (positions, log_zs)
+    return end_state, (positions, weights)
 
 
 def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, mask_history:Array, cond_sde:CondSDE, optx_opt:GradientTransformation, ts:Array, dt:float):
@@ -190,7 +231,8 @@ def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, mask_his
 
     def update_joint(sde_state, ys, ys_next, key):
         drift_past = calculate_past_contribution_score(cond_sde, sde_state, mask_history, ys)
-        positions = particle_step(sde_state, key, drift_past, cond_sde, dt, ys, ys_next)
+        logpdf = partial(logpdf_change_y, y=ys, y_next=ys_next, drift_y=drift_past, cond_sde=cond_sde, dt=dt)
+        positions = particle_step(sde_state, key, drift_past, cond_sde, dt, ys, ys_next, logpdf)
         return positions
 
     keys_time = jax.random.split(key_theta, ts.shape[0]-1)
@@ -207,16 +249,17 @@ def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, mask_his
     # update expected posterior
     #   1 - use y values to update post
     #   2 - Get samples contrastive theta
-    def update_expected_posterior(cntrst_sde_state, ys, ys_next, key):
-        drift_past = calculate_past_contribution_score(cond_sde, cntrst_sde_state, mask_history, ys)
-        drift_y = calculate_drift_expt_post(cond_sde, cntrst_sde_state, design, ys) + drift_past
-        positions = particle_step(cntrst_sde_state, key, drift_y, cond_sde, dt, ys, ys_next)
+    def update_expected_posterior(cntrst_sde_state, ys, ys_next, y_measured, key):
+        drift_past = calculate_past_contribution_score(cond_sde, cntrst_sde_state, mask_history, y_measured)
+        drift_y = calculate_drift_expt_post(cond_sde, cntrst_sde_state, design, ys)
+        logpdf = partial(logpdf_change_expected, y=ys, y_next=ys_next, drift_y=drift_past, cond_sde=cond_sde, dt=dt)
+        positions = particle_step(cntrst_sde_state, key, drift_y + drift_past, cond_sde, dt, ys, ys_next, logpdf)
         return positions
 
     keys_time_c = jax.random.split(key_cntrst, ts.shape[0]-1)
     cntrst_sde_state = jax.tree_map(lambda x: x[1:], cntrst_sde_state)
     #pdb.set_trace()
-    position, weights = jax.vmap(update_expected_posterior)(cntrst_sde_state, ys[:-1], ys[1:], keys_time_c)
+    position, weights = jax.vmap(update_expected_posterior)(cntrst_sde_state, ys[:-1], ys[1:], past_y.position[1:], keys_time_c)
     #d_cntrst_thetas = jax.vmap(update_expected_posterior)(ts, cntrst_thetas, ys, keys_time_c)
     cntrst_thetas.at[1:].set(position)
 
