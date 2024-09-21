@@ -46,8 +46,8 @@ class SquareMask:
         y, x = jnp.mgrid[:height, :width]
 
         # Calculate distances from the center
-        y_dist = jnp.abs(y - xi[0])
-        x_dist = jnp.abs(x - xi[1])
+        y_dist = jnp.abs(y - xi[1])
+        x_dist = jnp.abs(x - xi[0])
 
         # Create a soft mask using sigmoid function
         mask_half_size = self.size // 2

@@ -87,8 +87,7 @@ def main(key):
 
     # init design and measurement hist
     design = jax.random.uniform(key_init, (2,), minval=0, maxval=28)
-    design_0 = jnp.zeros_like(design)
-    y = cond_sde.mask.measure(design_0, ground_truth)
+    y = cond_sde.mask.measure(design, ground_truth)
 
     measurement_history = jnp.zeros((num_meas, *y.shape))
     measurement_history = measurement_history.at[0].set(y)
@@ -120,6 +119,8 @@ def main(key):
     # stock in joint_y all measurements
     joint_y = y
     mask_history = mask.make(design)
+    plt.imshow(mask_history, cmap="gray")
+    plt.show()
     design_step = jax.jit(partial(optimize_design, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde))
     for n_meas in range(num_meas):
 
@@ -127,7 +128,7 @@ def main(key):
         # make noised path for measurements
         keys_noise = jax.random.split(key_noise, n_t)
         state_0 = SDEState(joint_y, jnp.zeros_like(y))
-        past_y = jax.vmap(sde.path, in_axes=(0, None, 0))(keys_noise, state_0, ts)
+        past_y = jax.jit(jax.vmap(sde.path, in_axes=(0, None, 0)))(keys_noise, state_0, ts)
         past_y = SDEState(past_y.position[::-1], past_y.t)
 
 
@@ -141,7 +142,9 @@ def main(key):
 
         # add measured data to joint_y and update history of mask location
         joint_y = cond_sde.mask.restore(optimal_state.design, joint_y, new_measurement)
-        mask_history = cond_sde.mask.restore(optimal_state.design, mask_history, jnp.ones_like(new_measurement))
+        mask_history = cond_sde.mask.restore(optimal_state.design, mask_history, cond_sde.mask.make(optimal_state.design))
+        plt.imshow(mask_history, cmap="gray")
+
         print(joint_y[10, 20])
 
         # logging
@@ -169,8 +172,10 @@ def main(key):
         key_step, _ = jax.random.split(key_step)
 
         implicit_state = ImplicitState(thetas, cntrst_thetas, design, opt_state)
-        # for i in range(20):
-        #     plotter_line(implicit_state.thetas[:, i])
+        #for i in range(20):
+        #    plotter_line(implicit_state.thetas[:, i])
+
+    return implicit_state
 
 
 
