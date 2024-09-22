@@ -7,17 +7,27 @@ import optax
 from jaxtyping import Array, PRNGKeyArray
 from optax import GradientTransformation
 import matplotlib.pyplot as plt
+from jax_tqdm import scan_tqdm
 
 from diffuse.filter import generate_cond_sample
 from diffuse.sde import SDE, SDEState
 from diffuse.conditional import CondSDE
-from diffuse.images import SquareMask
+from diffuse.images import SquareMask, plotter_line
 from diffuse.optimizer import ImplicitState, impl_step, generate_cond_sampleV2
 from diffuse.sde import LinearSchedule
 from diffuse.unet import UNet
 import einops
 import pdb
 
+
+import os
+os.environ['XLA_FLAGS'] = (
+    '--xla_gpu_enable_triton_softmax_fusion=true '
+    '--xla_gpu_triton_gemm_any=True '
+    '--xla_gpu_enable_async_collectives=true '
+    '--xla_gpu_enable_latency_hiding_scheduler=true '
+    '--xla_gpu_enable_highest_priority_async_stream=true '
+)
 
 def initialize_experiment(key):
     # Load MNIST dataset
@@ -27,7 +37,7 @@ def initialize_experiment(key):
 
     # Initialize parameters
     tf = 2.0
-    n_t = 299
+    n_t = 100
 
     # Define beta schedule and SDE
     beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
@@ -62,16 +72,18 @@ def optimize_design(
     dt: float,
     cond_sde: CondSDE,
 ):
-    opt_steps = 5_000
+    opt_steps = 1_000
     keys_opt = jax.random.split(key_step, opt_steps)
 
-    def step(new_state, key):
+    @scan_tqdm(opt_steps)
+    def step(new_state, tup):
+        _, key = tup
         new_state = impl_step(
             new_state, key, past_y, mask_history, cond_sde=cond_sde, optx_opt=optimizer, ts=ts, dt=dt
         )
         return new_state, new_state.design
 
-    new_state, hist_design = jax.lax.scan(step, implicit_state, keys_opt)
+    new_state, hist_design = jax.lax.scan(step, implicit_state, (jnp.arange(0, opt_steps), keys_opt))
     return new_state, hist_design
 
 
@@ -179,6 +191,6 @@ def main(key):
 
 
 
-
-rng_key = key = jax.random.PRNGKey(0)
-state = main(rng_key)
+if __name__ == "__main__":
+    rng_key = key = jax.random.PRNGKey(0)
+    state = main(rng_key)
