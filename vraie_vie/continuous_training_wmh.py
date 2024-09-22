@@ -40,7 +40,7 @@ if __name__ == "__main__":
         "n_t": 32,
         "tf": 2.0,
         "lr": 2e-4,
-        "begin_epoch": 2170,
+        "begin_epoch": 3355,
     }
 
     wmh = WMH(config)

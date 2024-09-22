@@ -96,7 +96,7 @@ def gaussian_kernel(kx_i, ky_i, x, y, sigma=0.3):
 
 
 @partial(jax.jit, static_argnums=(2,))
-def grid(kx, ky, size, sigma=0.2, sharpness=10.0):
+def grid(kx, ky, size, sigma=0.3, sharpness=10.0):
     y, x = jnp.mgrid[0 : size[0], 0 : size[1]]
     y = y.astype(float)
     x = x.astype(float)
@@ -118,10 +118,11 @@ class maskSpiral:
     num_spiral: int
     num_samples: int
     k_max: float
+    sigma: float
 
     def make(self, fov: float):
         kx, ky = generate_spiral_2D(self.num_spiral, self.num_samples, self.k_max, fov)
-        return grid(kx, ky, self.img_shape)
+        return grid(kx, ky, self.img_shape, self.sigma)
 
     def measure(self, fov: float, x: Array):
         mask = self.make(fov)
