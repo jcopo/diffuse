@@ -85,11 +85,21 @@ if __name__ == "__main__":
     #x = jax.random.normal(jax.random.PRNGKey(0), x.shape)
 
     mask = SquareMask(10, x.shape)
-    xi = jnp.array([10.0, 20.0])
+    xi = jnp.array([15.0, 15.0])
+    xi2 = jnp.array([20.0, 10.0])
+
+    mask_history = mask.restore(xi2, mask.make(xi), mask.make(xi2))
+    print(jnp.max(mask_history))
+    plt.imshow(mask_history, cmap="gray")
+    plt.scatter(xi[0], xi[1], color="red")
+    plt.scatter(xi2[0], xi2[1], color="red")
+    plt.show()
+
     # Create a figure with 2 row and 3 columns
     fig, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2, 3, figsize=(15, 10))
 
     # Plot the first image
+    ax1.scatter(xi[0], xi[1], color="red")
     im1 = ax1.imshow(mask.make(xi), cmap="gray")
     ax1.set_title("Measured")
     ax1.axis("off")
