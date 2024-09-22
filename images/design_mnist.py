@@ -7,16 +7,28 @@ import optax
 from jaxtyping import Array, PRNGKeyArray
 from optax import GradientTransformation
 import matplotlib.pyplot as plt
+from jax_tqdm import scan_tqdm
 
 from diffuse.filter import generate_cond_sample
 from diffuse.sde import SDE, SDEState
 from diffuse.conditional import CondSDE
-from diffuse.images import SquareMask
-from diffuse.optimizer import ImplicitState, impl_step
+from diffuse.images import SquareMask, plotter_line
+from diffuse.optimizer import ImplicitState, impl_step, generate_cond_sampleV2
 from diffuse.sde import LinearSchedule
 from diffuse.unet import UNet
 import einops
 import pdb
+
+
+import os
+
+os.environ["XLA_FLAGS"] = (
+    "--xla_gpu_enable_triton_softmax_fusion=true "
+    "--xla_gpu_triton_gemm_any=True "
+    "--xla_gpu_enable_async_collectives=true "
+    "--xla_gpu_enable_latency_hiding_scheduler=true "
+    "--xla_gpu_enable_highest_priority_async_stream=true "
+)
 
 
 def initialize_experiment(key):
@@ -27,7 +39,7 @@ def initialize_experiment(key):
 
     # Initialize parameters
     tf = 2.0
-    n_t = 299
+    n_t = 100
 
     # Define beta schedule and SDE
     beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
@@ -56,39 +68,51 @@ def optimize_design(
     key_step: PRNGKeyArray,
     implicit_state: ImplicitState,
     past_y: Array,
+    mask_history: Array,
     optimizer: GradientTransformation,
     ts: Array,
     dt: float,
     cond_sde: CondSDE,
 ):
-    opt_steps = 5_000
+    opt_steps = 1_000
     keys_opt = jax.random.split(key_step, opt_steps)
 
-    def step(new_state, key):
+    @scan_tqdm(opt_steps)
+    def step(new_state, tup):
+        _, key = tup
         new_state = impl_step(
-            new_state, key, past_y, cond_sde=cond_sde, optx_opt=optimizer, ts=ts, dt=dt
+            new_state,
+            key,
+            past_y,
+            mask_history,
+            cond_sde=cond_sde,
+            optx_opt=optimizer,
+            ts=ts,
+            dt=dt,
         )
         return new_state, new_state.design
 
-    new_state, hist_design = jax.lax.scan(step, implicit_state, keys_opt)
+    new_state, hist_design = jax.lax.scan(
+        step, implicit_state, (jnp.arange(0, opt_steps), keys_opt)
+    )
     return new_state, hist_design
 
 
 # @jax.jit
 def main(key):
     key_init, key_step = jax.random.split(key)
+
     sde, cond_sde, mask, ground_truth, tf, n_t, nn_score = initialize_experiment(
         key_init
     )
     dt = tf / (n_t - 1)
-    num_meas = 5
-    n_samples = 50
-    n_samples_cntrst = 50
+    num_meas = 6
+    n_samples = 30
+    n_samples_cntrst = 40
 
     # init design and measurement hist
     design = jax.random.uniform(key_init, (2,), minval=0, maxval=28)
-    design_0 = jnp.zeros_like(design)
-    y = cond_sde.mask.measure(design_0, ground_truth)
+    y = cond_sde.mask.measure(design, ground_truth)
 
     measurement_history = jnp.zeros((num_meas, *y.shape))
     measurement_history = measurement_history.at[0].set(y)
@@ -123,50 +147,90 @@ def main(key):
 
     # stock in joint_y all measurements
     joint_y = y
+    mask_history = mask.make(design)
+    plt.imshow(mask_history, cmap="gray")
+    plt.show()
     design_step = jax.jit(
         partial(optimize_design, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde)
     )
     for n_meas in range(num_meas):
+        key_noise, key_opt, key_gen = jax.random.split(key_step, 3)
         # make noised path for measurements
-        key_noise = jax.random.split(key, n_t)
+        keys_noise = jax.random.split(key_noise, n_t)
         state_0 = SDEState(joint_y, jnp.zeros_like(y))
-        past_y = jax.vmap(sde.path, in_axes=(0, None, 0))(key_noise, state_0, ts)
+        past_y = jax.jit(jax.vmap(sde.path, in_axes=(0, None, 0)))(
+            keys_noise, state_0, ts
+        )
         past_y = SDEState(past_y.position[::-1], past_y.t)
 
         # optimize design
-        optimal_state, opt_hist = design_step(key_step, implicit_state, past_y)
+        optimal_state, hist_implicit = design_step(
+            key_opt, implicit_state, past_y, mask_history
+        )
+        opt_hist = hist_implicit
 
         # make new measurement
         new_measurement = cond_sde.mask.measure(optimal_state.design, ground_truth)
         measurement_history = measurement_history.at[n_meas].set(new_measurement)
 
+        # add measured data to joint_y and update history of mask location
+        joint_y = cond_sde.mask.restore(optimal_state.design, joint_y, new_measurement)
+        mask_history = cond_sde.mask.restore(
+            optimal_state.design, mask_history, cond_sde.mask.make(optimal_state.design)
+        )
+        plt.imshow(mask_history, cmap="gray")
+
+        print(joint_y[10, 20])
+
         # logging
         print(f"Design_start: {design} Design_end:{optimal_state.design}")
-        plt.imshow(ground_truth, cmap="gray")
-        plt.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
+        fig, axs = plt.subplots(1, 2)
+        ax1, ax2 = axs
+        ax1.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
+        ax1.imshow(ground_truth, cmap="gray")
+        ax2.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
+        ax2.imshow(joint_y, cmap="gray")
+
+        plt.tight_layout()
         plt.show()
 
-        # add measured data to joint_y
-        joint_y = cond_sde.mask.restore(optimal_state.design, joint_y, new_measurement)
+        print(jnp.max(joint_y))
 
         # reinitiazize implicit state
         design = jax.random.uniform(key_step, (2,), minval=0, maxval=28)
         opt_state = optimizer.init(design)
-        key_t, key_c = jax.random.split(key_step)
+        key_t, key_c = jax.random.split(key_gen)
         thetas = generate_cond_sample(
-            joint_y, design, key_t, cond_sde, ground_truth.shape, n_t, n_samples
+            joint_y,
+            optimal_state.design,
+            key_t,
+            cond_sde,
+            ground_truth.shape,
+            n_t,
+            n_samples,
         )[1][0]
-        cntrst_thetas = generate_cond_sample(
-            joint_y, design, key_c, cond_sde, ground_truth.shape, n_t, n_samples_cntrst
+
+        thetas = generate_cond_sampleV2(
+            joint_y, mask_history, key_t, cond_sde, ground_truth.shape, n_t, n_samples
+        )[1][0]
+        cntrst_thetas = generate_cond_sampleV2(
+            joint_y,
+            mask_history,
+            key_c,
+            cond_sde,
+            ground_truth.shape,
+            n_t,
+            n_samples_cntrst,
         )[1][0]
         key_step, _ = jax.random.split(key_step)
 
-        implicit_state = ImplicitState(
-            thetas, optimal_state.cntrst_thetas, design, opt_state
-        )
+        implicit_state = ImplicitState(thetas, cntrst_thetas, design, opt_state)
+        # for i in range(20):
+        #    plotter_line(implicit_state.thetas[:, i])
 
     return implicit_state
 
 
-rng_key = key = jax.random.PRNGKey(0)
-state = main(rng_key)
+if __name__ == "__main__":
+    rng_key = key = jax.random.PRNGKey(0)
+    state = main(rng_key)
