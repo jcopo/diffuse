@@ -125,9 +125,7 @@ def cond_reverse_drift(state: CondState, cond_sde: CondSDE) -> Array:
     alpha_t = jnp.exp(cond_sde.beta.integrate(0.0, t))
 
     drift_y = (
-        beta_t
-        * cond_sde.mask.restore(xi, jnp.zeros_like(x), (y - meas_x))
-        / alpha_t
+        beta_t * cond_sde.mask.restore(xi, jnp.zeros_like(x), (y - meas_x)) / alpha_t
     )
     return drift_x + drift_y
 
