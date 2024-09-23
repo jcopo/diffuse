@@ -124,13 +124,8 @@ def particle_step(
     n_particles = sde_state.position.shape[0]
     idx = stratified(rng_key, weights, n_particles)
 
-    return jax.lax.cond(
-        ess_val < 0.5 * n_particles,
-        lambda x: (x[idx], weights[idx]),
-        lambda x: (x, weights[idx]),
-        sde_state.position,
-    )
-    # return sde_state.position, weights
+    #return jax.lax.cond(ess_val < 0.5 * n_particles, lambda x: (x[idx], weights[idx]), lambda x: (x, weights[idx]), sde_state.position,)
+    return sde_state.position, weights
 
 
 def logpdf_change_y(
