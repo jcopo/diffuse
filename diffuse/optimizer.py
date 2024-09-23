@@ -69,6 +69,10 @@ def update_joint(
     mask_history: Array,
     dt: float,
 ):
+    r"""
+    simulate \theta according to conditional sde:
+    \theta_{t+dt} = \[ -\beta(t) / 2 \theta_t - \beta(t) \nabla_\theta log p(y^t_past | \theta_t, \xi_past) - \beta(t) \nabla_\theta \log p(\theta_t) \]dt + \sqrt(\beta(t) )DWt
+    """
     drift_past = calculate_past_contribution_score(
         cond_sde, sde_state, mask_history, ys
     )
@@ -98,6 +102,10 @@ def update_expected_posterior(
     design: Array,
     dt: float,
 ):
+    r"""
+    simulate \theta according to conditional sde for expected posterior:
+    \theta_{t+dt} = \[ -\beta(t) / 2 \theta_t - \beta(t) \nabla_\theta log p(y_past^t | \theta_t, \xi_past) - \beta(t) \sum_1^N \nabla_\theta log p(y_i^t | \theta_t, \xi) / N - \beta(t) \nabla_\theta \log p(\theta_t) \]dt + \sqrt(\beta(t) )DWt
+    """
     drift_past = calculate_past_contribution_score(
         cond_sde, cntrst_sde_state, mask_history, y_measured
     )
@@ -212,8 +220,8 @@ def impl_step(
 def impl_one_step(
     state: ImplicitState,
     rng_key: PRNGKeyArray,
-    y: SDEState,
-    y_next: SDEState,
+    past_y: SDEState,
+    past_y_next: SDEState,
     mask_history: Array,
     cond_sde: CondSDE,
     optx_opt: GradientTransformation,
@@ -222,10 +230,10 @@ def impl_one_step(
     Implicit step with one step update
     Must use same optimization steps as time steps
     """
-    dt = y_next.t - y.t
+    dt = past_y_next.t - past_y.t
     thetas, cntrst_thetas, design, opt_state = state
-    sde_state = SDEState(thetas, y.t)
-    cntrst_sde_state = SDEState(cntrst_thetas, y.t)
+    sde_state = SDEState(thetas, past_y.t)
+    cntrst_sde_state = SDEState(cntrst_thetas, past_y.t)
 
     # update joint distribution
     #   1 - conditional sde on joint -> samples theta
@@ -240,10 +248,12 @@ def impl_one_step(
 
         return (SDEState(positions, t + dt), weights), (positions, weights)
 
-    (thetas, _), weights = step_joint(sde_state, y.position, y_next.position, key_joint)
+    (thetas, _), weights = step_joint(sde_state, past_y.position, past_y_next.position, key_joint)
 
     # get ys
-    y_measured = cond_sde.mask.measure(design, thetas.position)
+    ys = cond_sde.mask.measure(design, thetas.position)
+    ys_next = cond_sde.path(rng_key, SDEState(ys, past_y.t), past_y_next.t)
+
 
     # update expected posterior
     #   1 - use y values to update post
@@ -265,7 +275,7 @@ def impl_one_step(
         return (SDEState(positions, t + dt), weights), (positions, weights)
 
     ((cntrst_thetas, _), weights) = step_expected_posterior(
-        cntrst_sde_state, y.position, y_next.position, y_measured, key_cntrst
+        cntrst_sde_state, ys.position, ys_next.position, past_y_next.position, key_cntrst
     )
 
     # get EIG gradient estimator
