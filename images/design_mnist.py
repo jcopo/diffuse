@@ -28,7 +28,7 @@ import pdb
 #     '--xla_gpu_enable_latency_hiding_scheduler=True '
 #     '--xla_gpu_enable_highest_priority_async_stream=True '
 # )
-def initialize_experiment(key):
+def initialize_experiment(key: PRNGKeyArray):
     # Load MNIST dataset
     data = np.load("dataset/mnist.npz")
     xs = jnp.array(data["X"])
@@ -36,7 +36,7 @@ def initialize_experiment(key):
 
     # Initialize parameters
     tf = 2.0
-    n_t = 100
+    n_t = 500
 
     # Define beta schedule and SDE
     beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
@@ -122,16 +122,17 @@ def optimize_design_one_step(
             cond_sde=cond_sde,
             optx_opt=optimizer,
         )
-
-        return new_state, new_state.design
+        thetas, cntrst_thetas, design, *_ = new_state
+        return new_state, (thetas, cntrst_thetas, design)
 
     y = jax.tree.map(lambda x: x[:-1], past_y)
     y_next = jax.tree.map(lambda x: x[1:], past_y)
-    new_state, hist_design = jax.lax.scan(
+    new_state, hist = jax.lax.scan(
         step, implicit_state, (jnp.arange(0, opt_steps), y, y_next, keys_opt)
     )
-
-    return new_state, hist_design
+    thetas, cntrst_thetas, design_hist = hist
+    state = ImplicitState(thetas, cntrst_thetas, new_state.design, new_state.opt_state)
+    return state, design_hist
 
 
 def init_trajectory(
@@ -280,6 +281,8 @@ def main(key):
         plt.show()
 
         print(jnp.max(joint_y))
+        for i in range(20):
+           plotter_line(optimal_state.thetas[:, i])
 
         # reinitiazize implicit state
         design = jax.random.uniform(key_step, (2,), minval=0, maxval=28)
@@ -291,13 +294,14 @@ def main(key):
         # cntrst_thetas = generate_cond_sampleV2(joint_y, mask_history, key_c, cond_sde, ground_truth.shape, n_t, n_samples_cntrst)[1][0]
         key_step, _ = jax.random.split(key_step)
 
-        implicit_state = ImplicitState(
-            optimal_state.thetas, optimal_state.cntrst_thetas, design, opt_state
+        # implicit_state = ImplicitState(
+        #     optimal_state.thetas, optimal_state.cntrst_thetas, design, opt_state
+        # )
+        thetas, cntrst_thetas = init_start_time(
+            key_step, n_samples, n_samples_cntrst, ground_truth.shape
         )
-        # implicit_state = ImplicitState(thetas, cntrst_thetas, design, opt_state)
+        implicit_state = ImplicitState(thetas, cntrst_thetas, design, opt_state)
 
-        # for i in range(20):
-        #    plotter_line(implicit_state.thetas[:, i])
 
     return implicit_state
 

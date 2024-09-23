@@ -246,7 +246,7 @@ def impl_one_step(
 
     # get ys
     ys = cond_sde.mask.measure(design, thetas.position)
-    ys_next = cond_sde.path(rng_key, SDEState(ys, past_y.t), past_y_next.t)
+    ys_next = cond_sde.path(rng_key, SDEState(ys, past_y.t), past_y_next.t).position
 
 
     # update expected posterior
@@ -269,17 +269,17 @@ def impl_one_step(
         return (SDEState(positions, t + dt), weights), (positions, weights)
 
     ((cntrst_thetas, _), weights) = step_expected_posterior(
-        cntrst_sde_state, ys.position, ys_next.position, past_y_next.position, key_cntrst
+        cntrst_sde_state, ys, ys_next, past_y_next.position, key_cntrst
     )
 
     # get EIG gradient estimator
     #  1 - evaluate score_f on thetas and contrastives_theta
     #  2 - update design parameters with optax
     design, opt_state, ys = calculate_and_apply_gradient(
-        thetas, cntrst_thetas, design, cond_sde, optx_opt, opt_state
+        thetas.position, cntrst_thetas.position, design, cond_sde, optx_opt, opt_state
     )
 
-    return ImplicitState(thetas, cntrst_thetas, design, opt_state)
+    return ImplicitState(thetas.position, cntrst_thetas.position, design, opt_state)
 
 
 def impl_full_scan(
