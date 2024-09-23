@@ -146,7 +146,7 @@ def optimize_design_one_step(
     new_state, hist = jax.lax.scan(
         step, implicit_state, (jnp.arange(0, opt_steps), y, y_next, keys_opt)
     )
-    plt.imshow(new_state.thetas[0], cmap="gray")
+    plt.imshow(jnp.abs(new_state.thetas[0][..., 0]), cmap="gray")
     plt.show()
     thetas, cntrst_thetas, design_hist = hist
     state = ImplicitState(thetas, cntrst_thetas, new_state.design, new_state.opt_state)
