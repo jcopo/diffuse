@@ -28,7 +28,7 @@ def plotter_line(array):
         frame_index = int(fraction * total_frames)
 
         # Plot the image
-        axs[idx].imshow(array[frame_index], cmap="gray")
+        axs[idx].imshow(np.abs(array[frame_index][..., 0]), cmap="gray")
         axs[idx].set_title(f"Frame at {fraction*100}% of total")
         axs[idx].axis("off")  # Turn off axis labels
 

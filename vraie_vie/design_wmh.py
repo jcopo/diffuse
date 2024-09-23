@@ -223,7 +223,7 @@ def main(key):
     dts = jnp.diff(ts)
 
     # init design and measurement hist
-    design = jax.random.uniform(key_init, (2,), minval=0, maxval=28)
+    design = jax.random.uniform(key_init, (2,), minval=1., maxval=3.)
     y = cond_sde.mask.measure(design, ground_truth)
 
     measurement_history = jnp.zeros((num_meas, *y.shape))
