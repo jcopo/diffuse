@@ -78,11 +78,22 @@ def optimize_design(
     def step(new_state, tup):
         _, key = tup
         # new_state = impl_step( new_state, key, past_y, mask_history, cond_sde=cond_sde, optx_opt=optimizer, ts=ts, dt=dt)
-        new_state = impl_full_scan(new_state, key, past_y, mask_history, cond_sde=cond_sde, optx_opt=optimizer, ts=ts, dt=dt)
+        new_state = impl_full_scan(
+            new_state,
+            key,
+            past_y,
+            mask_history,
+            cond_sde=cond_sde,
+            optx_opt=optimizer,
+            ts=ts,
+            dt=dt,
+        )
 
         return new_state, new_state.design
 
-    new_state, hist_design = jax.lax.scan(step, implicit_state, (jnp.arange(0, opt_steps), keys_opt))
+    new_state, hist_design = jax.lax.scan(
+        step, implicit_state, (jnp.arange(0, opt_steps), keys_opt)
+    )
     return new_state, hist_design
 
 
@@ -102,22 +113,45 @@ def optimize_design_one_step(
     @scan_tqdm(opt_steps)
     def step(new_state, tup):
         _, y, y_next, key = tup
-        new_state = impl_one_step(new_state, key, y, y_next, mask_history, cond_sde=cond_sde, optx_opt=optimizer)
+        new_state = impl_one_step(
+            new_state,
+            key,
+            y,
+            y_next,
+            mask_history,
+            cond_sde=cond_sde,
+            optx_opt=optimizer,
+        )
 
         return new_state, new_state.design
 
     y = jax.tree.map(lambda x: x[:-1], past_y)
     y_next = jax.tree.map(lambda x: x[1:], past_y)
-    new_state, hist_design = jax.lax.scan(step, implicit_state, (jnp.arange(0, opt_steps), y, y_next, keys_opt))
+    new_state, hist_design = jax.lax.scan(
+        step, implicit_state, (jnp.arange(0, opt_steps), y, y_next, keys_opt)
+    )
 
     return new_state, hist_design
 
-def init_trajectory(key_init, sde, nn_score, n_samples, n_samples_cntrst, tf, ts, dts, ground_truth_shape):
+
+def init_trajectory(
+    key_init,
+    sde,
+    nn_score,
+    n_samples,
+    n_samples_cntrst,
+    tf,
+    ts,
+    dts,
+    ground_truth_shape,
+):
     """
     Unitialize full trajectory for conditional sampling using parallel update from Marion et al 2024
     """
     # Initialize samples
-    init_samples = jax.random.normal(key_init, (n_samples + n_samples_cntrst, *ground_truth_shape))
+    init_samples = jax.random.normal(
+        key_init, (n_samples + n_samples_cntrst, *ground_truth_shape)
+    )
     tfs = jnp.zeros((n_samples + n_samples_cntrst,)) + tf
 
     # Denoise
@@ -127,7 +161,9 @@ def init_trajectory(key_init, sde, nn_score, n_samples, n_samples_cntrst, tf, ts
     # Make right shape
     keys = jax.random.split(key_init, n_samples + n_samples_cntrst)
     _, state_Ts = jax.vmap(revert_sde)(keys, state_f)
-    state_Ts = jax.tree.map(lambda arr: einops.rearrange(arr, 'n h ... -> h n ...'), state_Ts)
+    state_Ts = jax.tree.map(
+        lambda arr: einops.rearrange(arr, "n h ... -> h n ..."), state_Ts
+    )
 
     # Init thetas
     thetas = state_Ts.position[:, :n_samples]
@@ -136,7 +172,12 @@ def init_trajectory(key_init, sde, nn_score, n_samples, n_samples_cntrst, tf, ts
     return thetas, cntrst_thetas
 
 
-def init_start_time(key_init: PRNGKeyArray, n_samples: int, n_samples_cntrst: int, ground_truth_shape: Tuple[int, ...])-> Tuple[Array, Array]:
+def init_start_time(
+    key_init: PRNGKeyArray,
+    n_samples: int,
+    n_samples_cntrst: int,
+    ground_truth_shape: Tuple[int, ...],
+) -> Tuple[Array, Array]:
     """
     Initialize thetas for just the start time of the conditional sampling
     """
@@ -146,11 +187,13 @@ def init_start_time(key_init: PRNGKeyArray, n_samples: int, n_samples_cntrst: in
     return thetas, cntrst_thetas
 
 
-#@jax.jit
+# @jax.jit
 def main(key):
     key_init, key_step = jax.random.split(key)
 
-    sde, cond_sde, mask, ground_truth, tf, n_t, nn_score = initialize_experiment(key_init)
+    sde, cond_sde, mask, ground_truth, tf, n_t, nn_score = initialize_experiment(
+        key_init
+    )
     dt = tf / (n_t - 1)
     num_meas = 6
     n_samples = 10
@@ -159,7 +202,6 @@ def main(key):
     # Time initialization (kept outside the function)
     ts = jnp.linspace(0, tf, n_t)
     dts = jnp.diff(ts)
-
 
     # init design and measurement hist
     design = jax.random.uniform(key_init, (2,), minval=0, maxval=28)
@@ -176,7 +218,9 @@ def main(key):
 
     # init thetas
     # thetas, cntrst_thetas = init_trajectory(key_init, sde, nn_score, n_samples, n_samples_cntrst, tf, ts, dts, ground_truth.shape)
-    thetas, cntrst_thetas = init_start_time(key_init, n_samples, n_samples_cntrst, ground_truth.shape)
+    thetas, cntrst_thetas = init_start_time(
+        key_init, n_samples, n_samples_cntrst, ground_truth.shape
+    )
     implicit_state = ImplicitState(thetas, cntrst_thetas, design, opt_state)
 
     # stock in joint_y all measurements
@@ -184,20 +228,30 @@ def main(key):
     mask_history = mask.make(design)
     plt.imshow(mask_history, cmap="gray")
     plt.show()
-    design_step = jax.jit(partial(optimize_design, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde))
-    # design_step = jax.jit(partial(optimize_design_one_step, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde))
+    # design_step = jax.jit(partial(optimize_design, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde))
+    design_step = jax.jit(
+        partial(
+            optimize_design_one_step,
+            optimizer=optimizer,
+            ts=ts,
+            dt=dt,
+            cond_sde=cond_sde,
+        )
+    )
     for n_meas in range(num_meas):
-
         key_noise, key_opt, key_gen = jax.random.split(key_step, 3)
         # make noised path for measurements
         keys_noise = jax.random.split(key_noise, n_t)
         state_0 = SDEState(joint_y, jnp.zeros_like(y))
-        past_y = jax.jit(jax.vmap(sde.path, in_axes=(0, None, 0)))(keys_noise, state_0, ts)
+        past_y = jax.jit(jax.vmap(sde.path, in_axes=(0, None, 0)))(
+            keys_noise, state_0, ts
+        )
         past_y = SDEState(past_y.position[::-1], past_y.t)
 
-
         # optimize design
-        optimal_state, hist_implicit = design_step(key_opt, implicit_state, past_y, mask_history)
+        optimal_state, hist_implicit = design_step(
+            key_opt, implicit_state, past_y, mask_history
+        )
         opt_hist = hist_implicit
 
         # make new measurement
@@ -206,7 +260,9 @@ def main(key):
 
         # add measured data to joint_y and update history of mask location
         joint_y = cond_sde.mask.restore(optimal_state.design, joint_y, new_measurement)
-        mask_history = cond_sde.mask.restore(optimal_state.design, mask_history, cond_sde.mask.make(optimal_state.design))
+        mask_history = cond_sde.mask.restore(
+            optimal_state.design, mask_history, cond_sde.mask.make(optimal_state.design)
+        )
         plt.imshow(mask_history, cmap="gray")
 
         print(joint_y[10, 20])
@@ -215,9 +271,9 @@ def main(key):
         print(f"Design_start: {design} Design_end:{optimal_state.design}")
         fig, axs = plt.subplots(1, 2)
         ax1, ax2 = axs
-        ax1.scatter(opt_hist[:, 0], opt_hist[:, 1], marker='+')
+        ax1.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
         ax1.imshow(ground_truth, cmap="gray")
-        ax2.scatter(opt_hist[:, 0], opt_hist[:, 1], marker='+')
+        ax2.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
         ax2.imshow(joint_y, cmap="gray")
 
         plt.tight_layout()
@@ -229,20 +285,21 @@ def main(key):
         design = jax.random.uniform(key_step, (2,), minval=0, maxval=28)
         opt_state = optimizer.init(design)
         key_t, key_c = jax.random.split(key_gen)
-        #thetas = generate_cond_sample(joint_y, optimal_state.design, key_t, cond_sde, ground_truth.shape, n_t, n_samples)[1][0]
+        # thetas = generate_cond_sample(joint_y, optimal_state.design, key_t, cond_sde, ground_truth.shape, n_t, n_samples)[1][0]
 
         # thetas = generate_cond_sampleV2(joint_y, mask_history, key_t, cond_sde, ground_truth.shape, n_t, n_samples)[1][0]
         # cntrst_thetas = generate_cond_sampleV2(joint_y, mask_history, key_c, cond_sde, ground_truth.shape, n_t, n_samples_cntrst)[1][0]
         key_step, _ = jax.random.split(key_step)
 
-        implicit_state = ImplicitState(optimal_state.thetas, optimal_state.cntrst_thetas, design, opt_state)
-        #implicit_state = ImplicitState(thetas, cntrst_thetas, design, opt_state)
+        implicit_state = ImplicitState(
+            optimal_state.thetas, optimal_state.cntrst_thetas, design, opt_state
+        )
+        # implicit_state = ImplicitState(thetas, cntrst_thetas, design, opt_state)
 
-        #for i in range(20):
+        # for i in range(20):
         #    plotter_line(implicit_state.thetas[:, i])
 
     return implicit_state
-
 
 
 if __name__ == "__main__":

@@ -13,14 +13,15 @@ from tqdm import tqdm
 from dataclasses import dataclass
 from jaxtyping import PyTreeDef, PRNGKeyArray, Array
 
+
 def plotter_line(array):
     total_frames = len(array)
 
     # Define the fractions
-    fractions = [0., 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, .95, 1.]
+    fractions = [0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
     n = len(fractions)
     # Create a figure with subplots
-    fig, axs = plt.subplots(1, n, figsize=(n*3, n))
+    fig, axs = plt.subplots(1, n, figsize=(n * 3, n))
 
     for idx, fraction in enumerate(fractions):
         # Calculate the frame index
@@ -29,7 +30,7 @@ def plotter_line(array):
         # Plot the image
         axs[idx].imshow(array[frame_index], cmap="gray")
         axs[idx].set_title(f"Frame at {fraction*100}% of total")
-        axs[idx].axis('off')  # Turn off axis labels
+        axs[idx].axis("off")  # Turn off axis labels
 
     plt.tight_layout()
     plt.show()
@@ -51,7 +52,7 @@ class SquareMask:
 
         # Create a soft mask using sigmoid function
         mask_half_size = self.size // 2
-        softness = .1  # Adjust this value to control the softness of the edges
+        softness = 0.1  # Adjust this value to control the softness of the edges
 
         mask = jax.nn.sigmoid(
             (-jnp.maximum(y_dist, x_dist) + mask_half_size) / softness
@@ -59,20 +60,18 @@ class SquareMask:
         # return jnp.where(mask > 0.5, 1.0, 0.0)[..., None]
         return mask[..., None]
 
-    def measure_from_mask(self, hist_mask:Array, img:Array):
+    def measure_from_mask(self, hist_mask: Array, img: Array):
         return img * hist_mask
 
-    def restore_from_mask(self, hist_mask:Array, img:Array, measured:Array):
+    def restore_from_mask(self, hist_mask: Array, img: Array, measured: Array):
         return img * hist_mask + measured
 
     def measure(self, xi: Array, img: Array):
         return self.measure_from_mask(self.make(xi), img)
 
-
     def restore(self, xi: Array, img: Array, measured: Array):
         inv_mask = 1 - self.make(xi)
         return self.restore_from_mask(inv_mask, img, measured)
-
 
 
 if __name__ == "__main__":
@@ -80,9 +79,8 @@ if __name__ == "__main__":
     xs = data["X"]
     xs = einops.rearrange(xs, "b h w -> b h w 1")
 
-
     x = xs[0]
-    #x = jax.random.normal(jax.random.PRNGKey(0), x.shape)
+    # x = jax.random.normal(jax.random.PRNGKey(0), x.shape)
 
     mask = SquareMask(10, x.shape)
     xi = jnp.array([15.0, 15.0])
