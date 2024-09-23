@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from jaxtyping import Array, PRNGKeyArray, PyTreeDef
 
 from diffuse.sde import SDE, SDEState, euler_maryama_step
+from diffuse.images import SquareMask
 
 
 def plt_fracts(array):
@@ -54,7 +55,7 @@ class CondState(NamedTuple):
 
 @dataclass
 class CondSDE(SDE):
-    mask: Callable[[Array], Array]
+    mask: SquareMask
     tf: float
     score: Callable[[Array, float], Array]
 
@@ -118,14 +119,15 @@ class CondSDE(SDE):
 
 
 def cond_reverse_drift(state: CondState, cond_sde: CondSDE) -> Array:
+    # stack together x and y and apply reverse drift
     x, y, xi, t = state
     drift_x = cond_sde.reverse_drift(SDEState(x, t))
     beta_t = cond_sde.beta(cond_sde.tf - t)
     meas_x = cond_sde.mask.measure(xi, x)
     alpha_t = jnp.exp(cond_sde.beta.integrate(0.0, t))
-
+    # here if needed we average over y
     drift_y = (
-        beta_t * cond_sde.mask.restore(xi, jnp.zeros_like(x), (y - meas_x)) / alpha_t
+        beta_t * cond_sde.mask.restore(xi, jnp.zeros_like(x), y - meas_x) / alpha_t
     )
     return drift_x + drift_y
 
