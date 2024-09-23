@@ -95,3 +95,7 @@ class maskSpiral:
 
     def restore(self, sq_fov: float, x: Array, measured: Array):
         return self.restore_from_mask(self.make(sq_fov), x, measured)
+    
+    def supp_mask(self, sq_fov: float, hist_mask: Array, new_mask: Array):
+        inv_mask = 1 - self.make(sq_fov)
+        return hist_mask * inv_mask + new_mask
