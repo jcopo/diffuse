@@ -21,6 +21,7 @@ from diffuse.conditional import (
     cond_reverse_drift,
 )
 
+
 def ess(log_weights: Array) -> float:
     return jnp.exp(log_ess(log_weights))
 
@@ -42,6 +43,7 @@ def log_ess(log_weights: Array) -> float:
     return 2 * jsp.special.logsumexp(log_weights) - jsp.special.logsumexp(
         2 * log_weights
     )
+
 
 def filter_step(
     particles: Array,
@@ -74,7 +76,7 @@ def filter_step(
     # maybe resample based on ESS crit ?
     idx = stratified(key_weights, jnp.exp(log_weights), n_particles)
     ess_val = ess(log_weights)
-    #particles_next = jax.lax.cond(ess_val < 0.2 * n_particles, lambda x: x[idx], lambda x: x, particles_next)
+    # particles_next = jax.lax.cond(ess_val < 0.2 * n_particles, lambda x: x[idx], lambda x: x, particles_next)
     # particles_next = particles_next[idx]
 
     log_Z = log_Z - jnp.log(n_particles) + _norm
@@ -88,8 +90,8 @@ def generate_cond_sample(
     key: PRNGKeyArray,
     cond_sde: CondSDE,
     x_shape: Tuple,
-    n_ts:int,
-    n_particles:int
+    n_ts: int,
+    n_particles: int,
 ):
     ts = jnp.linspace(0.0, cond_sde.tf, n_ts)
     key_y, key_x = jax.random.split(key)
@@ -122,6 +124,5 @@ def generate_cond_sample(
     positions, log_zs = hist
     positions = jnp.concatenate([x_T[None], positions])
     log_zs = jnp.concatenate([jnp.zeros((1,)), log_zs])
-
 
     return end_state, (positions, log_zs)

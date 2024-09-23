@@ -17,10 +17,10 @@ def plotter_line(array):
     total_frames = len(array)
 
     # Define the fractions
-    fractions = [0., 0.01, 0.05, .1, 0.3, 0.5, 0.9, .95, 1.]
+    fractions = [0.0, 0.01, 0.05, 0.1, 0.3, 0.5, 0.9, 0.95, 1.0]
     n = len(fractions)
     # Create a figure with subplots
-    fig, axs = plt.subplots(1, n, figsize=(n*3, n))
+    fig, axs = plt.subplots(1, n, figsize=(n * 3, n))
 
     for idx, fraction in enumerate(fractions):
         # Calculate the frame index
@@ -29,11 +29,10 @@ def plotter_line(array):
         # Plot the image
         axs[idx].imshow(array[frame_index], cmap="gray")
         axs[idx].set_title(f"Frame at {fraction*100}% of total")
-        axs[idx].axis('off')  # Turn off axis labels
+        axs[idx].axis("off")  # Turn off axis labels
 
     plt.tight_layout()
     plt.show()
-
 
 
 # Load MNIST dataset
@@ -75,7 +74,7 @@ mask = SquareMask(10, x.shape)
 # x = state_Ts.position[-1]
 xi = jnp.array([10.0, 20.0])
 cond_sde = CondSDE(beta=beta, mask=mask, tf=2.0, score=nn_score)
-#y = measure(xi, x, mask)
+# y = measure(xi, x, mask)
 past_y = mask.measure(xi, x)
 
 y = jax.vmap(mask.measure, in_axes=(None, 0))(xi, xs[0:40])
@@ -85,9 +84,8 @@ state_0 = SDEState(past_y, jnp.zeros_like(past_y))
 past_y = jax.vmap(sde.path, in_axes=(0, None, 0))(key_noise, state_0, ts)
 
 
-
-#res = generate_cond_sample(y, xi, key, 500, cond_sde, x.shape)
-#res = generate_cond_sample(y, xi, key, cond_sde, x.shape)
+# res = generate_cond_sample(y, xi, key, 500, cond_sde, x.shape)
+# res = generate_cond_sample(y, xi, key, cond_sde, x.shape)
 # thetas (n_t, n_particles)
 # thetas = res[1][0]
 # random generate the thetas
