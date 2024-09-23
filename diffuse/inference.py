@@ -35,14 +35,17 @@ def log_ess(log_weights: Array) -> float:
         2 * log_weights
     )
 
-
+"""
 def logprob_y(theta, y, design, cond_sde):
-    """
-    log p(y | theta, design)
-    """
     f_y = cond_sde.mask.measure(design, theta)
     return jax.scipy.stats.norm.logpdf(y, f_y, 1.0)
+"""
 
+def logprob_y(theta, y, design, cond_sde):
+    f_y = cond_sde.mask.measure(design, theta)
+    norm_squared = jnp.abs(y - f_y)**2
+    log_density = -norm_squared / 2 - jnp.log(jnp.pi)
+    return log_density
 
 def calculate_drift_y(cond_sde: CondSDE, sde_state: SDEState, design: Array, y: Array):
     r"""
