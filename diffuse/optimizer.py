@@ -71,7 +71,9 @@ def update_joint(
 ):
     r"""
     simulate \theta according to conditional sde:
+    \(
     \theta_{t+dt} = \[ -\beta(t) / 2 \theta_t - \beta(t) \nabla_\theta log p(y^t_past | \theta_t, \xi_past) - \beta(t) \nabla_\theta \log p(\theta_t) \]dt + \sqrt(\beta(t) )DWt
+    \)
     """
     drift_past = calculate_past_contribution_score(
         cond_sde, sde_state, mask_history, ys
@@ -104,7 +106,10 @@ def update_expected_posterior(
 ):
     r"""
     simulate \theta according to conditional sde for expected posterior:
-    \theta_{t+dt} = \[ -\beta(t) / 2 \theta_t - \beta(t) \nabla_\theta log p(y_past^t | \theta_t, \xi_past) - \beta(t) \sum_1^N \nabla_\theta log p(y_i^t | \theta_t, \xi) / N - \beta(t) \nabla_\theta \log p(\theta_t) \]dt + \sqrt(\beta(t) )DWt
+    .. math::
+        $$
+        \theta_{t+dt} = \[ -\beta(t) / 2 \theta_t - \beta(t) \nabla_\theta log p(y_past^t | \theta_t, \xi_past) - \beta(t) \sum_1^N \nabla_\theta log p(y_i^t | \theta_t, \xi) / N - \beta(t) \nabla_\theta \log p(\theta_t) \]dt + \sqrt(\beta(t) )DWt
+        $$
     """
     drift_past = calculate_past_contribution_score(
         cond_sde, cntrst_sde_state, mask_history, y_measured
@@ -275,7 +280,7 @@ def impl_one_step(
         return (SDEState(positions, t + dt), weights), (positions, weights)
 
     ((cntrst_thetas, _), weights) = step_expected_posterior(
-        cntrst_sde_state, ys, ys_next, past_y_next.position, key_cntrst
+        cntrst_sde_state, ys, ys_next, past_y.position, key_cntrst
     )
 
     # get EIG gradient estimator

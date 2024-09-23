@@ -36,7 +36,7 @@ def initialize_experiment(key: PRNGKeyArray):
 
     # Initialize parameters
     tf = 2.0
-    n_t = 500
+    n_t = 300
 
     # Define beta schedule and SDE
     beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
@@ -55,7 +55,7 @@ def initialize_experiment(key: PRNGKeyArray):
     mask = SquareMask(10, ground_truth.shape)
 
     # Set up conditional SDE
-    cond_sde = CondSDE(beta=beta, mask=mask, tf=2.0, score=nn_score)
+    cond_sde = CondSDE(beta=beta, mask=mask, tf=tf, score=nn_score)
     sde = SDE(beta=beta)
 
     return sde, cond_sde, mask, ground_truth, tf, n_t, nn_score
@@ -130,6 +130,8 @@ def optimize_design_one_step(
     new_state, hist = jax.lax.scan(
         step, implicit_state, (jnp.arange(0, opt_steps), y, y_next, keys_opt)
     )
+    plt.imshow(new_state.thetas[0], cmap="gray")
+    plt.show()
     thetas, cntrst_thetas, design_hist = hist
     state = ImplicitState(thetas, cntrst_thetas, new_state.design, new_state.opt_state)
     return state, design_hist
@@ -230,15 +232,7 @@ def main(key):
     plt.imshow(mask_history, cmap="gray")
     plt.show()
     # design_step = jax.jit(partial(optimize_design, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde))
-    design_step = jax.jit(
-        partial(
-            optimize_design_one_step,
-            optimizer=optimizer,
-            ts=ts,
-            dt=dt,
-            cond_sde=cond_sde,
-        )
-    )
+    design_step = partial(optimize_design_one_step, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde)
     for n_meas in range(num_meas):
         key_noise, key_opt, key_gen = jax.random.split(key_step, 3)
         # make noised path for measurements
@@ -248,6 +242,7 @@ def main(key):
             keys_noise, state_0, ts
         )
         past_y = SDEState(past_y.position[::-1], past_y.t)
+        plotter_line(past_y.position)
 
         # optimize design
         optimal_state, hist_implicit = design_step(
@@ -281,8 +276,9 @@ def main(key):
         plt.show()
 
         print(jnp.max(joint_y))
-        for i in range(20):
+        for i in range(10):
            plotter_line(optimal_state.thetas[:, i])
+           plotter_line(optimal_state.cntrst_thetas[:, i])
 
         # reinitiazize implicit state
         design = jax.random.uniform(key_step, (2,), minval=0, maxval=28)
