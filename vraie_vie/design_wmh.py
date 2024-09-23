@@ -286,7 +286,7 @@ def main(key):
         fig, axs = plt.subplots(1, 2)
         ax1, ax2 = axs
         ax1.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
-        ax1.imshow(ground_truth, cmap="gray")
+        ax1.imshow(ground_truth[..., 0], cmap="gray")
         ax2.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
         ax2.imshow(joint_y, cmap="gray")
 
