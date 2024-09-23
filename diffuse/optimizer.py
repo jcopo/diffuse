@@ -50,7 +50,9 @@ def information_gain(theta: Array, cntrst_theta: Array, design: Array, cond_sde)
 
     weighted_logprobs = jnp.mean(log_weights + logprob_target, axis=1)
 
-    return (logprob_ref - weighted_logprobs).mean() - (design ** 2).mean(), y_ref # Test penalité
+    return (logprob_ref - weighted_logprobs).mean() - (
+        design**2
+    ).mean(), y_ref  # Test penalité
     # return (logprob_ref - logprob_means).mean(), y_ref
 
 

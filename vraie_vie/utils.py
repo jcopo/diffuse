@@ -120,19 +120,20 @@ class maskSpiral:
     k_max: float
     sigma: float
 
-    def make(self, fov: float):
+    def make(self, sq_fov: float):
+        fov = sq_fov**2
         kx, ky = generate_spiral_2D(self.num_spiral, self.num_samples, self.k_max, fov)
         return grid(kx, ky, self.img_shape, self.sigma)
 
-    def measure(self, fov: float, x: Array):
-        mask = self.make(fov)
+    def measure(self, sq_fov: float, x: Array):
+        mask = self.make(sq_fov)
         fourier_x = mask * slice_fourier(x[..., 0])
         zero_channel = jnp.zeros_like(fourier_x)
         return jnp.stack([fourier_x, zero_channel], axis=-1)
 
-    def restore(self, fov: float, x: Array, measured: Array):
+    def restore(self, sq_fov: float, x: Array, measured: Array):
         # On crée le masque inverse
-        inv_mask = 1 - self.make(fov)
+        inv_mask = 1 - self.make(sq_fov)
 
         # On calcule la transformée de Fourier de l'image
         fourier_x = slice_fourier(x[..., 0])

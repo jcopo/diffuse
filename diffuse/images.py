@@ -14,6 +14,28 @@ from dataclasses import dataclass
 from jaxtyping import PyTreeDef, PRNGKeyArray, Array
 
 
+def plotter_line(array):
+    total_frames = len(array)
+
+    # Define the fractions
+    fractions = [0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
+    n = len(fractions)
+    # Create a figure with subplots
+    fig, axs = plt.subplots(1, n, figsize=(n * 3, n))
+
+    for idx, fraction in enumerate(fractions):
+        # Calculate the frame index
+        frame_index = int(fraction * total_frames)
+
+        # Plot the image
+        axs[idx].imshow(array[frame_index], cmap="gray")
+        axs[idx].set_title(f"Frame at {fraction*100}% of total")
+        axs[idx].axis("off")  # Turn off axis labels
+
+    plt.tight_layout()
+    plt.show()
+
+
 @dataclass
 class SquareMask:
     size: int
@@ -25,8 +47,8 @@ class SquareMask:
         y, x = jnp.mgrid[:height, :width]
 
         # Calculate distances from the center
-        y_dist = jnp.abs(y - xi[0])
-        x_dist = jnp.abs(x - xi[1])
+        y_dist = jnp.abs(y - xi[1])
+        x_dist = jnp.abs(x - xi[0])
 
         # Create a soft mask using sigmoid function
         mask_half_size = self.size // 2
@@ -38,12 +60,18 @@ class SquareMask:
         # return jnp.where(mask > 0.5, 1.0, 0.0)[..., None]
         return mask[..., None]
 
+    def measure_from_mask(self, hist_mask: Array, img: Array):
+        return img * hist_mask
+
+    def restore_from_mask(self, hist_mask: Array, img: Array, measured: Array):
+        return img * hist_mask + measured
+
     def measure(self, xi: Array, img: Array):
-        return img * self.make(xi)
+        return self.measure_from_mask(self.make(xi), img)
 
     def restore(self, xi: Array, img: Array, measured: Array):
         inv_mask = 1 - self.make(xi)
-        return img * inv_mask + measured
+        return self.restore_from_mask(inv_mask, img, measured)
 
 
 if __name__ == "__main__":
@@ -55,11 +83,21 @@ if __name__ == "__main__":
     # x = jax.random.normal(jax.random.PRNGKey(0), x.shape)
 
     mask = SquareMask(10, x.shape)
-    xi = jnp.array([10.0, 20.0])
+    xi = jnp.array([15.0, 15.0])
+    xi2 = jnp.array([20.0, 10.0])
+
+    mask_history = mask.restore(xi2, mask.make(xi), mask.make(xi2))
+    print(jnp.max(mask_history))
+    plt.imshow(mask_history, cmap="gray")
+    plt.scatter(xi[0], xi[1], color="red")
+    plt.scatter(xi2[0], xi2[1], color="red")
+    plt.show()
+
     # Create a figure with 2 row and 3 columns
     fig, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2, 3, figsize=(15, 10))
 
     # Plot the first image
+    ax1.scatter(xi[0], xi[1], color="red")
     im1 = ax1.imshow(mask.make(xi), cmap="gray")
     ax1.set_title("Measured")
     ax1.axis("off")
