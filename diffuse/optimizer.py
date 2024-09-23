@@ -74,7 +74,18 @@ def update_expected_posterior(cntrst_sde_state, ys, ys_next, y_measured, key, co
 
     return positions
 
+def calculate_and_apply_gradient(thetas, cntrst_thetas, design, cond_sde, optx_opt, opt_state):
+    grad_xi_score = jax.grad(information_gain, argnums=2, has_aux=True)
+    grad_xi, ys = grad_xi_score(thetas[-1], cntrst_thetas, design, cond_sde)
+    updates, new_opt_state = optx_opt.update(grad_xi, opt_state, design)
+    new_design = optax.apply_updates(design, updates)
+    return new_design, new_opt_state, ys
+
+
 def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, mask_history:Array, cond_sde:CondSDE, optx_opt:GradientTransformation, ts:Array, dt:float):
+    """
+    Implicit step with parallel update
+    """
 
     thetas, cntrst_thetas, design, opt_state = state
     sde_state = SDEState(thetas, ts)
@@ -116,77 +127,64 @@ def impl_step(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, mask_his
     # get EIG gradient estimator
     #  1 - evaluate score_f on thetas and contrastives_theta
     #  2 - update design parameters with optax
-    grad_xi_score = jax.grad(information_gain, argnums=2, has_aux=True)
-    grad_xi, ys = grad_xi_score(
-        thetas[-1], cntrst_thetas[-1], design, cond_sde
-    )
-    updates, opt_state = optx_opt.update(grad_xi, opt_state, design)
-    design = optax.apply_updates(design, updates)
+    design, opt_state, ys = calculate_and_apply_gradient(thetas[-1], cntrst_thetas[-1], design, cond_sde, optx_opt, opt_state)
 
     return ImplicitState(thetas, cntrst_thetas, design, opt_state)
 
 
-def impl_one_step(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, mask_history:Array, cond_sde:CondSDE, optx_opt:GradientTransformation, ts:Array, dt:float):
-
+def impl_one_step(state:ImplicitState, rng_key: PRNGKeyArray, y:SDEState, y_next:SDEState, mask_history:Array, cond_sde:CondSDE, optx_opt:GradientTransformation):
+    """
+    Implicit step with one step update
+    Must use same optimization steps as time steps
+    """
+    dt = y_next.t - y.t
     thetas, cntrst_thetas, design, opt_state = state
-    n_particles = thetas.shape[1]
-    n_cntrst_particles = cntrst_thetas.shape[1]
-    sde_state = SDEState(thetas, 0.)
-    cntrst_sde_state = SDEState(cntrst_thetas, 0.)
+    sde_state = SDEState(thetas, y.t)
+    cntrst_sde_state = SDEState(cntrst_thetas, y.t)
 
     # update joint distribution
     #   1 - conditional sde on joint -> samples theta
     #   2 - get values y from samples of joint
-    key_theta, key_cntrst = jax.random.split(rng_key)
+    key_joint, key_cntrst = jax.random.split(rng_key, 2)
 
-    def step_joint(state, itr):
-        sde_state, weights = state
-        ys, ys_next, key = itr
+    def step_joint(sde_state, ys, ys_next, key):
         _, t = sde_state
-        positions = update_joint(sde_state, ys, ys_next, key, cond_sde, mask_history, dt)
+        positions, weights = update_joint(sde_state, ys, ys_next, key, cond_sde, mask_history, dt)
+
         return (SDEState(positions, t + dt), weights), (positions, weights)
 
-    keys_time = jax.random.split(key_theta, ts.shape[0]-1)
-    position, weights = step_joint((sde_state, jnp.zeros((n_particles,))), (past_y.position[:-1], past_y.position[1:], keys_time))
+    (thetas, _), weights = step_joint(sde_state, y.position, y_next.position, key_joint)
 
     # get ys
-    ys = jax.vmap(cond_sde.mask.measure, in_axes=(None, 0))(design, thetas)
-    #keys = jax.random.split(key_y, ts.shape[0])
-    #ys = jax.vmap(cond_sde.path, in_axes=(0, 0, 0))(keys, state, ts)
+    y_measured = cond_sde.mask.measure(design, thetas.position)
+
 
     # update expected posterior
     #   1 - use y values to update post
     #   2 - Get samples contrastive theta
-    def step_expected_posterior(state, itr):
-        cntrst_sde_state, weights = state
+    def step_expected_posterior(cntrst_sde_state, ys, ys_next, y_measured, key):
         _, t = cntrst_sde_state
-        ys, ys_next, y_measured, key = itr
-        positions = update_expected_posterior(cntrst_sde_state, ys, ys_next, y_measured, key, cond_sde, mask_history, design, dt)
+        positions, weights = update_expected_posterior(cntrst_sde_state, ys, ys_next, y_measured, key, cond_sde, mask_history, design, dt)
+
         return (SDEState(positions, t + dt), weights), (positions, weights)
 
-    keys_time_c = jax.random.split(key_cntrst, ts.shape[0]-1)
-    cntrst_sde_state = jax.tree_map(lambda x: x[1:], cntrst_sde_state)
-    #pdb.set_trace()
 
-    n_particles = cntrst_thetas.shape[1]
-    position, weights = step_expected_posterior((cntrst_sde_state, jnp.zeros((n_cntrst_particles,))), (ys[:-1], ys[1:], past_y.position[1:], keys_time_c))
-    cntrst_thetas = jnp.concatenate([cntrst_thetas[:1], position])
+
+    ((cntrst_thetas, _), weights) = step_expected_posterior(cntrst_sde_state, y.position, y_next.position, y_measured, key_cntrst)
 
 
     # get EIG gradient estimator
     #  1 - evaluate score_f on thetas and contrastives_theta
     #  2 - update design parameters with optax
-    grad_xi_score = jax.grad(information_gain, argnums=2, has_aux=True)
-    grad_xi, ys = grad_xi_score(
-        thetas[-1], cntrst_thetas[-1], design, cond_sde
-    )
-    updates, opt_state = optx_opt.update(grad_xi, opt_state, design)
-    design = optax.apply_updates(design, updates)
+    design, opt_state, ys = calculate_and_apply_gradient(thetas, cntrst_thetas, design, cond_sde, optx_opt, opt_state)
 
     return ImplicitState(thetas, cntrst_thetas, design, opt_state)
 
 
 def impl_full_scan(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, mask_history:Array, cond_sde:CondSDE, optx_opt:GradientTransformation, ts:Array, dt:float):
+    """
+    Implicit step with full scan
+    """
 
     thetas, cntrst_thetas, design, opt_state = state
     n_particles = thetas.shape[0]
@@ -244,11 +242,6 @@ def impl_full_scan(state:ImplicitState, rng_key: PRNGKeyArray, past_y:Array, mas
     # get EIG gradient estimator
     #  1 - evaluate score_f on thetas and contrastives_theta
     #  2 - update design parameters with optax
-    grad_xi_score = jax.grad(information_gain, argnums=2, has_aux=True)
-    grad_xi, ys = grad_xi_score(
-        thetas[-1], cntrst_thetas, design, cond_sde
-    )
-    updates, opt_state = optx_opt.update(grad_xi, opt_state, design)
-    design = optax.apply_updates(design, updates)
+    design, opt_state, ys = calculate_and_apply_gradient(thetas, cntrst_thetas, design, cond_sde, optx_opt, opt_state)
 
     return ImplicitState(thetas, cntrst_thetas, design, opt_state)

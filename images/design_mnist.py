@@ -86,6 +86,32 @@ def optimize_design(
     return new_state, hist_design
 
 
+def optimize_design_one_step(
+    key_step: PRNGKeyArray,
+    implicit_state: ImplicitState,
+    past_y: Array,
+    mask_history: Array,
+    optimizer: GradientTransformation,
+    ts: Array,
+    dt: float,
+    cond_sde: CondSDE,
+):
+    opt_steps = ts.shape[0] - 1
+    keys_opt = jax.random.split(key_step, opt_steps)
+
+    @scan_tqdm(opt_steps)
+    def step(new_state, tup):
+        _, y, y_next, key = tup
+        new_state = impl_one_step(new_state, key, y, y_next, mask_history, cond_sde=cond_sde, optx_opt=optimizer)
+
+        return new_state, new_state.design
+
+    y = jax.tree.map(lambda x: x[:-1], past_y)
+    y_next = jax.tree.map(lambda x: x[1:], past_y)
+    new_state, hist_design = jax.lax.scan(step, implicit_state, (jnp.arange(0, opt_steps), y, y_next, keys_opt))
+
+    return new_state, hist_design
+
 def init_trajectory(key_init, sde, nn_score, n_samples, n_samples_cntrst, tf, ts, dts, ground_truth_shape):
     """
     Unitialize full trajectory for conditional sampling using parallel update from Marion et al 2024
@@ -101,7 +127,7 @@ def init_trajectory(key_init, sde, nn_score, n_samples, n_samples_cntrst, tf, ts
     # Make right shape
     keys = jax.random.split(key_init, n_samples + n_samples_cntrst)
     _, state_Ts = jax.vmap(revert_sde)(keys, state_f)
-    state_Ts = jax.tree_map(lambda arr: einops.rearrange(arr, 'n h ... -> h n ...'), state_Ts)
+    state_Ts = jax.tree.map(lambda arr: einops.rearrange(arr, 'n h ... -> h n ...'), state_Ts)
 
     # Init thetas
     thetas = state_Ts.position[:, :n_samples]
@@ -127,8 +153,8 @@ def main(key):
     sde, cond_sde, mask, ground_truth, tf, n_t, nn_score = initialize_experiment(key_init)
     dt = tf / (n_t - 1)
     num_meas = 6
-    n_samples = 30
-    n_samples_cntrst = 40
+    n_samples = 10
+    n_samples_cntrst = 20
 
     # Time initialization (kept outside the function)
     ts = jnp.linspace(0, tf, n_t)
@@ -159,6 +185,7 @@ def main(key):
     plt.imshow(mask_history, cmap="gray")
     plt.show()
     design_step = jax.jit(partial(optimize_design, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde))
+    # design_step = jax.jit(partial(optimize_design_one_step, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde))
     for n_meas in range(num_meas):
 
         key_noise, key_opt, key_gen = jax.random.split(key_step, 3)
