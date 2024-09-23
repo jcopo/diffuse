@@ -274,7 +274,7 @@ def main(key):
 
         # add measured data to joint_y and update history of mask location
         joint_y = cond_sde.mask.restore(optimal_state.design, joint_y, new_measurement)
-        mask_history = cond_sde.mask.restore(
+        mask_history = cond_sde.mask.supp_mask(
             optimal_state.design, mask_history, cond_sde.mask.make(optimal_state.design)
         )
         plt.imshow(mask_history, cmap="gray")
