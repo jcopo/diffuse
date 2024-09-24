@@ -199,8 +199,8 @@ def main(key):
     )
     dt = tf / (n_t - 1)
     num_meas = 6
-    n_samples = 10
-    n_samples_cntrst = 20
+    n_samples = 40
+    n_samples_cntrst = 41
 
     # Time initialization (kept outside the function)
     ts = jnp.linspace(0, tf, n_t)
@@ -214,7 +214,7 @@ def main(key):
     measurement_history = measurement_history.at[0].set(y)
 
     # init optimizer
-    optimizer = optax.chain(optax.adam(learning_rate=1e-2), optax.scale(-1))
+    optimizer = optax.chain(optax.adam(learning_rate=1e0), optax.scale(-1))
     opt_state = optimizer.init(design)
 
     ts = jnp.linspace(0, tf, n_t)
@@ -229,7 +229,18 @@ def main(key):
     # stock in joint_y all measurements
     joint_y = y
     mask_history = mask.make(design)
-    plt.imshow(mask_history, cmap="gray")
+    fig, axs = plt.subplots(1, 3)
+    ax1, ax2, ax3 = axs
+    ax1.axis("off")
+    ax2.axis("off")
+    ax3.axis("off")
+    ax1.set_title("Ground truth")
+    ax2.set_title("Mesure")
+    ax3.set_title("Mask")
+    ax1.imshow(ground_truth, cmap="gray")
+    ax2.imshow(joint_y, cmap="gray")
+    ax3.imshow(mask_history, cmap="gray")
+
     plt.show()
     # design_step = jax.jit(partial(optimize_design, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde))
     design_step = partial(optimize_design_one_step, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde)
@@ -259,26 +270,38 @@ def main(key):
         mask_history = cond_sde.mask.restore(
             optimal_state.design, mask_history, cond_sde.mask.make(optimal_state.design)
         )
-        plt.imshow(mask_history, cmap="gray")
+        #plt.imshow(mask_history, cmap="gray")
 
         print(joint_y[10, 20])
 
         # logging
         print(f"Design_start: {design} Design_end:{optimal_state.design}")
-        fig, axs = plt.subplots(1, 2)
-        ax1, ax2 = axs
+        fig, axs = plt.subplots(1, 3)
+        ax1, ax2, ax3 = axs
+        ax1.axis("off")
+        ax2.axis("off")
+        ax3.axis("off")
+        ax1.set_title("Ground truth")
+        ax2.set_title("Mesure")
+        ax3.set_title("Mask")
+
+
         ax1.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
         ax1.imshow(ground_truth, cmap="gray")
-        ax2.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
+        #ax2.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
         ax2.imshow(joint_y, cmap="gray")
+        ax3.imshow(mask_history, cmap="gray")
 
         plt.tight_layout()
         plt.show()
 
         print(jnp.max(joint_y))
-        for i in range(10):
-           plotter_line(optimal_state.thetas[:, i])
-           plotter_line(optimal_state.cntrst_thetas[:, i])
+        plotter_line(optimal_state.thetas[-1, :])
+        plotter_line(optimal_state.cntrst_thetas[-1, :])
+
+        #for i in range(10):
+        #   plotter_line(optimal_state.thetas[:, i])
+        #   plotter_line(optimal_state.cntrst_thetas[:, i])
 
         # reinitiazize implicit state
         design = jax.random.uniform(key_step, (2,), minval=0, maxval=28)

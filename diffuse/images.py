@@ -29,9 +29,9 @@ def plotter_line(array):
 
         # Plot the image
         axs[idx].imshow(array[frame_index], cmap="gray")
-        axs[idx].set_title(f"Frame at {fraction*100}% of total")
+        #axs[idx].set_title(f"Frame at {fraction*100}% of total")
         axs[idx].axis("off")  # Turn off axis labels
-
+    #plt.title("Samples")
     plt.tight_layout()
     plt.show()
 
