@@ -79,7 +79,7 @@ def initialize_experiment(key: PRNGKeyArray):
 
     # Set up mask and measurement
     ground_truth = jax.random.choice(key, xs)
-    mask = SquareMask(10, ground_truth.shape)
+    mask = SquareMask(4, ground_truth.shape)
 
     # Set up conditional SDE
     cond_sde = CondSDE(beta=beta, mask=mask, tf=tf, score=nn_score)
@@ -157,8 +157,7 @@ def optimize_design_one_step(
     new_state, hist = jax.lax.scan(
         step, implicit_state, (jnp.arange(0, opt_steps), y, y_next, keys_opt)
     )
-    plt.imshow(new_state.thetas[0], cmap="gray")
-    plt.show()
+
     thetas, cntrst_thetas, design_hist = hist
     state = ImplicitState(thetas, cntrst_thetas, new_state.design, new_state.opt_state)
     return state, design_hist
@@ -225,9 +224,9 @@ def main(key):
         key_init
     )
     dt = tf / (n_t - 1)
-    num_meas = 6
-    n_samples = 40
-    n_samples_cntrst = 41
+    num_meas = 20
+    n_samples = 200
+    n_samples_cntrst = 200
 
     # Time initialization (kept outside the function)
     ts = jnp.linspace(0, tf, n_t)
@@ -241,7 +240,7 @@ def main(key):
     measurement_history = measurement_history.at[0].set(y)
 
     # init optimizer
-    optimizer = optax.chain(optax.adam(learning_rate=1e0), optax.scale(-1))
+    optimizer = optax.chain(optax.adam(learning_rate=9e-1), optax.scale(-1))
     opt_state = optimizer.init(design)
 
     ts = jnp.linspace(0, tf, n_t)
@@ -267,6 +266,7 @@ def main(key):
     ax1.imshow(ground_truth, cmap="gray")
     ax2.imshow(joint_y, cmap="gray")
     ax3.imshow(mask_history, cmap="gray")
+    #jax.experimental.io_callback(plot_results, None, opt_hist, ground_truth, joint_y, mask_history, thetas, cntrst_thetas)
 
     plt.show()
     # design_step = jax.jit(partial(optimize_design, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde))
