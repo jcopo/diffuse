@@ -1,6 +1,7 @@
 from functools import partial
 from typing import Tuple
 import jax
+import jax.experimental
 import jax.numpy as jnp
 import numpy as np
 import optax
@@ -20,14 +21,40 @@ from diffuse.unet import UNet
 import pdb
 
 
-# import os
-# os.environ['XLA_FLAGS'] = (
-#     '--xla_gpu_enable_triton_softmax_fusion=True '
-#     '--xla_gpu_triton_gemm_any=True '
-#     '--xla_gpu_enable_async_collectives=True '
-#     '--xla_gpu_enable_latency_hiding_scheduler=True '
-#     '--xla_gpu_enable_highest_priority_async_stream=True '
-# )
+def plot_results(opt_hist, ground_truth, joint_y, mask_history, thetas, cntrst_thetas):
+    total_frames = len(thetas)
+
+    # Define the fractions
+    fractions = [0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
+    n = len(fractions)
+    # Create a figure with subplots
+    fig, axs = plt.subplots(1, 3 + n, figsize=((3 + n) * 3, n + 3))
+    for idx, fraction in enumerate(fractions):
+        # Calculate the frame index
+        frame_index = int(fraction * total_frames)
+
+        # Plot the image
+        axs[3 + idx].imshow(thetas[frame_index], cmap="gray")
+        #axs[idx].set_title(f"Frame at {fraction*100}% of total")
+        axs[3 + idx].axis("off")  # Turn off axis labels
+
+    ax1, ax2, ax3 = axs[:3]
+    ax1.axis("off")
+    ax2.axis("off")
+    ax3.axis("off")
+    ax1.set_title("Ground truth")
+    ax2.set_title("Mesure")
+    ax3.set_title("Mask")
+
+    ax1.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
+    ax1.imshow(ground_truth, cmap="gray")
+    #ax2.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
+    ax2.imshow(joint_y, cmap="gray")
+    ax3.imshow(mask_history, cmap="gray")
+    plt.tight_layout()
+    plt.show()
+
+
 def initialize_experiment(key: PRNGKeyArray):
     # Load MNIST dataset
     data = np.load("dataset/mnist.npz")
@@ -253,7 +280,7 @@ def main(key):
             keys_noise, state_0, ts
         )
         past_y = SDEState(past_y.position[::-1], past_y.t)
-        plotter_line(past_y.position)
+        #plotter_line(past_y.position)
 
         # optimize design
         optimal_state, hist_implicit = design_step(
@@ -276,24 +303,10 @@ def main(key):
 
         # logging
         print(f"Design_start: {design} Design_end:{optimal_state.design}")
-        fig, axs = plt.subplots(1, 3)
-        ax1, ax2, ax3 = axs
-        ax1.axis("off")
-        ax2.axis("off")
-        ax3.axis("off")
-        ax1.set_title("Ground truth")
-        ax2.set_title("Mesure")
-        ax3.set_title("Mask")
+
+        jax.experimental.io_callback(plot_results, None, opt_hist, ground_truth, joint_y, mask_history, optimal_state.thetas[-1, :], optimal_state.cntrst_thetas[-1, :])
 
 
-        ax1.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
-        ax1.imshow(ground_truth, cmap="gray")
-        #ax2.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
-        ax2.imshow(joint_y, cmap="gray")
-        ax3.imshow(mask_history, cmap="gray")
-
-        plt.tight_layout()
-        plt.show()
 
         print(jnp.max(joint_y))
         plotter_line(optimal_state.thetas[-1, :])
