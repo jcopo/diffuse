@@ -67,6 +67,7 @@ def update_joint(
     key: PRNGKeyArray,
     cond_sde: CondSDE,
     mask_history: Array,
+    design: Array,
     dt: float,
 ):
     r"""
@@ -82,6 +83,7 @@ def update_joint(
         logpdf_change_y,
         y=ys,
         y_next=ys_next,
+        design=design,
         drift_y=drift_past,
         cond_sde=cond_sde,
         dt=dt,
@@ -119,6 +121,7 @@ def update_expected_posterior(
         logpdf_change_expected,
         y=ys,
         y_next=ys_next,
+        design=design,
         drift_y=drift_past,
         cond_sde=cond_sde,
         dt=dt,
@@ -248,7 +251,7 @@ def impl_one_step(
     def step_joint(sde_state, ys, ys_next, key):
         _, t = sde_state
         positions, weights = update_joint(
-            sde_state, ys, ys_next, key, cond_sde, mask_history, dt
+            sde_state, ys, ys_next, key, cond_sde, mask_history, design, dt
         )
 
         return (SDEState(positions, t + dt), weights), (positions, weights)
