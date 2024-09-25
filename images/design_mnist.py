@@ -225,8 +225,8 @@ def main(key):
     )
     dt = tf / (n_t - 1)
     num_meas = 20
-    n_samples = 200
-    n_samples_cntrst = 200
+    n_samples = 150
+    n_samples_cntrst = 151
 
     # Time initialization (kept outside the function)
     ts = jnp.linspace(0, tf, n_t)
