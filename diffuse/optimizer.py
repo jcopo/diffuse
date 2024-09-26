@@ -12,7 +12,7 @@ import einops
 
 from diffuse.conditional import CondSDE
 from diffuse.sde import SDEState, euler_maryama_step
-from diffuse.filter import stratified
+from blackjax.smc.resampling import stratified
 from diffuse.inference import (
     calculate_past_contribution_score,
     calculate_drift_expt_post,
@@ -50,10 +50,7 @@ def information_gain(theta: Array, cntrst_theta: Array, design: Array, cond_sde)
 
     weighted_logprobs = jnp.mean(log_weights + logprob_target, axis=1)
 
-    return (logprob_ref - weighted_logprobs).mean() - (
-        design**2
-    ).mean(), y_ref  # Test penalité
-    # return (logprob_ref - logprob_means).mean(), y_ref
+    return (logprob_ref - weighted_logprobs).mean(), y_ref
 
 
 def update_joint(
@@ -63,6 +60,7 @@ def update_joint(
     key: PRNGKeyArray,
     cond_sde: CondSDE,
     mask_history: Array,
+    design: Array,
     dt: float,
 ):
     r"""
@@ -78,6 +76,7 @@ def update_joint(
         logpdf_change_y,
         y=ys,
         y_next=ys_next,
+        design=design,
         drift_y=drift_past,
         cond_sde=cond_sde,
         dt=dt,
@@ -115,6 +114,7 @@ def update_expected_posterior(
         logpdf_change_expected,
         y=ys,
         y_next=ys_next,
+        design=design,
         drift_y=drift_past,
         cond_sde=cond_sde,
         dt=dt,
@@ -244,7 +244,7 @@ def impl_one_step(
     def step_joint(sde_state, ys, ys_next, key):
         _, t = sde_state
         positions, weights = update_joint(
-            sde_state, ys, ys_next, key, cond_sde, mask_history, dt
+            sde_state, ys, ys_next, key, cond_sde, mask_history, design, dt
         )
 
         return (SDEState(positions, t + dt), weights), (positions, weights)

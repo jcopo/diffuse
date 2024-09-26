@@ -1,8 +1,11 @@
-from dataclasses import dataclass
-from functools import partial
+import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray, Array
+from functools import partial
+from dataclasses import dataclass
 from typing import Callable
 
 
@@ -37,7 +40,7 @@ def gaussian_kernel(kx_i, ky_i, x, y, sigma=0.3):
 
 
 @partial(jax.jit, static_argnums=(2,))
-def grid(kx, ky, size, sigma=0.3, sharpness=10.0):
+def grid(kx, ky, size, sigma=0.3, sharpness=400.0):
     y, x = jnp.mgrid[0 : size[0], 0 : size[1]]
     y = y.astype(float)
     x = x.astype(float)
@@ -49,7 +52,7 @@ def grid(kx, ky, size, sigma=0.3, sharpness=10.0):
 
     grid = gaussian_kernel(kx_scaled, ky_scaled, x, y, sigma).sum(axis=0)
 
-    grid = jax.nn.sigmoid(sharpness * (grid - 0.1))
+    grid = jax.nn.sigmoid(sharpness * (grid - 1))
     return grid
 
 
@@ -58,22 +61,22 @@ class maskSpiral:
     img_shape: tuple
     num_spiral: int
     num_samples: int
-    k_max: float
     sigma: float
 
-    def make(self, sq_fov: float):
-        fov = sq_fov**2
-        kx, ky = generate_spiral_2D(self.num_spiral, self.num_samples, self.k_max, fov)
+    def make(self, xi: float):
+        fov = xi[0] ** 2
+        k_max = xi[1]
+        kx, ky = generate_spiral_2D(self.num_spiral, self.num_samples, k_max, fov)
         return grid(kx, ky, self.img_shape, self.sigma)
 
     def measure_from_mask(self, hist_mask: Array, x: Array):
         fourier_x = hist_mask * slice_fourier(x[..., 0])
         zero_channel = jnp.zeros_like(fourier_x)
         return jnp.stack([fourier_x, zero_channel], axis=-1)
-    
-    def measure(self, sq_fov: float, x: Array):
-        return self.measure_from_mask(self.make(sq_fov), x)
-    
+
+    def measure(self, xi: float, x: Array):
+        return self.measure_from_mask(self.make(xi), x)
+
     def restore_from_mask(self, hist_mask: Array, x: Array, measured: Array):
         # On crée le masque inverse
         inv_mask = 1 - hist_mask
@@ -93,9 +96,63 @@ class maskSpiral:
 
         return final
 
-    def restore(self, sq_fov: float, x: Array, measured: Array):
-        return self.restore_from_mask(self.make(sq_fov), x, measured)
-    
-    def supp_mask(self, sq_fov: float, hist_mask: Array, new_mask: Array):
-        inv_mask = 1 - self.make(sq_fov)
+    def restore(self, xi: float, x: Array, measured: Array):
+        return self.restore_from_mask(self.make(xi), x, measured)
+
+    def supp_mask(self, xi: float, hist_mask: Array, new_mask: Array):
+        inv_mask = 1 - self.make(xi)
         return hist_mask * inv_mask + new_mask
+
+    def supp_measure(self, sq_fov: float, old_measure: Array, new_measure: Array):
+        inv_mask = 1 - self.make(sq_fov)
+        supp = old_measure[..., 0] * inv_mask + new_measure[..., 0]
+        return jnp.stack([supp, old_measure[..., 1]], axis=-1)
+
+
+def plotter_line_measure(array):
+    total_frames = len(array)
+
+    # Define the fractions
+    fractions = [0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
+    n = len(fractions)
+    # Create a figure with subplots
+    fig, axs = plt.subplots(1, n, figsize=(n * 3, n))
+
+    for idx, fraction in enumerate(fractions):
+        # Calculate the frame index
+        frame_index = int(fraction * total_frames)
+
+        # Plot the image
+        axs[idx].imshow(array[frame_index][..., 0], cmap="gray")
+        axs[idx].set_title(f"Frame at {fraction*100}% of total")
+        axs[idx].axis("off")  # Turn off axis labels
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plotter_line_obs(array):
+    total_frames = len(array)
+
+    # Define the fractions
+    fractions = [0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
+    n = len(fractions)
+    # Create a figure with subplots
+    fig, axs = plt.subplots(1, n, figsize=(n * 3, n))
+
+    for idx, fraction in enumerate(fractions):
+        # Calculate the frame index
+        frame_index = int(fraction * total_frames)
+
+        # Plot the image
+        y = np.real(np.abs(array[frame_index][..., 0]))
+        axs[idx].imshow(
+            y,
+            cmap="gray",
+            norm=matplotlib.colors.LogNorm(vmin=np.min(y), vmax=np.max(y)),
+        )
+        axs[idx].set_title(f"Frame at {fraction*100}% of total")
+        axs[idx].axis("off")  # Turn off axis labels
+
+    plt.tight_layout()
+    plt.show()

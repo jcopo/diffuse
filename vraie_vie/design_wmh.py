@@ -6,21 +6,19 @@ import numpy as np
 import optax
 from jaxtyping import Array, PRNGKeyArray
 from optax import GradientTransformation
+import matplotlib
 import matplotlib.pyplot as plt
 from jax_tqdm import scan_tqdm
 import einops
 
-from diffuse.filter import generate_cond_sample
 from diffuse.sde import SDE, SDEState
 from diffuse.conditional import CondSDE
-from diffuse.images import SquareMask, plotter_line
 from diffuse.optimizer import ImplicitState, impl_step, impl_one_step, impl_full_scan
 from diffuse.sde import LinearSchedule
 from diffuse.unet import UNet
-import pdb
 
 from vraie_vie.create_dataset import WMH
-from vraie_vie.utils import maskSpiral
+from vraie_vie.utils import maskSpiral, plotter_line_measure, plotter_line_obs
 
 import os
 
@@ -66,9 +64,7 @@ def initialize_experiment(key: PRNGKeyArray):
 
     # Set up mask and measurement
     ground_truth = next(iter(xs))[0]
-    mask = maskSpiral(
-        img_shape=(92, 112), num_spiral=1, num_samples=5000, k_max=1.0, sigma=0.2
-    )
+    mask = maskSpiral(img_shape=(92, 112), num_spiral=1, num_samples=15000, sigma=0.2)
 
     # Set up conditional SDE
     cond_sde = CondSDE(beta=beta, mask=mask, tf=tf, score=nn_score)
@@ -146,8 +142,6 @@ def optimize_design_one_step(
     new_state, hist = jax.lax.scan(
         step, implicit_state, (jnp.arange(0, opt_steps), y, y_next, keys_opt)
     )
-    plt.imshow(jnp.abs(new_state.thetas[0][..., 0]), cmap="gray")
-    plt.show()
     thetas, cntrst_thetas, design_hist = hist
     state = ImplicitState(thetas, cntrst_thetas, new_state.design, new_state.opt_state)
     return state, design_hist
@@ -215,18 +209,18 @@ def main(key):
     )
     dt = tf / (n_t - 1)
     num_meas = 6
-    n_samples = 10
-    n_samples_cntrst = 20
+    n_samples = 40
+    n_samples_cntrst = 30
 
     # Time initialization (kept outside the function)
     ts = jnp.linspace(0, tf, n_t)
     dts = jnp.diff(ts)
 
     # init design and measurement hist
-    design = jax.random.uniform(key_init, (2,), minval=1., maxval=3.)
+    design = jax.random.uniform(key_init, (2,), minval=1.0, maxval=3.0)
     y = cond_sde.mask.measure(design, ground_truth)
 
-    measurement_history = jnp.zeros((num_meas, *y.shape))
+    measurement_history = jnp.zeros((num_meas, *y.shape), dtype=jnp.complex64)
     measurement_history = measurement_history.at[0].set(y)
 
     # init optimizer
@@ -260,7 +254,7 @@ def main(key):
             keys_noise, state_0, ts
         )
         past_y = SDEState(past_y.position[::-1], past_y.t)
-        plotter_line(past_y.position)
+        plotter_line_obs(past_y.position)
 
         # optimize design
         optimal_state, hist_implicit = design_step(
@@ -273,33 +267,40 @@ def main(key):
         measurement_history = measurement_history.at[n_meas].set(new_measurement)
 
         # add measured data to joint_y and update history of mask location
-        joint_y = cond_sde.mask.restore(optimal_state.design, joint_y, new_measurement)
+        joint_y = cond_sde.mask.supp_measure(
+            optimal_state.design, joint_y, new_measurement
+        )
         mask_history = cond_sde.mask.supp_mask(
             optimal_state.design, mask_history, cond_sde.mask.make(optimal_state.design)
         )
         plt.imshow(mask_history, cmap="gray")
-
-        print(joint_y[10, 20])
+        plt.imshow(
+            joint_y[..., 0],
+            cmap="gray",
+            norm=matplotlib.colors.LogNorm(
+                vmin=np.min(joint_y) + 1e-6, vmax=np.max(joint_y)
+            ),
+        )
 
         # logging
         print(f"Design_start: {design} Design_end:{optimal_state.design}")
         fig, axs = plt.subplots(1, 2)
         ax1, ax2 = axs
-        ax1.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
         ax1.imshow(ground_truth[..., 0], cmap="gray")
-        ax2.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
-        ax2.imshow(joint_y, cmap="gray")
+        ax2.plot(opt_hist[:, 0], marker="+", label="FOV")
+        ax2.plot(opt_hist[:, 1], marker="x", label="K_max")
+        ax2.legend()
 
         plt.tight_layout()
         plt.show()
 
         print(jnp.max(joint_y))
         for i in range(10):
-            plotter_line(optimal_state.thetas[:, i])
-            plotter_line(optimal_state.cntrst_thetas[:, i])
+            plotter_line_measure(optimal_state.thetas[:, i])
+            plotter_line_measure(optimal_state.cntrst_thetas[:, i])
 
         # reinitiazize implicit state
-        design = jax.random.uniform(key_step, (2,), minval=0, maxval=28)
+        design = jax.random.uniform(key_step, (2,), minval=0, maxval=3.0)
         opt_state = optimizer.init(design)
         key_t, key_c = jax.random.split(key_gen)
         # thetas = generate_cond_sample(joint_y, optimal_state.design, key_t, cond_sde, ground_truth.shape, n_t, n_samples)[1][0]
