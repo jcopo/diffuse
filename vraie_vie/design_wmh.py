@@ -38,8 +38,7 @@ config = {
     "lr": 2e-4,
 }
 
-
-def initialize_experiment(key: PRNGKeyArray):
+def _initialize_experiment(key: PRNGKeyArray):
     wmh = WMH(config)
     wmh.setup()
     xs = wmh.get_train_dataloader()
@@ -64,6 +63,58 @@ def initialize_experiment(key: PRNGKeyArray):
 
     # Set up mask and measurement
     ground_truth = next(iter(xs))[0]
+    mask = maskSpiral(img_shape=(92, 112), num_spiral=1, num_samples=15000, sigma=0.2)
+
+    # Set up conditional SDE
+    cond_sde = CondSDE(beta=beta, mask=mask, tf=tf, score=nn_score)
+    sde = SDE(beta=beta)
+
+    return sde, cond_sde, mask, ground_truth, tf, n_t, nn_score
+
+config_jacopo = {
+    "path_img": "mni_FLAIR.nii.gz",
+    "path_mask": "mni_wmh.nii.gz",
+    "path_model": "wmh_diff.npz",
+}
+
+import torch
+import torch.nn.functional as F
+import torchio as tio
+
+def initialize_experiment(key: PRNGKeyArray):
+    img = tio.ScalarImage(config_jacopo["path_img"])
+    mask = tio.LabelMap(config_jacopo["path_mask"])
+
+    data_masked = torch.concatenate(
+                    [
+                        img[tio.DATA][0, ..., 40, None],
+                        mask[tio.DATA][0, ..., 40, None].type(torch.float32),
+                    ],
+                    dim=-1,
+                )
+
+    padding = (0, 0, 0, 3, 0, 1)
+    ground_truth = jnp.array(F.pad(data_masked, padding, "constant", 0))
+
+    # Initialize parameters
+    tf = 2.0
+    n_t = 300
+
+    # Define beta schedule and SDE
+    beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
+
+    # Initialize ScoreNetwork
+    score_net = UNet(tf / n_t, 64, upsampling="pixel_shuffle")
+    nn_trained = jnp.load(
+        config_jacopo["path_model"], allow_pickle=True
+    )
+    params = nn_trained["params"].item()
+
+    # Define neural network score function
+    def nn_score(x, t):
+        return score_net.apply(params, x, t)
+
+    # Set up mask and measurement
     mask = maskSpiral(img_shape=(92, 112), num_spiral=1, num_samples=15000, sigma=0.2)
 
     # Set up conditional SDE
@@ -318,8 +369,3 @@ def main(key):
         implicit_state = ImplicitState(thetas, cntrst_thetas, design, opt_state)
 
     return implicit_state
-
-
-if __name__ == "__main__":
-    rng_key = key = jax.random.PRNGKey(0)
-    state = main(rng_key)

@@ -136,7 +136,6 @@ def logpdf_change_y(
     x_sde_state: SDEState,
     y: Array,
     y_next: Array,
-    design: Array,
     drift_y: Array,
     cond_sde: CondSDE,
     dt,
