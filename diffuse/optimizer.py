@@ -76,7 +76,6 @@ def update_joint(
         logpdf_change_y,
         y=ys,
         y_next=ys_next,
-        design=design,
         drift_y=drift_past,
         cond_sde=cond_sde,
         dt=dt,

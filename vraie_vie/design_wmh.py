@@ -38,7 +38,7 @@ config = {
     "lr": 2e-4,
 }
 
-def _initialize_experiment(key: PRNGKeyArray):
+def initialize_experiment(key: PRNGKeyArray):
     wmh = WMH(config)
     wmh.setup()
     xs = wmh.get_train_dataloader()
@@ -81,7 +81,7 @@ import torch
 import torch.nn.functional as F
 import torchio as tio
 
-def initialize_experiment(key: PRNGKeyArray):
+def _initialize_experiment(key: PRNGKeyArray):
     img = tio.ScalarImage(config_jacopo["path_img"])
     mask = tio.LabelMap(config_jacopo["path_mask"])
 

@@ -14,15 +14,11 @@ from blackjax.smc.resampling import stratified
 
 
 def log_density_multivariate_complex_gaussian(x, mean, cov):
-    k = x.shape[0]
-
     diff = x - mean
 
-    _, logdet_cov = jnp.linalg.slogdet(cov)
+    quad_form = diff.conj() * diff / cov
 
-    quad_form = jnp.dot(jnp.dot(diff.conj().T, jnp.linalg.inv(cov)), diff)
-
-    log_density = -k * jnp.log(jnp.pi) - logdet_cov - 0.5 * quad_form
+    log_density = -jnp.log(jnp.pi) - .5 * jnp.log(cov) - 0.5 * quad_form
 
     return jnp.real(log_density)
 
@@ -55,9 +51,8 @@ def logprob_y(theta, y, design, cond_sde):
     log p(y | theta, design)
     """
     f_y = cond_sde.mask.measure(design, theta)
-    quad_form = jnp.abs(y - f_y) ** 2
-    k = y.shape[0]
-    log_density = -0.5 * quad_form - k * jnp.log(jnp.pi)
+
+    log_density = log_density_multivariate_complex_gaussian(y, f_y, 1)
     return log_density
 
 
@@ -182,7 +177,7 @@ def logpdf_change_expected(
     with y_{k-1} | y_{k}, x_k ~ N(.| y_k + rev_drift*dt, sqrt(dt)*rev_diff)
     """
     logpdf = partial(
-        logpdf_change_y, design=design, drift_y=drift_y, cond_sde=cond_sde, dt=dt
+        logpdf_change_y, drift_y=drift_y, cond_sde=cond_sde, dt=dt
     )
     logliks = jax.vmap(logpdf, in_axes=(None, 0, 0))(x_sde_state, y, y_next)
     return logliks.mean(axis=0)
