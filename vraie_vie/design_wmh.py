@@ -63,7 +63,7 @@ def initialize_experiment(key: PRNGKeyArray):
 
     # Set up mask and measurement
     ground_truth = next(iter(xs))[0]
-    mask = maskSpiral(img_shape=(92, 112), num_spiral=1, num_samples=15000, sigma=0.2)
+    mask = maskSpiral(img_shape=(92, 112), num_spiral=3, num_samples=50000, sigma=0.2)
 
     # Set up conditional SDE
     cond_sde = CondSDE(beta=beta, mask=mask, tf=tf, score=nn_score)
@@ -115,7 +115,7 @@ def _initialize_experiment(key: PRNGKeyArray):
         return score_net.apply(params, x, t)
 
     # Set up mask and measurement
-    mask = maskSpiral(img_shape=(92, 112), num_spiral=1, num_samples=15000, sigma=0.2)
+    mask = maskSpiral(img_shape=(92, 112), num_spiral=3, num_samples=50000, sigma=0.2)
 
     # Set up conditional SDE
     cond_sde = CondSDE(beta=beta, mask=mask, tf=tf, score=nn_score)
@@ -325,13 +325,6 @@ def main(key):
             optimal_state.design, mask_history, cond_sde.mask.make(optimal_state.design)
         )
         plt.imshow(mask_history, cmap="gray")
-        plt.imshow(
-            joint_y[..., 0],
-            cmap="gray",
-            norm=matplotlib.colors.LogNorm(
-                vmin=np.min(joint_y) + 1e-6, vmax=np.max(joint_y)
-            ),
-        )
 
         # logging
         print(f"Design_start: {design} Design_end:{optimal_state.design}")
