@@ -13,6 +13,20 @@ from diffuse.sde import SDEState, euler_maryama_step
 from blackjax.smc.resampling import stratified
 
 
+def log_density_multivariate_complex_gaussian(x, mean, cov):
+    k = x.shape[0]
+
+    diff = x - mean
+
+    _, logdet_cov = jnp.linalg.slogdet(cov)
+
+    quad_form = jnp.dot(jnp.dot(diff.conj().T, jnp.linalg.inv(cov)), diff)
+
+    log_density = -k * jnp.log(jnp.pi) - logdet_cov - 0.5 * quad_form
+
+    return jnp.real(log_density)
+
+
 def ess(log_weights: Array) -> float:
     return jnp.exp(log_ess(log_weights))
 
@@ -41,8 +55,9 @@ def logprob_y(theta, y, design, cond_sde):
     log p(y | theta, design)
     """
     f_y = cond_sde.mask.measure(design, theta)
-    norm_squared = jnp.abs(y - f_y) ** 2
-    log_density = -norm_squared / 2 - jnp.log(jnp.pi)
+    quad_form = jnp.abs(y - f_y) ** 2
+    k = y.shape[0]
+    log_density = -0.5 * quad_form - k * jnp.log(jnp.pi)
     return log_density
 
 
@@ -146,7 +161,8 @@ def logpdf_change_y(
     """
     cov = cond_sde.reverse_diffusion(x_sde_state) * jnp.sqrt(dt)
     mean = y + (cond_sde.reverse_drift(x_sde_state) + drift_y) * dt
-    logsprobs = jax.scipy.stats.multivariate_normal.logpdf(y_next, mean, cov)
+    # logsprobs = jax.scipy.stats.multivariate_normal.logpdf(y_next, mean, cov)
+    logsprobs = log_density_multivariate_complex_gaussian(y_next, mean, cov)
     # logsprobs = jax.vmap(cond_sde.mask.measure, in_axes=(None, 0))(design, logsprobs)
     logsprobs = einops.reduce(logsprobs, "t ... -> t ", "mean")
     return logsprobs

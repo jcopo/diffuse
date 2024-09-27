@@ -15,6 +15,7 @@ from diffuse.sde import SDE, SDEState, euler_maryama_step
 
 from vraie_vie.utils import maskSpiral
 
+
 def plt_fracts(array):
     # Define the fractions
     fractions = [0.0, 0.1, 0.9, 0.95, 1.0]
