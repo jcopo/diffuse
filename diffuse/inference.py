@@ -179,9 +179,7 @@ def logpdf_change_expected(
     \sum log p(y_n | y_old, x_old) / N
     with y_{k-1} | y_{k}, x_k ~ N(.| y_k + rev_drift*dt, sqrt(dt)*rev_diff)
     """
-    logpdf = partial(
-        logpdf_change_y, drift_y=drift_y, cond_sde=cond_sde, dt=dt
-    )
+    logpdf = partial(logpdf_change_y, drift_y=drift_y, cond_sde=cond_sde, dt=dt)
     logliks = jax.vmap(logpdf, in_axes=(None, 0, 0))(x_sde_state, y, y_next)
     return logliks.mean(axis=0)
 
