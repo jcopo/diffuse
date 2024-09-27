@@ -38,6 +38,7 @@ config = {
     "lr": 2e-4,
 }
 
+
 def initialize_experiment(key: PRNGKeyArray):
     wmh = WMH(config)
     wmh.setup()
@@ -71,6 +72,7 @@ def initialize_experiment(key: PRNGKeyArray):
 
     return sde, cond_sde, mask, ground_truth, tf, n_t, nn_score
 
+
 config_jacopo = {
     "path_img": "mni_FLAIR.nii.gz",
     "path_mask": "mni_wmh.nii.gz",
@@ -81,17 +83,18 @@ import torch
 import torch.nn.functional as F
 import torchio as tio
 
+
 def _initialize_experiment(key: PRNGKeyArray):
     img = tio.ScalarImage(config_jacopo["path_img"])
     mask = tio.LabelMap(config_jacopo["path_mask"])
 
     data_masked = torch.concatenate(
-                    [
-                        img[tio.DATA][0, ..., 40, None],
-                        mask[tio.DATA][0, ..., 40, None].type(torch.float32),
-                    ],
-                    dim=-1,
-                )
+        [
+            img[tio.DATA][0, ..., 40, None],
+            mask[tio.DATA][0, ..., 40, None].type(torch.float32),
+        ],
+        dim=-1,
+    )
 
     padding = (0, 0, 0, 3, 0, 1)
     ground_truth = jnp.array(F.pad(data_masked, padding, "constant", 0))
@@ -105,9 +108,7 @@ def _initialize_experiment(key: PRNGKeyArray):
 
     # Initialize ScoreNetwork
     score_net = UNet(tf / n_t, 64, upsampling="pixel_shuffle")
-    nn_trained = jnp.load(
-        config_jacopo["path_model"], allow_pickle=True
-    )
+    nn_trained = jnp.load(config_jacopo["path_model"], allow_pickle=True)
     params = nn_trained["params"].item()
 
     # Define neural network score function

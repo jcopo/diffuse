@@ -13,12 +13,15 @@ from diffuse.sde import SDEState, euler_maryama_step
 from blackjax.smc.resampling import stratified
 
 
-def log_density_multivariate_complex_gaussian(x, mean, cov):
+def log_density_multivariate_complex_gaussian(x, mean, sq_std):
+    """
+    f(x) = 1 / (pi * sq_std) exp(-|x - mean|^2 / sq_std)
+    """
     diff = x - mean
 
-    quad_form = diff.conj() * diff / cov
+    quad_form = diff.conj() * diff / sq_std
 
-    log_density = -jnp.log(jnp.pi) - .5 * jnp.log(cov) - 0.5 * quad_form
+    log_density = -jnp.log(jnp.pi) - jnp.log(sq_std) - quad_form
 
     return jnp.real(log_density)
 
@@ -176,9 +179,7 @@ def logpdf_change_expected(
     \sum log p(y_n | y_old, x_old) / N
     with y_{k-1} | y_{k}, x_k ~ N(.| y_k + rev_drift*dt, sqrt(dt)*rev_diff)
     """
-    logpdf = partial(
-        logpdf_change_y, drift_y=drift_y, cond_sde=cond_sde, dt=dt
-    )
+    logpdf = partial(logpdf_change_y, drift_y=drift_y, cond_sde=cond_sde, dt=dt)
     logliks = jax.vmap(logpdf, in_axes=(None, 0, 0))(x_sde_state, y, y_next)
     return logliks.mean(axis=0)
 
