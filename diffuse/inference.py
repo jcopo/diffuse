@@ -9,7 +9,7 @@ from jaxtyping import Array, PRNGKeyArray
 import einops
 
 from diffuse.conditional import CondSDE
-from diffuse.sde import SDEState, euler_maryama_step
+from diffuse.sde import SDEState, euler_maryama_step, euler_maryama_step_array
 from diffuse.filter import stratified
 
 
@@ -103,20 +103,19 @@ def calculate_drift_expt_post(
 
 
 def particle_step(
-    sde_state, rng_key, drift_y, cond_sde, dt, y, ys_next, logpdf
+    sde_state, rng_key, drift_y, cond_sde, dt, logpdf
 ) -> Tuple[Array, Array]:
     """
     Particle step for the conditional diffusion.
     """
 
-    def reverse_drift(state):
-        return cond_sde.reverse_drift(state) + drift_y
-
-    sde_state = euler_maryama_step(
-        sde_state, dt, rng_key, reverse_drift, cond_sde.reverse_diffusion
+    drift_x = cond_sde.reverse_drift(sde_state)
+    diffusion = cond_sde.reverse_diffusion(sde_state)
+    sde_state = euler_maryama_step_array(
+        sde_state, dt, rng_key, drift_x + drift_y, diffusion
     )
     #weights = jax.vmap(logpdf, in_axes=(SDEState(0, None),))(sde_state)
-    weights = logpdf(sde_state)
+    weights = logpdf(sde_state, drift_x)
 
     _norm = jax.scipy.special.logsumexp(weights, axis=0)
     log_weights = weights - _norm
@@ -132,10 +131,9 @@ def particle_step(
 
 def logpdf_change_y(
     x_sde_state: SDEState,
-    y: Array,
+    drift_x: Array,
     y_next: Array,
     design: Array,
-    drift_y: Array,
     cond_sde: CondSDE,
     dt,
 ):
@@ -143,8 +141,11 @@ def logpdf_change_y(
     log p(y_new | y_old, x_old)
     with y_{k-1} | y_{k}, x_k ~ N(.| y_k + rev_drift*dt, sqrt(dt)*rev_diff)
     """
+    x, t = x_sde_state
+    alpha = jnp.exp(cond_sde.beta.integrate(0.0, t))
     cov = cond_sde.reverse_diffusion(x_sde_state) * jnp.sqrt(dt)
-    mean = y + (cond_sde.reverse_drift(x_sde_state) + drift_y) * dt
+
+    mean = cond_sde.mask.measure(design, x + drift_x * dt)
     logsprobs = jax.scipy.stats.multivariate_normal.logpdf(y_next, mean, cov)
     #logsprobs = jax.vmap(cond_sde.mask.measure, in_axes=(None, 0))(design, logsprobs)
     logsprobs = einops.reduce(logsprobs, "t ... -> t ", "mean")
@@ -156,7 +157,6 @@ def logpdf_change_expected(
     y: Array,
     y_next: Array,
     design: Array,
-    drift_y: Array,
     cond_sde: CondSDE,
     dt,
 ):
@@ -164,7 +164,7 @@ def logpdf_change_expected(
     \sum log p(y_n | y_old, x_old) / N
     with y_{k-1} | y_{k}, x_k ~ N(.| y_k + rev_drift*dt, sqrt(dt)*rev_diff)
     """
-    logpdf = partial(logpdf_change_y, design=design, drift_y=drift_y, cond_sde=cond_sde, dt=dt)
+    logpdf = partial(logpdf_change_y, design=design, cond_sde=cond_sde, dt=dt)
     logliks = jax.vmap(logpdf, in_axes=(None, 0, 0))(x_sde_state, y, y_next)
     return logliks.mean(axis=0)
 
@@ -198,9 +198,7 @@ def generate_cond_sampleV2(
             cond_sde=cond_sde,
             dt=dt,
         )
-        positions, weights = particle_step(
-            sde_state, key, drift_past, cond_sde, dt, ys, ys_next, logpdf
-        )
+        positions, weights = particle_step(sde_state, key, drift_past, cond_sde, dt, logpdf)
         return SDEState(positions, t + dt), weights
 
     # generate path for y

@@ -75,16 +75,12 @@ def update_joint(
     )
     logpdf = partial(
         logpdf_change_y,
-        y=ys,
         y_next=ys_next,
         design=design,
-        drift_y=drift_past,
         cond_sde=cond_sde,
         dt=dt,
     )
-    positions = particle_step(
-        sde_state, key, drift_past, cond_sde, dt, ys, ys_next, logpdf
-    )
+    positions = particle_step(sde_state, key, drift_past, cond_sde, dt, logpdf)
 
     return positions
 
@@ -113,16 +109,12 @@ def update_expected_posterior(
     drift_y = calculate_drift_expt_post(cond_sde, cntrst_sde_state, design, ys)
     logpdf = partial(
         logpdf_change_expected,
-        y=ys,
         y_next=ys_next,
         design=design,
-        drift_y=drift_past,
         cond_sde=cond_sde,
         dt=dt,
     )
-    positions = particle_step(
-        cntrst_sde_state, key, drift_y + drift_past, cond_sde, dt, ys, ys_next, logpdf
-    )
+    positions = particle_step(cntrst_sde_state, key, drift_y + drift_past, cond_sde, dt, logpdf)
 
     return positions
 
