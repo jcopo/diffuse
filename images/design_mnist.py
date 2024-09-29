@@ -98,23 +98,23 @@ def optimize_design(
     dt: float,
     cond_sde: CondSDE,
 ):
-    opt_steps = 1_000
+    opt_steps = 300
     keys_opt = jax.random.split(key_step, opt_steps)
 
     @scan_tqdm(opt_steps)
     def step(new_state, tup):
         _, key = tup
-        # new_state = impl_step( new_state, key, past_y, mask_history, cond_sde=cond_sde, optx_opt=optimizer, ts=ts, dt=dt)
-        new_state = impl_full_scan(
-            new_state,
-            key,
-            past_y,
-            mask_history,
-            cond_sde=cond_sde,
-            optx_opt=optimizer,
-            ts=ts,
-            dt=dt,
-        )
+        new_state = impl_step(new_state, key, past_y, mask_history, cond_sde=cond_sde, optx_opt=optimizer, ts=ts, dt=dt)
+        # new_state = impl_full_scan(
+        #     new_state,
+        #     key,
+        #     past_y,
+        #     mask_history,
+        #     cond_sde=cond_sde,
+        #     optx_opt=optimizer,
+        #     ts=ts,
+        #     dt=dt,
+        # )
 
         return new_state, new_state.design
 
@@ -240,16 +240,14 @@ def main(key):
     measurement_history = measurement_history.at[0].set(y)
 
     # init optimizer
-    optimizer = optax.chain(optax.adam(learning_rate=9e-1), optax.scale(-1))
+    optimizer = optax.chain(optax.adam(learning_rate=.9), optax.scale(-1))
     opt_state = optimizer.init(design)
 
     ts = jnp.linspace(0, tf, n_t)
 
     # init thetas
-    # thetas, cntrst_thetas = init_trajectory(key_init, sde, nn_score, n_samples, n_samples_cntrst, tf, ts, dts, ground_truth.shape)
-    thetas, cntrst_thetas = init_start_time(
-        key_init, n_samples, n_samples_cntrst, ground_truth.shape
-    )
+    #thetas, cntrst_thetas = init_trajectory(key_init, sde, nn_score, n_samples, n_samples_cntrst, tf, ts, dts, ground_truth.shape)
+    thetas, cntrst_thetas = init_start_time( key_init, n_samples, n_samples_cntrst, ground_truth.shape)
     implicit_state = ImplicitState(thetas, cntrst_thetas, design, opt_state)
 
     # stock in joint_y all measurements
@@ -269,7 +267,7 @@ def main(key):
     #jax.experimental.io_callback(plot_results, None, opt_hist, ground_truth, joint_y, mask_history, thetas, cntrst_thetas)
 
     plt.show()
-    # design_step = jax.jit(partial(optimize_design, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde))
+    #design_step = jax.jit(partial(optimize_design, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde))
     design_step = partial(optimize_design_one_step, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde)
     for n_meas in range(num_meas):
         key_noise, key_opt, key_gen = jax.random.split(key_step, 3)
