@@ -3,12 +3,14 @@ from typing import NamedTuple, Tuple
 import pdb
 
 import jax
+import jax.experimental
 import jax.numpy as jnp
 import jax.scipy as jsp
 import optax
 from jaxtyping import Array, PRNGKeyArray
 from optax import GradientTransformation
 import einops
+import matplotlib.pyplot as plt
 
 from diffuse.conditional import CondSDE
 from diffuse.sde import SDEState, euler_maryama_step
@@ -21,6 +23,90 @@ from diffuse.inference import (
     particle_step,
     logprob_y,
 )
+
+
+def plotter_line(array):
+    total_frames = len(array)
+
+    # Define the fractions
+    fractions = [0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
+    n = len(fractions)
+    # Create a figure with subplots
+    fig, axs = plt.subplots(1, n, figsize=(n * 3, n))
+
+    for idx, fraction in enumerate(fractions):
+        # Calculate the frame index
+        frame_index = int(fraction * total_frames)
+
+        # Plot the image
+        axs[idx].imshow(array[frame_index], cmap="gray")
+        #axs[idx].set_title(f"Frame at {fraction*100}% of total")
+        axs[idx].axis("off")  # Turn off axis labels
+    #plt.title("Samples")
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_top_samples(thetas, cntrst_thetas, weights, weights_c, past_y, y_c):
+    n = 50
+
+    best_idx = jnp.argsort(weights)[-n:][::-1]
+    worst_idx = jnp.argsort(weights)[:n]
+
+    best_idx_c = jnp.argsort(weights_c)[-n:][::-1]
+    worst_idx_c = jnp.argsort(weights_c)[:n]
+    # Create a figure with subplots
+    fig, axs = plt.subplots(4, n, figsize=(40, 12))
+    fig.suptitle("Theta (top) and Contrastive Theta (bottom) Samples", fontsize=16)
+
+    for idx in range(n):
+        axs[0, idx].imshow(thetas[best_idx[idx]], cmap="gray")
+        axs[1, idx].imshow(thetas[worst_idx[idx]], cmap="gray")
+        axs[2, idx].imshow(cntrst_thetas[best_idx_c[idx]], cmap="gray")
+        axs[3, idx].imshow(cntrst_thetas[worst_idx_c[idx]], cmap="gray")
+        # set no axis labels
+        axs[0, idx].axis("off")
+        axs[1, idx].axis("off")
+        axs[2, idx].axis("off")
+        axs[3, idx].axis("off")
+
+    plt.tight_layout()
+    #plt.subplots_adjust(top=0.85, wspace=0.1, hspace=0.3)
+    plt.show()
+
+def plot_samples(thetas, cntrst_thetas, weights, weights_c, past_y, y_c):
+    total_frames = len(thetas)
+
+    # Define the fractions
+    fractions = [0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
+    n = len(fractions)
+
+    # Create a figure with subplots
+    fig, axs = plt.subplots(2, n+1, figsize=(20, 6))
+    fig.suptitle("Theta (top) and Contrastive Theta (bottom) Samples", fontsize=16)
+
+    for idx, fraction in enumerate(fractions):
+        # Calculate the frame index
+        frame_index = int(fraction * total_frames)
+        # plot past_y
+        axs[0, 0].imshow(past_y, cmap="gray")
+        axs[1, 0].imshow(y_c, cmap="gray")
+        # Plot the image
+        axs[0, 1+idx].imshow(thetas[frame_index], cmap="gray")
+        axs[1, 1+idx].imshow(cntrst_thetas[frame_index], cmap="gray")
+
+        # Set titles
+        axs[0, 1+idx].set_title(f"Weight: {weights[frame_index]:.2f}", fontsize=10)
+        axs[1, 1+idx].set_title(f"Weight: {weights_c[frame_index]:.2f}", fontsize=10)
+
+        # Turn off axis labels
+        axs[0, 1+idx].axis("off")
+        axs[1, 1+idx].axis("off")
+
+    # Adjust layout and display
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.85, wspace=0.1, hspace=0.3)
+    plt.show()
 
 
 class ImplicitState(NamedTuple):
@@ -76,7 +162,7 @@ def update_joint(
     logpdf = partial(
         logpdf_change_y,
         y_next=ys_next,
-        design=design,
+        design=mask_history,
         cond_sde=cond_sde,
         dt=dt,
     )
@@ -110,13 +196,13 @@ def update_expected_posterior(
     logpdf = partial(
         logpdf_change_expected,
         y_next=ys_next,
-        design=design,
+        design=mask_history,
         cond_sde=cond_sde,
         dt=dt,
     )
-    positions = particle_step(cntrst_sde_state, key, drift_y + drift_past, cond_sde, dt, logpdf)
+    positions, weights = particle_step(cntrst_sde_state, key, drift_y + drift_past, cond_sde, dt, logpdf)
 
-    return positions
+    return positions, weights
 
 
 def calculate_and_apply_gradient(
@@ -159,17 +245,20 @@ def impl_step(
     key_theta, key_cntrst = jax.random.split(rng_key)
 
     def step_joint(sde_state, ys, ys_next, key):
-        positions = update_joint(
-            sde_state, ys, ys_next, key, cond_sde, mask_history, dt
+        positions, weights = update_joint(
+            sde_state, ys, ys_next, key, cond_sde, mask_history, design, dt
         )
-        return positions
+        return positions, weights
 
     keys_time = jax.random.split(key_theta, ts.shape[0] - 1)
     sde_state = jax.tree_map(lambda x: x[1:], sde_state)
     position, weights = jax.vmap(step_joint)(
         sde_state, past_y.position[:-1], past_y.position[1:], keys_time
     )
-    thetas = jnp.concatenate([thetas[:1], position])
+    #jax.experimental.io_callback(plotter_line, None, position[:-1, 0], ordered=True)
+    #jax.experimental.io_callback(plotter_line, None, thetas[:, 0], ordered=True)
+    thetas = jnp.concatenate([thetas[:2], position[:-1]])
+    #jax.experimental.io_callback(plotter_line, None, thetas[:, 0], ordered=True)
 
     # get ys
     ys = jax.vmap(cond_sde.mask.measure, in_axes=(None, 0))(design, thetas)
@@ -180,7 +269,8 @@ def impl_step(
     #   1 - use y values to update post
     #   2 - Get samples contrastive theta
     def step_expected_posterior(cntrst_sde_state, ys, ys_next, y_measured, key):
-        positions = update_expected_posterior(
+        _, t = cntrst_sde_state
+        positions, weights = update_expected_posterior(
             cntrst_sde_state,
             ys,
             ys_next,
@@ -191,16 +281,18 @@ def impl_step(
             design,
             dt,
         )
-        return positions
+        return positions, weights
 
     keys_time_c = jax.random.split(key_cntrst, ts.shape[0] - 1)
     cntrst_sde_state = jax.tree_map(lambda x: x[1:], cntrst_sde_state)
     # pdb.set_trace()
-    position, weights = jax.vmap(step_expected_posterior)(
+    position, weights_c = jax.vmap(step_expected_posterior)(
         cntrst_sde_state, ys[:-1], ys[1:], past_y.position[1:], keys_time_c
     )
-    cntrst_thetas = jnp.concatenate([cntrst_thetas[:1], position])
+    cntrst_thetas = jnp.concatenate([cntrst_thetas[:2], position[:-1]])
 
+    #jax.experimental.io_callback(plotter_line, None, thetas[:, 0])
+    #jax.experimental.io_callback(plotter_line, None, cntrst_thetas[:, 0])
     # get EIG gradient estimator
     #  1 - evaluate score_f on thetas and contrastives_theta
     #  2 - update design parameters with optax
@@ -242,7 +334,7 @@ def impl_one_step(
 
         return (SDEState(positions, t + dt), weights), (positions, weights)
 
-    (thetas, _), weights = step_joint(sde_state, past_y.position, past_y_next.position, key_joint)
+    ((thetas, weights), _) = step_joint(sde_state, past_y.position, past_y_next.position, key_joint)
 
     # get ys
     ys = cond_sde.mask.measure(design, thetas.position)
@@ -268,13 +360,20 @@ def impl_one_step(
 
         return (SDEState(positions, t + dt), weights), (positions, weights)
 
-    ((cntrst_thetas, _), weights) = step_expected_posterior(
+    ((cntrst_thetas, weights_c), _) = step_expected_posterior(
         cntrst_sde_state, ys, ys_next, past_y.position, key_cntrst
     )
 
+    #plot = lambda _: jax.experimental.io_callback(plot_samples, None, thetas.position, cntrst_thetas.position, weights, weights_c, past_y.position, ys_next.mean(axis=0))
+    plot = lambda _: jax.experimental.io_callback(plot_top_samples, None, thetas.position, cntrst_thetas.position, weights, weights_c, past_y.position, ys_next.mean(axis=0))
+
+    jax.lax.cond(past_y.t > 1.98, plot, lambda _: None, None)
     # get EIG gradient estimator
     #  1 - evaluate score_f on thetas and contrastives_theta
     #  2 - update design parameters with optax
+    n = 50
+    best_idx = jnp.argsort(weights)[-n:][::-1]
+    best_idx_c = jnp.argsort(weights_c)[-n:][::-1]
     design, opt_state, ys = calculate_and_apply_gradient(
         thetas.position, cntrst_thetas.position, design, cond_sde, optx_opt, opt_state
     )
