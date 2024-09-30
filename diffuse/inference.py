@@ -8,32 +8,11 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 from jaxtyping import Array, PRNGKeyArray
 import einops
-import matplotlib.pyplot as plt
 
 from diffuse.conditional import CondSDE
 from diffuse.sde import SDEState, euler_maryama_step, euler_maryama_step_array
 from diffuse.filter import stratified
 
-def plot_lines(array):
-    fractions = [0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
-    n = len(fractions)
-    fig, axs = plt.subplots(1, n, figsize=(n*3, 3))
-    fig.suptitle("array")
-
-    for idx, fraction in enumerate(fractions):
-        # Calculate the frame index
-        frame_index = int(fraction * array.shape[0])
-        axs[idx].imshow(array[frame_index], cmap="gray")
-        axs[idx].axis("off")
-
-        # fix colormap range
-
-    plt.show()
-
-def sigle_plot(array):
-    plt.imshow(array, cmap="gray")
-    plt.axis("off")
-    plt.show()
 
 def ess(log_weights: Array) -> float:
     return jnp.exp(log_ess(log_weights))

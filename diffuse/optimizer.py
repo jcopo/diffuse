@@ -25,88 +25,9 @@ from diffuse.inference import (
 )
 
 
-def plotter_line(array):
-    total_frames = len(array)
-
-    # Define the fractions
-    fractions = [0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
-    n = len(fractions)
-    # Create a figure with subplots
-    fig, axs = plt.subplots(1, n, figsize=(n * 3, n))
-
-    for idx, fraction in enumerate(fractions):
-        # Calculate the frame index
-        frame_index = int(fraction * total_frames)
-
-        # Plot the image
-        axs[idx].imshow(array[frame_index], cmap="gray")
-        #axs[idx].set_title(f"Frame at {fraction*100}% of total")
-        axs[idx].axis("off")  # Turn off axis labels
-    #plt.title("Samples")
-    plt.tight_layout()
-    plt.show()
 
 
-def plot_top_samples(thetas, cntrst_thetas, weights, weights_c, past_y, y_c):
-    n = 50
 
-    best_idx = jnp.argsort(weights)[-n:][::-1]
-    worst_idx = jnp.argsort(weights)[:n]
-
-    best_idx_c = jnp.argsort(weights_c)[-n:][::-1]
-    worst_idx_c = jnp.argsort(weights_c)[:n]
-    # Create a figure with subplots
-    fig, axs = plt.subplots(4, n, figsize=(40, 12))
-    fig.suptitle("Theta (top) and Contrastive Theta (bottom) Samples", fontsize=16)
-
-    for idx in range(n):
-        axs[0, idx].imshow(thetas[best_idx[idx]], cmap="gray")
-        axs[1, idx].imshow(thetas[worst_idx[idx]], cmap="gray")
-        axs[2, idx].imshow(cntrst_thetas[best_idx_c[idx]], cmap="gray")
-        axs[3, idx].imshow(cntrst_thetas[worst_idx_c[idx]], cmap="gray")
-        # set no axis labels
-        axs[0, idx].axis("off")
-        axs[1, idx].axis("off")
-        axs[2, idx].axis("off")
-        axs[3, idx].axis("off")
-
-    plt.tight_layout()
-    #plt.subplots_adjust(top=0.85, wspace=0.1, hspace=0.3)
-    plt.show()
-
-def plot_samples(thetas, cntrst_thetas, weights, weights_c, past_y, y_c):
-    total_frames = len(thetas)
-
-    # Define the fractions
-    fractions = [0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
-    n = len(fractions)
-
-    # Create a figure with subplots
-    fig, axs = plt.subplots(2, n+1, figsize=(20, 6))
-    fig.suptitle("Theta (top) and Contrastive Theta (bottom) Samples", fontsize=16)
-
-    for idx, fraction in enumerate(fractions):
-        # Calculate the frame index
-        frame_index = int(fraction * total_frames)
-        # plot past_y
-        axs[0, 0].imshow(past_y, cmap="gray")
-        axs[1, 0].imshow(y_c, cmap="gray")
-        # Plot the image
-        axs[0, 1+idx].imshow(thetas[frame_index], cmap="gray")
-        axs[1, 1+idx].imshow(cntrst_thetas[frame_index], cmap="gray")
-
-        # Set titles
-        axs[0, 1+idx].set_title(f"Weight: {weights[frame_index]:.2f}", fontsize=10)
-        axs[1, 1+idx].set_title(f"Weight: {weights_c[frame_index]:.2f}", fontsize=10)
-
-        # Turn off axis labels
-        axs[0, 1+idx].axis("off")
-        axs[1, 1+idx].axis("off")
-
-    # Adjust layout and display
-    plt.tight_layout()
-    plt.subplots_adjust(top=0.85, wspace=0.1, hspace=0.3)
-    plt.show()
 
 
 class ImplicitState(NamedTuple):
@@ -305,7 +226,7 @@ def impl_step(
         thetas[-1], cntrst_thetas[-1], design, cond_sde, optx_opt, opt_state
     )
 
-    return ImplicitState(thetas, cntrst_thetas, design, opt_state)
+    return ImplicitState(thetas, weights, cntrst_thetas, weights_c, design, opt_state)
 
 
 def impl_one_step(
@@ -322,7 +243,7 @@ def impl_one_step(
     Must use same optimization steps as time steps
     """
     dt = past_y_next.t - past_y.t
-    thetas, cntrst_thetas, design, opt_state = state
+    thetas, weights, cntrst_thetas, weights_c, design, opt_state = state
     sde_state = SDEState(thetas, past_y.t)
     cntrst_sde_state = SDEState(cntrst_thetas, past_y.t)
 
@@ -370,20 +291,26 @@ def impl_one_step(
     )
 
     #plot = lambda _: jax.experimental.io_callback(plot_samples, None, thetas.position, cntrst_thetas.position, weights, weights_c, past_y.position, ys_next.mean(axis=0))
-    plot = lambda _: jax.experimental.io_callback(plot_top_samples, None, thetas.position, cntrst_thetas.position, weights, weights_c, past_y.position, ys_next.mean(axis=0))
-
-    jax.lax.cond(past_y.t > 1.98, plot, lambda _: None, None)
+    #jax.lax.cond(past_y.t > 1.98, lambda _: jax.experimental.io_callback(plot_top_samples, None, thetas.position, cntrst_thetas.position, weights, weights_c, past_y.position, ys_next.mean(axis=0)), lambda _: None, None)
     # get EIG gradient estimator
     #  1 - evaluate score_f on thetas and contrastives_theta
     #  2 - update design parameters with optax
     n = 50
     best_idx = jnp.argsort(weights)[-n:][::-1]
     best_idx_c = jnp.argsort(weights_c)[-n:][::-1]
-    design, opt_state, ys = calculate_and_apply_gradient(
+
+    def step(state, itr):
+        design, opt_state = state
+        design, opt_state, _ = calculate_and_apply_gradient(
         thetas.position, cntrst_thetas.position, design, cond_sde, optx_opt, opt_state
     )
+        design = optax.projections.projection_box(design, 0., 28.)
+        return (design, opt_state), None
 
-    return ImplicitState(thetas.position, cntrst_thetas.position, design, opt_state)
+    #design, opt_state = jax.lax.cond(past_y.t > 1.6, lambda _: jax.lax.scan(step, (design, opt_state), jnp.arange(1000))[0], lambda _: calculate_and_apply_gradient( thetas.position, cntrst_thetas.position, design, cond_sde, optx_opt, opt_state)[:2], None)
+    design, opt_state, _ = calculate_and_apply_gradient( thetas.position, cntrst_thetas.position, design, cond_sde, optx_opt, opt_state)
+
+    return ImplicitState(thetas.position, weights, cntrst_thetas.position, weights_c, design, opt_state)
 
 
 def impl_full_scan(
