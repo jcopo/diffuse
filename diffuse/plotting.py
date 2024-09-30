@@ -2,6 +2,60 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
 
+def metric_l2(ground_truth, state):
+    thetas, weights = state.thetas, state.weights
+    squared_norm = jnp.sum(jnp.square(thetas - ground_truth), axis=(1, 2, 3))
+    return jnp.einsum("i, i ->", weights, squared_norm)
+
+
+def plot_comparison(ground_truth, state_random, state, y_random, y, logging_path):
+
+    thetas, weights = state
+    thetas_random, weights_random = state_random[0].position, state_random[1]
+
+    n = 20
+    best_idx = jnp.argsort(weights)[-n:][::-1]
+    best_idx_random = jnp.argsort(weights_random)[-n:][::-1]
+
+    fig = plt.figure(figsize=(40, 10))
+    fig.suptitle("High weight from optimized measurements (top) and random measurements (bottom)", fontsize=18, y=0.7, x=0.6)
+
+    # Create grid spec for layout with reduced vertical spacing
+    gs = fig.add_gridspec(4, n, hspace=.0001)  # Added hspace parameter to reduce vertical spacing
+
+    # Add the larger subplot for the first 4 squares
+    ax_large = fig.add_subplot(gs[:2, :2])
+    ax_large.imshow(ground_truth, cmap="gray")
+    ax_large.axis("off")
+    ax_large.set_title("Ground truth ", fontsize=12)
+
+    ax_large = fig.add_subplot(gs[:2, 2:4])
+    ax_large.imshow(y, cmap="gray")
+    ax_large.axis("off")
+    ax_large.set_title("Measure Optimized $y$", fontsize=12)
+
+    ax_large = fig.add_subplot(gs[:2, 4:6])
+    ax_large.imshow(y_random, cmap="gray")
+    ax_large.axis("off")
+    ax_large.set_title("Measure Random $y$", fontsize=12)
+
+    for idx in range(n-6):
+        ax1 = fig.add_subplot(gs[0, idx+6])
+        ax2 = fig.add_subplot(gs[1, idx+6])
+
+        ax1.imshow(thetas[best_idx[idx]], cmap="gray")
+        ax2.imshow(thetas_random[best_idx_random[idx]], cmap="gray")
+
+        # set no axis labels
+        ax1.axis("off")
+        ax2.axis("off")
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust 'rect' to accommodate the suptitle
+
+    plt.savefig(f"{logging_path}/comparison.png", bbox_inches="tight")
+    plt.close()
+
+
 
 def plotter_random(ground_truth, joint_y, design, thetas, weights, n_meas, logging_path, size):
     n = 20
@@ -37,14 +91,9 @@ def plotter_random(ground_truth, joint_y, design, thetas, weights, n_meas, loggi
     # add a square above the image. Around the design and 5 pixels from it
     ax_large.add_patch(plt.Rectangle((design[0]-size/2, design[1]-size/2), size, size, fill=False, edgecolor='red', linewidth=2))
     # Add the remaining subplots
-    for idx in range(n):
-        if idx < 4:
-            # ax1 = fig.add_subplot(gs[0, idx+4])
-            # ax2 = fig.add_subplot(gs[1, idx+4])
-            continue
-        else:
-            ax1 = fig.add_subplot(gs[0, idx])
-            ax2 = fig.add_subplot(gs[1, idx])
+    for idx in range(n-4):
+        ax1 = fig.add_subplot(gs[0, idx+4])
+        ax2 = fig.add_subplot(gs[1, idx+4])
 
         ax1.imshow(thetas[best_idx[idx]], cmap="gray")
         ax2.imshow(thetas[worst_idx[idx]], cmap="gray")
@@ -111,7 +160,7 @@ def plot_top_samples(thetas, cntrst_thetas, weights, weights_c, past_y, y_c):
     worst_idx_c = jnp.argsort(weights_c)[:n]
     # Create a figure with subplots
     fig, axs = plt.subplots(4, n, figsize=(40, 12))
-    fig.suptitle("Theta (top) and Contrastive Theta (bottom) Samples", fontsize=16)
+    fig.suptitle("Theta (top) and Contrastive Theta (bottom) Samples", fontsize=18, y=0.67, x=0.6)
 
     for idx in range(n):
         axs[0, idx].imshow(thetas[best_idx[idx]], cmap="gray")
@@ -181,14 +230,9 @@ def log_samples(opt_hist, ground_truth, joint_y, thetas, weights, n_meas, loggin
     # add a square above the image. Around the design and 5 pixels from it
     ax_large.add_patch(plt.Rectangle((opt_hist[-1, 0]-size/2, opt_hist[-1, 1]-size/2), size, size, fill=False, edgecolor='red', linewidth=2))
     # Add the remaining subplots
-    for idx in range(n):
-        if idx < 4:
-            continue
-            # ax1 = fig.add_subplot(gs[0, idx+4])
-            # ax2 = fig.add_subplot(gs[1, idx+4])
-        else:
-            ax1 = fig.add_subplot(gs[0, idx])
-            ax2 = fig.add_subplot(gs[1, idx])
+    for idx in range(n-4):
+        ax1 = fig.add_subplot(gs[0, idx+4])
+        ax2 = fig.add_subplot(gs[1, idx+4])
 
         ax1.imshow(thetas[best_idx[idx]], cmap="gray")
         ax2.imshow(thetas[worst_idx[idx]], cmap="gray")

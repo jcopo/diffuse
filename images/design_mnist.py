@@ -16,7 +16,7 @@ import einops
 
 from diffuse.sde import SDE, SDEState
 from diffuse.conditional import CondSDE
-from diffuse.plotting import log_samples, plot_lines, plotter_random
+from diffuse.plotting import log_samples, plot_lines, plotter_random, plot_comparison
 from diffuse.images import SquareMask
 from diffuse.inference import generate_cond_sampleV2
 from diffuse.optimizer import ImplicitState, impl_step, impl_one_step, impl_full_scan
@@ -190,14 +190,13 @@ def init_start_time(
 
 
 #@jax.jit
-def main(key: PRNGKeyArray, plotter_theta: Callable, plotter_contrastive: Callable):
+def main(key: PRNGKeyArray, num_meas: int, plotter_theta: Callable, plotter_contrastive: Callable):
     key_init, key_step = jax.random.split(key)
 
     sde, cond_sde, mask, ground_truth, tf, n_t, nn_score = initialize_experiment(
         key_init
     )
     dt = tf / (n_t - 1)
-    num_meas = 20
     n_samples = 150
     n_samples_cntrst = 151
 
@@ -309,19 +308,18 @@ def main(key: PRNGKeyArray, plotter_theta: Callable, plotter_contrastive: Callab
         implicit_state = ImplicitState(thetas, weights_0, cntrst_thetas, weights_c_0, design, opt_state)
 
 
-    return optimal_state
+    return ground_truth, (optimal_state.thetas[-1, :], optimal_state.weights), joint_y
 
 
 
 #@jax.jit
-def main_random(key: PRNGKeyArray, plotter_random: Callable):
+def main_random(key: PRNGKeyArray, num_meas: int, plotter_random: Callable):
     key_init, key_step = jax.random.split(key)
 
     sde, cond_sde, mask, ground_truth, tf, n_t, nn_score = initialize_experiment(
         key_init
     )
     dt = tf / (n_t - 1)
-    num_meas = 20
     n_samples = 150
     n_samples_cntrst = 151
 
@@ -363,7 +361,8 @@ def main_random(key: PRNGKeyArray, plotter_random: Callable):
         past_y = noiser(keys_noise, state_0, ts)
         past_y = SDEState(past_y.position[::-1], past_y.t)
         #plotter_line(past_y.position)
-        thetas, weights = generate_cond_sampleV2(joint_y, mask_history, key_opt, cond_sde, ground_truth.shape, n_t, n_samples)[0]
+        optimal_state = generate_cond_sampleV2(joint_y, mask_history, key_opt, cond_sde, ground_truth.shape, n_t, n_samples)[0]
+        thetas, weights = optimal_state
 
         # random design
         design = jax.random.uniform(key_step, (2,), minval=0, maxval=28)
@@ -385,18 +384,23 @@ def main_random(key: PRNGKeyArray, plotter_random: Callable):
         key_step, _ = jax.random.split(key_step)
 
 
-    return thetas
+    return ground_truth, optimal_state, joint_y
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--key_int", type=int, default=0)
+    parser.add_argument("--rng_key", type=int, default=0)
     parser.add_argument("--random", action="store_true")
+    parser.add_argument("--num_meas", type=int, default=3)
+    parser.add_argument("--prefix", type=str, default="")
+
     args = parser.parse_args()
-    key_int = args.key_int
+    num_meas = args.num_meas
+    key_int = args.rng_key
     random = args.random
 
     rng_key = jax.random.PRNGKey(key_int)
-    dir_path = f"runs/{key_int}_{datetime.datetime.now().strftime('%m-%d_%H-%M-%S')}"
+    dir_path = f"runs/{args.prefix}/{key_int}_{datetime.datetime.now().strftime('%m-%d_%H-%M-%S')}"
 
     logging_path_theta = f"{dir_path}/theta"
     logging_path_contrastive = f"{dir_path}/contrastive"
@@ -409,7 +413,10 @@ if __name__ == "__main__":
         logging_path_random = f"{dir_path}/random"
         os.makedirs(logging_path_random, exist_ok=True)
         plotter_r = partial(plotter_random, logging_path=logging_path_random, size=SIZE)
-        state = main_random(rng_key, plotter_r)
+        ground_truth, state_random, y_random = main_random(rng_key, num_meas, plotter_r)
 
 
-    state = main(rng_key, plotter_theta, plotter_contrastive)
+    ground_truth, state, y = main(rng_key, num_meas, plotter_theta, plotter_contrastive)
+
+    if random:
+        plot_comparison(ground_truth, state_random, state, y_random, y, dir_path)
