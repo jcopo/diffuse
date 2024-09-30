@@ -189,7 +189,7 @@ def init_start_time(
 
 
 #@jax.jit
-def main(key: PRNGKeyArray, plotter_function: Callable):
+def main(key: PRNGKeyArray, plotter_theta: Callable, plotter_contrastive: Callable):
     key_init, key_step = jax.random.split(key)
 
     sde, cond_sde, mask, ground_truth, tf, n_t, nn_score = initialize_experiment(
@@ -279,8 +279,8 @@ def main(key: PRNGKeyArray, plotter_function: Callable):
         print(f"Design_start: {design} Design_end:{optimal_state.design}")
 
         #jax.experimental.io_callback(plot_results, None, opt_hist, ground_truth, joint_y, mask_history, optimal_state.thetas[-1, :], optimal_state.cntrst_thetas[-1, :])
-        jax.experimental.io_callback(plotter_function, None, opt_hist, ground_truth, joint_y, optimal_state.thetas[-1, :], optimal_state.cntrst_thetas[-1, :], optimal_state.weights, optimal_state.weights_c, n_meas)
-
+        jax.experimental.io_callback(plotter_theta, None, opt_hist, ground_truth, joint_y, optimal_state.thetas[-1, :], optimal_state.weights, n_meas)
+        jax.experimental.io_callback(plotter_contrastive, None, opt_hist, ground_truth, joint_y, optimal_state.cntrst_thetas[-1, :], optimal_state.weights_c, n_meas)
 
 
 
@@ -314,8 +314,12 @@ def main(key: PRNGKeyArray, plotter_function: Callable):
 if __name__ == "__main__":
     key_int = 0
     rng_key = jax.random.PRNGKey(key_int)
-    logging_path = f"runs/{key_int}_{datetime.datetime.now().strftime('%m-%d_%H-%M-%S')}"
-    os.makedirs(logging_path, exist_ok=True)
-    os.makedirs(f"{logging_path}/contrastive", exist_ok=True)
-    plotter = partial(log_samples, logging_path=logging_path, size=SIZE)
-    state = main(rng_key, plotter)
+    dir_path = f"runs/{key_int}_{datetime.datetime.now().strftime('%m-%d_%H-%M-%S')}"
+
+    logging_path_theta = f"{dir_path}/theta"
+    logging_path_contrastive = f"{dir_path}/contrastive"
+    os.makedirs(logging_path_theta, exist_ok=True)
+    os.makedirs(logging_path_contrastive, exist_ok=True)
+    plotter_theta = partial(log_samples, logging_path=logging_path_theta, size=SIZE)
+    plotter_contrastive = partial(log_samples, logging_path=logging_path_contrastive, size=SIZE)
+    state = main(rng_key, plotter_theta, plotter_contrastive)
