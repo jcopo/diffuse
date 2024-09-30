@@ -1,5 +1,6 @@
+import os
 from functools import partial
-from typing import Tuple
+from typing import Tuple, Callable
 import jax
 import jax.experimental
 import jax.numpy as jnp
@@ -9,50 +10,21 @@ from jaxtyping import Array, PRNGKeyArray
 from optax import GradientTransformation
 import matplotlib.pyplot as plt
 from jax_tqdm import scan_tqdm
+import datetime
 import einops
 
 from diffuse.filter import generate_cond_sample
 from diffuse.sde import SDE, SDEState
 from diffuse.conditional import CondSDE
-from diffuse.images import SquareMask, plotter_line
+from diffuse.plotting import log_samples, plotter_line
+from diffuse.images import SquareMask
 from diffuse.optimizer import ImplicitState, impl_step, impl_one_step, impl_full_scan
 from diffuse.sde import LinearSchedule
 from diffuse.unet import UNet
 import pdb
 
 
-def plot_results(opt_hist, ground_truth, joint_y, mask_history, thetas, cntrst_thetas):
-    total_frames = len(thetas)
-
-    # Define the fractions
-    fractions = [0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
-    n = len(fractions)
-    # Create a figure with subplots
-    fig, axs = plt.subplots(1, 3 + n, figsize=((3 + n) * 3, n + 3))
-    for idx, fraction in enumerate(fractions):
-        # Calculate the frame index
-        frame_index = int(fraction * total_frames)
-
-        # Plot the image
-        axs[3 + idx].imshow(thetas[frame_index], cmap="gray")
-        #axs[idx].set_title(f"Frame at {fraction*100}% of total")
-        axs[3 + idx].axis("off")  # Turn off axis labels
-
-    ax1, ax2, ax3 = axs[:3]
-    ax1.axis("off")
-    ax2.axis("off")
-    ax3.axis("off")
-    ax1.set_title("Ground truth")
-    ax2.set_title("Mesure")
-    ax3.set_title("Mask")
-
-    ax1.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
-    ax1.imshow(ground_truth, cmap="gray")
-    #ax2.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
-    ax2.imshow(joint_y, cmap="gray")
-    ax3.imshow(mask_history, cmap="gray")
-    plt.tight_layout()
-    plt.show()
+SIZE = 7
 
 
 def initialize_experiment(key: PRNGKeyArray):
@@ -79,7 +51,7 @@ def initialize_experiment(key: PRNGKeyArray):
 
     # Set up mask and measurement
     ground_truth = jax.random.choice(key, xs)
-    mask = SquareMask(4, ground_truth.shape)
+    mask = SquareMask(SIZE, ground_truth.shape)
 
     # Set up conditional SDE
     cond_sde = CondSDE(beta=beta, mask=mask, tf=tf, score=nn_score)
@@ -149,7 +121,7 @@ def optimize_design_one_step(
             cond_sde=cond_sde,
             optx_opt=optimizer,
         )
-        thetas, cntrst_thetas, design, *_ = new_state
+        thetas, _, cntrst_thetas, _, design, *_ = new_state
         return new_state, (thetas, cntrst_thetas, design)
 
     y = jax.tree.map(lambda x: x[:-1], past_y)
@@ -159,7 +131,7 @@ def optimize_design_one_step(
     )
 
     thetas, cntrst_thetas, design_hist = hist
-    state = ImplicitState(thetas, cntrst_thetas, new_state.design, new_state.opt_state)
+    state = ImplicitState(thetas, new_state.weights, cntrst_thetas, new_state.weights_c, new_state.design, new_state.opt_state)
     return state, design_hist
 
 
@@ -216,8 +188,8 @@ def init_start_time(
     return thetas, cntrst_thetas
 
 
-# @jax.jit
-def main(key):
+#@jax.jit
+def main(key: PRNGKeyArray, plotter_function: Callable):
     key_init, key_step = jax.random.split(key)
 
     sde, cond_sde, mask, ground_truth, tf, n_t, nn_score = initialize_experiment(
@@ -233,8 +205,10 @@ def main(key):
     dts = jnp.diff(ts)
 
     # init design and measurement hist
-    design = jax.random.uniform(key_init, (2,), minval=0, maxval=28)
+    #design = jax.random.uniform(key_init, (2,), minval=0, maxval=28)
+    design = jnp.array([0.1, 0.1])
     y = cond_sde.mask.measure(design, ground_truth)
+    design = jax.random.uniform(key_init, (2,), minval=0, maxval=28)
 
     measurement_history = jnp.zeros((num_meas, *y.shape))
     measurement_history = measurement_history.at[0].set(y)
@@ -248,7 +222,9 @@ def main(key):
     # init thetas
     #thetas, cntrst_thetas = init_trajectory(key_init, sde, nn_score, n_samples, n_samples_cntrst, tf, ts, dts, ground_truth.shape)
     thetas, cntrst_thetas = init_start_time( key_init, n_samples, n_samples_cntrst, ground_truth.shape)
-    implicit_state = ImplicitState(thetas, cntrst_thetas, design, opt_state)
+    weights_0 = jnp.zeros((n_samples,))
+    weights_c_0 = jnp.zeros((n_samples_cntrst,))
+    implicit_state = ImplicitState(thetas, weights_0, cntrst_thetas, weights_c_0, design, opt_state)
 
     # stock in joint_y all measurements
     joint_y = y
@@ -302,13 +278,15 @@ def main(key):
         # logging
         print(f"Design_start: {design} Design_end:{optimal_state.design}")
 
-        jax.experimental.io_callback(plot_results, None, opt_hist, ground_truth, joint_y, mask_history, optimal_state.thetas[-1, :], optimal_state.cntrst_thetas[-1, :])
+        #jax.experimental.io_callback(plot_results, None, opt_hist, ground_truth, joint_y, mask_history, optimal_state.thetas[-1, :], optimal_state.cntrst_thetas[-1, :])
+        jax.experimental.io_callback(plotter_function, None, opt_hist, ground_truth, joint_y, optimal_state.thetas[-1, :], optimal_state.cntrst_thetas[-1, :], optimal_state.weights, optimal_state.weights_c, n_meas)
+
 
 
 
         print(jnp.max(joint_y))
-        plotter_line(optimal_state.thetas[-1, :])
-        plotter_line(optimal_state.cntrst_thetas[-1, :])
+        #plotter_line(optimal_state.thetas[-1, :])
+        #plotter_line(optimal_state.cntrst_thetas[-1, :])
 
         #for i in range(10):
         #   plotter_line(optimal_state.thetas[:, i])
@@ -324,18 +302,20 @@ def main(key):
         # cntrst_thetas = generate_cond_sampleV2(joint_y, mask_history, key_c, cond_sde, ground_truth.shape, n_t, n_samples_cntrst)[1][0]
         key_step, _ = jax.random.split(key_step)
 
-        # implicit_state = ImplicitState(
-        #     optimal_state.thetas, optimal_state.cntrst_thetas, design, opt_state
-        # )
         thetas, cntrst_thetas = init_start_time(
             key_step, n_samples, n_samples_cntrst, ground_truth.shape
         )
-        implicit_state = ImplicitState(thetas, cntrst_thetas, design, opt_state)
+        implicit_state = ImplicitState(thetas, weights_0, cntrst_thetas, weights_c_0, design, opt_state)
 
 
-    return implicit_state
+    return optimal_state
 
 
 if __name__ == "__main__":
-    rng_key = key = jax.random.PRNGKey(0)
-    state = main(rng_key)
+    key_int = 0
+    rng_key = jax.random.PRNGKey(key_int)
+    logging_path = f"runs/{key_int}_{datetime.datetime.now().strftime('%m-%d_%H-%M-%S')}"
+    os.makedirs(logging_path, exist_ok=True)
+    os.makedirs(f"{logging_path}/contrastive", exist_ok=True)
+    plotter = partial(log_samples, logging_path=logging_path, size=SIZE)
+    state = main(rng_key, plotter)
