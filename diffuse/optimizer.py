@@ -307,8 +307,8 @@ def impl_one_step(
         design = optax.projections.projection_box(design, 0., 28.)
         return (design, opt_state), None
 
-    #design, opt_state = jax.lax.cond(past_y.t > 1.6, lambda _: jax.lax.scan(step, (design, opt_state), jnp.arange(1000))[0], lambda _: calculate_and_apply_gradient( thetas.position, cntrst_thetas.position, design, cond_sde, optx_opt, opt_state)[:2], None)
-    design, opt_state, _ = calculate_and_apply_gradient( thetas.position, cntrst_thetas.position, design, cond_sde, optx_opt, opt_state)
+    design, opt_state = jax.lax.cond(past_y.t > 1.4, lambda _: jax.lax.scan(step, (design, opt_state), jnp.arange(100))[0], lambda _: calculate_and_apply_gradient( thetas.position, cntrst_thetas.position, design, cond_sde, optx_opt, opt_state)[:2], None)
+    #design, opt_state, _ = calculate_and_apply_gradient( thetas.position, cntrst_thetas.position, design, cond_sde, optx_opt, opt_state)
 
     return ImplicitState(thetas.position, weights, cntrst_thetas.position, weights_c, design, opt_state)
 
