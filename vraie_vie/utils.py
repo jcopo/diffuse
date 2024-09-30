@@ -113,20 +113,20 @@ class maskAno:
     img_shape: tuple
 
     def make(self, xi: float):
-        return jnp.zeros(self.img_shape)
+        return jnp.stack([jnp.ones(self.img_shape), jnp.zeros(self.img_shape)], axis=-1)
 
     def measure_from_mask(self, hist_mask: Array, x: Array):
-        x[..., 1] = x[..., 1] * hist_mask
-        return x
+        return x * hist_mask
 
     def measure(self, xi: float, x: Array):
         return self.measure_from_mask(self.make(xi), x)
 
     def restore_from_mask(self, hist_mask: Array, x: Array, measured: Array):
-        return x
+        return  x * hist_mask + measured
 
     def restore(self, xi: float, x: Array, measured: Array):
-        return self.restore_from_mask(self.make(xi), x, measured)
+        inv_mask = 1 - self.make(xi)
+        return self.restore_from_mask(inv_mask, x, measured)
 
 
 def plotter_line_measure(array):
