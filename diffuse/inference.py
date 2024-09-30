@@ -203,9 +203,8 @@ def generate_cond_sampleV2(
         )
         logpdf = partial(
             logpdf_change_y,
-            y=ys.position,
             y_next=ys_next.position,
-            drift_y=drift_past,
+            design=mask_history,
             cond_sde=cond_sde,
             dt=dt,
         )

@@ -12,7 +12,6 @@ from jax.tree_util import register_pytree_node_class
 import matplotlib.pyplot as plt
 from jaxtyping import Array, PRNGKeyArray, PyTreeDef
 
-from diffuse.images import plotter_line
 from diffuse.sde import SDE, SDEState, euler_maryama_step
 from diffuse.conditional import (
     CondSDE,

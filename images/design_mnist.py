@@ -1,4 +1,5 @@
 import os
+import argparse
 from functools import partial
 from typing import Tuple, Callable
 import jax
@@ -13,11 +14,11 @@ from jax_tqdm import scan_tqdm
 import datetime
 import einops
 
-from diffuse.filter import generate_cond_sample
 from diffuse.sde import SDE, SDEState
 from diffuse.conditional import CondSDE
-from diffuse.plotting import log_samples, plotter_line
+from diffuse.plotting import log_samples, plot_lines, plotter_random
 from diffuse.images import SquareMask
+from diffuse.inference import generate_cond_sampleV2
 from diffuse.optimizer import ImplicitState, impl_step, impl_one_step, impl_full_scan
 from diffuse.sde import LinearSchedule
 from diffuse.unet import UNet
@@ -311,8 +312,89 @@ def main(key: PRNGKeyArray, plotter_theta: Callable, plotter_contrastive: Callab
     return optimal_state
 
 
+
+#@jax.jit
+def main_random(key: PRNGKeyArray, plotter_random: Callable):
+    key_init, key_step = jax.random.split(key)
+
+    sde, cond_sde, mask, ground_truth, tf, n_t, nn_score = initialize_experiment(
+        key_init
+    )
+    dt = tf / (n_t - 1)
+    num_meas = 20
+    n_samples = 150
+    n_samples_cntrst = 151
+
+    # Time initialization (kept outside the function)
+    ts = jnp.linspace(0, tf, n_t)
+    dts = jnp.diff(ts)
+
+    # init design and measurement hist
+    #design = jax.random.uniform(key_init, (2,), minval=0, maxval=28)
+    design = jnp.array([0.1, 0.1])
+    y = cond_sde.mask.measure(design, ground_truth)
+    design = jax.random.uniform(key_init, (2,), minval=0, maxval=28)
+
+    measurement_history = jnp.zeros((num_meas, *y.shape))
+    measurement_history = measurement_history.at[0].set(y)
+
+    # init optimizer
+    optimizer = optax.chain(optax.adam(learning_rate=.9), optax.scale(-1))
+    opt_state = optimizer.init(design)
+
+    ts = jnp.linspace(0, tf, n_t)
+
+    # init thetas
+    #thetas, cntrst_thetas = init_trajectory(key_init, sde, nn_score, n_samples, n_samples_cntrst, tf, ts, dts, ground_truth.shape)
+    thetas, cntrst_thetas = init_start_time( key_init, n_samples, n_samples_cntrst, ground_truth.shape)
+    weights_0 = jnp.zeros((n_samples,))
+    weights_c_0 = jnp.zeros((n_samples_cntrst,))
+    implicit_state = ImplicitState(thetas, weights_0, cntrst_thetas, weights_c_0, design, opt_state)
+
+    # stock in joint_y all measurements
+    joint_y = y
+    mask_history = mask.make(design)
+    noiser = jax.jit(jax.vmap(sde.path, in_axes=(0, None, 0)))
+    for n_meas in range(num_meas):
+        key_noise, key_opt, key_gen = jax.random.split(key_step, 3)
+        # make noised path for measurements
+        keys_noise = jax.random.split(key_noise, n_t)
+        state_0 = SDEState(joint_y, jnp.zeros_like(y))
+        past_y = noiser(keys_noise, state_0, ts)
+        past_y = SDEState(past_y.position[::-1], past_y.t)
+        #plotter_line(past_y.position)
+        thetas, weights = generate_cond_sampleV2(joint_y, mask_history, key_opt, cond_sde, ground_truth.shape, n_t, n_samples)[0]
+
+        # random design
+        design = jax.random.uniform(key_step, (2,), minval=0, maxval=28)
+
+        # make new measurement
+        new_measurement = cond_sde.mask.measure(design, ground_truth)
+        measurement_history = measurement_history.at[n_meas].set(new_measurement)
+
+        # add measured data to joint_y and update history of mask location
+        joint_y = cond_sde.mask.restore(design, joint_y, new_measurement)
+        mask_history = cond_sde.mask.restore(
+            design, mask_history, cond_sde.mask.make(design)
+        )
+        #plt.imshow(mask_history, cmap="gray")
+
+        jax.experimental.io_callback(plotter_random, None, ground_truth, joint_y, design, thetas.position, weights, n_meas)
+
+
+        key_step, _ = jax.random.split(key_step)
+
+
+    return thetas
+
 if __name__ == "__main__":
-    key_int = 0
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--key_int", type=int, default=0)
+    parser.add_argument("--random", action="store_true")
+    args = parser.parse_args()
+    key_int = args.key_int
+    random = args.random
+
     rng_key = jax.random.PRNGKey(key_int)
     dir_path = f"runs/{key_int}_{datetime.datetime.now().strftime('%m-%d_%H-%M-%S')}"
 
@@ -322,4 +404,12 @@ if __name__ == "__main__":
     os.makedirs(logging_path_contrastive, exist_ok=True)
     plotter_theta = partial(log_samples, logging_path=logging_path_theta, size=SIZE)
     plotter_contrastive = partial(log_samples, logging_path=logging_path_contrastive, size=SIZE)
+
+    if random:
+        logging_path_random = f"{dir_path}/random"
+        os.makedirs(logging_path_random, exist_ok=True)
+        plotter_r = partial(plotter_random, logging_path=logging_path_random, size=SIZE)
+        state = main_random(rng_key, plotter_r)
+
+
     state = main(rng_key, plotter_theta, plotter_contrastive)

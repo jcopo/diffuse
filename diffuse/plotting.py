@@ -2,6 +2,65 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
 
+
+def plotter_random(ground_truth, joint_y, design, thetas, weights, n_meas, logging_path, size):
+    n = 20
+    best_idx = jnp.argsort(weights)[-n:][::-1]
+    worst_idx = jnp.argsort(weights)[:n]
+
+    # Create a figure with subplots
+    fig = plt.figure(figsize=(40, 10))  # Reduced height from 12 to 10
+    fig.suptitle("High weight (top) and low weight (bottom) Samples", fontsize=18, y=0.67, x=0.6)
+    #fig.text(0.2, 1., f'Measurement {n_meas}', va='center', rotation='vertical', fontsize=14)
+
+    # reduce spacing between title and subplots
+    plt.subplots_adjust(top=0.85)
+
+    # Create grid spec for layout with reduced vertical spacing
+    gs = fig.add_gridspec(4, n, hspace=.0001)  # Added hspace parameter to reduce vertical spacing
+
+    # Add the larger subplot for the first 4 squares
+    ax_large = fig.add_subplot(gs[:2, :2])
+    ax_large.imshow(ground_truth, cmap="gray")
+    ax_large.text(-2., 13., f'Measurement {n_meas}', ha='center', va='center', fontsize=14, fontweight='bold', rotation='vertical')
+    ax_large.scatter(design[0], design[1], marker="o", c="red")
+
+    ax_large.axis("off")
+    ax_large.set_title("Ground Truth", fontsize=12)
+
+    # Add another large subplot
+    ax_large = fig.add_subplot(gs[:2, 2:4])
+    ax_large.imshow(joint_y, cmap="gray")
+    ax_large.axis("off")
+    ax_large.set_title("Measure $y$", fontsize=12)
+    ax_large.scatter(design[0], design[1], marker="o", c="red")
+    # add a square above the image. Around the design and 5 pixels from it
+    ax_large.add_patch(plt.Rectangle((design[0]-size/2, design[1]-size/2), size, size, fill=False, edgecolor='red', linewidth=2))
+    # Add the remaining subplots
+    for idx in range(n):
+        if idx < 4:
+            # ax1 = fig.add_subplot(gs[0, idx+4])
+            # ax2 = fig.add_subplot(gs[1, idx+4])
+            continue
+        else:
+            ax1 = fig.add_subplot(gs[0, idx])
+            ax2 = fig.add_subplot(gs[1, idx])
+
+        ax1.imshow(thetas[best_idx[idx]], cmap="gray")
+        ax2.imshow(thetas[worst_idx[idx]], cmap="gray")
+
+        # set no axis labels
+        ax1.axis("off")
+        ax2.axis("off")
+
+    #plt.tight_layout()
+    plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust 'rect' to accommodate the suptitle
+
+    plt.savefig(f"{logging_path}/samples_{n_meas}.png", bbox_inches="tight")
+    plt.close()
+
+
+
 def sigle_plot(array):
     plt.imshow(array, cmap="gray")
     plt.axis("off")
@@ -124,8 +183,9 @@ def log_samples(opt_hist, ground_truth, joint_y, thetas, weights, n_meas, loggin
     # Add the remaining subplots
     for idx in range(n):
         if idx < 4:
-            ax1 = fig.add_subplot(gs[0, idx+4])
-            ax2 = fig.add_subplot(gs[1, idx+4])
+            continue
+            # ax1 = fig.add_subplot(gs[0, idx+4])
+            # ax2 = fig.add_subplot(gs[1, idx+4])
         else:
             ax1 = fig.add_subplot(gs[0, idx])
             ax2 = fig.add_subplot(gs[1, idx])
