@@ -13,6 +13,7 @@ import einops
 
 from diffuse.sde import SDE, SDEState
 from diffuse.conditional import CondSDE
+from diffuse.inference import generate_cond_sampleV2
 from diffuse.optimizer import ImplicitState, impl_step, impl_one_step, impl_full_scan
 from diffuse.sde import LinearSchedule
 from diffuse.unet import UNet
@@ -44,33 +45,29 @@ def initialize_experiment(key: PRNGKeyArray):
     wmh.setup()
     xs = wmh.get_train_dataloader()
 
-    # Initialize parameters
-    tf = 2.0
-    n_t = 300
-
     # Define beta schedule and SDE
     beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
 
     # Initialize ScoreNetwork
-    score_net = UNet(tf / n_t, 64, upsampling="pixel_shuffle")
-    nn_trained = jnp.load(
-        os.path.join(config["save_path"], "ann_3795.npz"), allow_pickle=True
-    )
-    params = nn_trained["params"].item()
+    checkpoint = jnp.load(os.path.join(config["save_path"], "ann_3795.npz"), allow_pickle=True)
 
-    # Define neural network score function
-    def nn_score(x, t):
-        return score_net.apply(params, x, t)
+    nn_unet = UNet(config["tf"] / config["n_t"], 64, upsampling="pixel_shuffle")
+    params = checkpoint["params"].item()
+    
+    def nn_score_(x, t, scoreNet, params):
+        return scoreNet.apply(params, x, t)
+
+    nn_score = partial(nn_score_, scoreNet=nn_unet, params=params)
 
     # Set up mask and measurement
     ground_truth = next(iter(xs))[0]
-    mask = maskSpiral(img_shape=(92, 112), num_spiral=3, num_samples=50000, sigma=0.2)
+    mask_spiral = maskSpiral(img_shape=(92, 112), num_spiral=2, num_samples=50000, sigma=0.2)
 
     # Set up conditional SDE
-    cond_sde = CondSDE(beta=beta, mask=mask, tf=tf, score=nn_score)
+    cond_sde = CondSDE(beta=beta, mask=mask_spiral, tf=config["tf"], score=nn_score)
     sde = SDE(beta=beta)
 
-    return sde, cond_sde, mask, ground_truth, tf, n_t, nn_score
+    return sde, cond_sde, mask_spiral, ground_truth, config["tf"], 300, nn_score
 
 
 config_jacopo = {
@@ -252,7 +249,6 @@ def init_start_time(
     return thetas, cntrst_thetas
 
 
-# @jax.jit
 def main(key):
     key_init, key_step = jax.random.split(key)
 
@@ -269,7 +265,7 @@ def main(key):
     dts = jnp.diff(ts)
 
     # init design and measurement hist
-    design = jax.random.uniform(key_init, (2,), minval=1.0, maxval=3.0)
+    design = jax.random.uniform(key_init, (2,), minval=.1, maxval=2.)
     y = cond_sde.mask.measure(design, ground_truth)
 
     measurement_history = jnp.zeros((num_meas, *y.shape), dtype=jnp.complex64)
@@ -325,8 +321,11 @@ def main(key):
         mask_history = cond_sde.mask.supp_mask(
             optimal_state.design, mask_history, cond_sde.mask.make(optimal_state.design)
         )
-        plt.imshow(mask_history, cmap="gray")
-
+        fig, axs = plt.subplots(1, 2)
+        axs[0].imshow(np.abs(joint_y[..., 0]), cmap="gray", norm=matplotlib.colors.LogNorm(vmin=np.min(np.abs(joint_y[..., 0])), vmax=np.max(np.abs(joint_y[..., 0]))))
+        axs[1].imshow(mask_history, cmap="gray")
+        plt.show()
+        
         # logging
         print(f"Design_start: {design} Design_end:{optimal_state.design}")
         fig, axs = plt.subplots(1, 2)
@@ -345,12 +344,14 @@ def main(key):
             plotter_line_measure(optimal_state.cntrst_thetas[:, i])
 
         # reinitiazize implicit state
-        design = jax.random.uniform(key_step, (2,), minval=0, maxval=3.0)
+        design = jax.random.uniform(key_init, (2,), minval=1., maxval=2.)
         opt_state = optimizer.init(design)
         key_t, key_c = jax.random.split(key_gen)
         # thetas = generate_cond_sample(joint_y, optimal_state.design, key_t, cond_sde, ground_truth.shape, n_t, n_samples)[1][0]
 
-        # thetas = generate_cond_sampleV2(joint_y, mask_history, key_t, cond_sde, ground_truth.shape, n_t, n_samples)[1][0]
+        # tmp = generate_cond_sampleV2(joint_y, mask_history, key_t, cond_sde, ground_truth.shape, n_t, n_samples)
+        # plt.imshow(tmp[0][0].position[-1, ..., 0], cmap="gray")
+        # plt.show()
         # cntrst_thetas = generate_cond_sampleV2(joint_y, mask_history, key_c, cond_sde, ground_truth.shape, n_t, n_samples_cntrst)[1][0]
         key_step, _ = jax.random.split(key_step)
 

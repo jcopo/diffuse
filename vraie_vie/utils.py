@@ -108,6 +108,26 @@ class maskSpiral:
         supp = old_measure[..., 0] * inv_mask + new_measure[..., 0]
         return jnp.stack([supp, old_measure[..., 1]], axis=-1)
 
+@dataclass
+class maskAno:
+    img_shape: tuple
+
+    def make(self, xi: float):
+        return jnp.zeros(self.img_shape)
+
+    def measure_from_mask(self, hist_mask: Array, x: Array):
+        x[..., 1] = x[..., 1] * hist_mask
+        return x
+
+    def measure(self, xi: float, x: Array):
+        return self.measure_from_mask(self.make(xi), x)
+
+    def restore_from_mask(self, hist_mask: Array, x: Array, measured: Array):
+        return x
+
+    def restore(self, xi: float, x: Array, measured: Array):
+        return self.restore_from_mask(self.make(xi), x, measured)
+
 
 def plotter_line_measure(array):
     total_frames = len(array)
