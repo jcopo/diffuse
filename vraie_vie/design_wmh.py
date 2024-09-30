@@ -49,11 +49,13 @@ def initialize_experiment(key: PRNGKeyArray):
     beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
 
     # Initialize ScoreNetwork
-    checkpoint = jnp.load(os.path.join(config["save_path"], "ann_3795.npz"), allow_pickle=True)
+    checkpoint = jnp.load(
+        os.path.join(config["save_path"], "ann_3795.npz"), allow_pickle=True
+    )
 
     nn_unet = UNet(config["tf"] / config["n_t"], 64, upsampling="pixel_shuffle")
     params = checkpoint["params"].item()
-    
+
     def nn_score_(x, t, scoreNet, params):
         return scoreNet.apply(params, x, t)
 
@@ -61,7 +63,9 @@ def initialize_experiment(key: PRNGKeyArray):
 
     # Set up mask and measurement
     ground_truth = next(iter(xs))[0]
-    mask_spiral = maskSpiral(img_shape=(92, 112), num_spiral=2, num_samples=50000, sigma=0.2)
+    mask_spiral = maskSpiral(
+        img_shape=(92, 112), num_spiral=2, num_samples=50000, sigma=0.2
+    )
 
     # Set up conditional SDE
     cond_sde = CondSDE(beta=beta, mask=mask_spiral, tf=config["tf"], score=nn_score)
@@ -265,7 +269,7 @@ def main(key):
     dts = jnp.diff(ts)
 
     # init design and measurement hist
-    design = jax.random.uniform(key_init, (2,), minval=.1, maxval=2.)
+    design = jax.random.uniform(key_init, (2,), minval=0.1, maxval=2.0)
     y = cond_sde.mask.measure(design, ground_truth)
 
     measurement_history = jnp.zeros((num_meas, *y.shape), dtype=jnp.complex64)
@@ -322,10 +326,17 @@ def main(key):
             optimal_state.design, mask_history, cond_sde.mask.make(optimal_state.design)
         )
         fig, axs = plt.subplots(1, 2)
-        axs[0].imshow(np.abs(joint_y[..., 0]), cmap="gray", norm=matplotlib.colors.LogNorm(vmin=np.min(np.abs(joint_y[..., 0])), vmax=np.max(np.abs(joint_y[..., 0]))))
+        axs[0].imshow(
+            np.abs(joint_y[..., 0]),
+            cmap="gray",
+            norm=matplotlib.colors.LogNorm(
+                vmin=np.min(np.abs(joint_y[..., 0])),
+                vmax=np.max(np.abs(joint_y[..., 0])),
+            ),
+        )
         axs[1].imshow(mask_history, cmap="gray")
         plt.show()
-        
+
         # logging
         print(f"Design_start: {design} Design_end:{optimal_state.design}")
         fig, axs = plt.subplots(1, 2)
@@ -344,7 +355,7 @@ def main(key):
             plotter_line_measure(optimal_state.cntrst_thetas[:, i])
 
         # reinitiazize implicit state
-        design = jax.random.uniform(key_init, (2,), minval=1., maxval=2.)
+        design = jax.random.uniform(key_init, (2,), minval=1.0, maxval=2.0)
         opt_state = optimizer.init(design)
         key_t, key_c = jax.random.split(key_gen)
         # thetas = generate_cond_sample(joint_y, optimal_state.design, key_t, cond_sde, ground_truth.shape, n_t, n_samples)[1][0]

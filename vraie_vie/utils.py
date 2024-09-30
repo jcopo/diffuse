@@ -108,6 +108,7 @@ class maskSpiral:
         supp = old_measure[..., 0] * inv_mask + new_measure[..., 0]
         return jnp.stack([supp, old_measure[..., 1]], axis=-1)
 
+
 @dataclass
 class maskAno:
     img_shape: tuple
@@ -122,7 +123,7 @@ class maskAno:
         return self.measure_from_mask(self.make(xi), x)
 
     def restore_from_mask(self, hist_mask: Array, x: Array, measured: Array):
-        return  x * hist_mask + measured
+        return x * hist_mask + measured
 
     def restore(self, xi: float, x: Array, measured: Array):
         inv_mask = 1 - self.make(xi)

@@ -91,8 +91,6 @@ class vol2slice(Dataset):
         return padded_tensor
 
 
-
-
 def create_dataset(cfg, type="Training"):
     ds = load_nifti(cfg, type)
     ds = vol2slice(cfg, ds, type)
