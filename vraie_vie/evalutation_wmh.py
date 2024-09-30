@@ -107,6 +107,7 @@ if __name__ == "__main__":
     n_particules = 300
     generate = partial(
         generate_cond_sampleV2,
+        design=xi,
         mask_history=mask,
         cond_sde=cond_sde,
         key=key,
