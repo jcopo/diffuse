@@ -18,7 +18,7 @@ def plot_comparison(ground_truth, state_random, state, y_random, y, logging_path
     best_idx_random = jnp.argsort(weights_random)[-n:][::-1]
 
     fig = plt.figure(figsize=(40, 10))
-    fig.suptitle("High weight from optimized measurements (top) and random measurements (bottom)", fontsize=18, y=0.7, x=0.6)
+    fig.suptitle("High weight samples from optimized measurements (top) and random measurements (bottom)", fontsize=18, y=0.7, x=0.6)
 
     # Create grid spec for layout with reduced vertical spacing
     gs = fig.add_gridspec(4, n, hspace=.0001)  # Added hspace parameter to reduce vertical spacing
@@ -218,7 +218,7 @@ def log_samples(opt_hist, ground_truth, joint_y, thetas, weights, n_meas, loggin
 
     ax_large.axis("off")
     ax_large.set_title("Ground Truth", fontsize=12)
-    ax_large.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
+    #ax_large.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
     ax_large.scatter(opt_hist[-1, 0], opt_hist[-1, 1], marker="o", c="red")
 
     # Add another large subplot

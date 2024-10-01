@@ -214,7 +214,7 @@ def main(key: PRNGKeyArray, num_meas: int, plotter_theta: Callable, plotter_cont
     measurement_history = measurement_history.at[0].set(y)
 
     # init optimizer
-    optimizer = optax.chain(optax.adam(learning_rate=.9), optax.scale(-1))
+    optimizer = optax.chain(optax.adam(learning_rate=.1), optax.scale(-1))
     opt_state = optimizer.init(design)
 
     ts = jnp.linspace(0, tf, n_t)
