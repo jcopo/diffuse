@@ -70,15 +70,24 @@ def pdf_mixtr(mix_state: MixState, x: Array) -> Array:
     return weights @ pdf
 
 
+def rho_t(x, t, state, sde):
+    means, covs, weights = transform_mixture_params(state, sde, t)
+    return pdf_mixtr(MixState(means, covs, weights), x)
+
+
+def cdf_t(x, t, state, sde):
+    means, covs, weights = transform_mixture_params(state, sde, t)
+    return cdf_mixtr(MixState(means, covs, weights), x)
+
+
 # def pdf_mixtr(state:MixState, x):
 #     mu, sigma, weights = state
 #     pdfs = jax.scipy.stats.multivariate_normal.pdf(x, mu, sigma)
 #     return  weights @ pdfs
 
 
-def init_mixture(key):
+def init_mixture(key, d=1):
     n_mixt = 3
-    d = 1
     means = jax.random.uniform(key, (n_mixt, d), minval=-3, maxval=3)
     covs = 0.1 * (jax.random.normal(key + 1, (n_mixt, d, d))) ** 2
     mix_weights = jax.random.uniform(key + 2, (n_mixt,))
@@ -157,6 +166,22 @@ def noiser_pdf(state: MixState, x, schedule):
 
 xmax = 4
 nbins = 200
+
+
+def transform_mixture_params(state, sde, t):
+    means, covs, weights = state
+    int_b = sde.beta.integrate(t, 0.0)
+    alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
+    means = alpha * means
+    covs = alpha**2 * covs + beta
+    return means, covs, weights
+
+
+def plot_2d_mixture(state: MixState, ax):
+    means, sigmas, weights = state
+    for mean, sigma, weight in zip(means, sigmas, weights):
+        ax.contour(mean[0], mean[1], weight, levels=20)
+
 
 
 def display_histogram(samples, ax):
