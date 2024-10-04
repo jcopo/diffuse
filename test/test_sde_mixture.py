@@ -13,13 +13,33 @@ import scipy as sp
 from diffuse.mixture import (
     MixState,
     cdf_mixtr,
+    cdf_t,
     display_histogram,
     display_trajectories,
-    init_mixture,
     pdf_mixtr,
+    rho_t,
     sampler_mixtr,
+    plot_2d_mixture,
+    transform_mixture_params,
 )
 from diffuse.sde import SDE, LinearSchedule, SDEState
+
+
+@pytest.fixture
+def key():
+    return jax.random.PRNGKey(666)
+
+
+@pytest.fixture
+def init_mixture(key):
+    n_mixt = 3
+    d = 1
+    means = jax.random.uniform(key, (n_mixt, d), minval=-3, maxval=3)
+    covs = 0.1 * (jax.random.normal(key + 1, (n_mixt, d, d))) ** 2
+    mix_weights = jax.random.uniform(key + 2, (n_mixt,))
+    mix_weights /= jnp.sum(mix_weights)
+
+    return MixState(means, covs, mix_weights)
 
 
 @pytest.fixture
@@ -32,6 +52,7 @@ def display_trajectories_at_times(
     particles, t_init, t_final, n_steps, space, perct, pdf
 ):
     n_plots = len(perct)
+    d = particles.shape[-1]
     fig, axs = plt.subplots(n_plots, 1, figsize=(10 * n_plots, n_plots))
     for i, x in enumerate(perct):
         k = int(x * n_steps)
@@ -40,8 +61,6 @@ def display_trajectories_at_times(
         # plot histogram and true density
         display_histogram(particles[:, k], axs[i])
         axs[i].plot(space, jax.vmap(pdf, in_axes=(0, None))(space, t))
-
-
 
 
 @pytest.fixture
@@ -63,34 +82,14 @@ def time_space_setup():
     return t_init, t_final, n_samples, n_steps, ts, space, dts
 
 
-def transform_mixture_params(state, sde, t):
-    means, covs, weights = state
-    int_b = sde.beta.integrate(t, 0.0)
-    alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
-    means = alpha * means
-    covs = alpha**2 * covs + beta
-    return means, covs, weights
-
-
-def rho_t(x, t, state, sde):
-    means, covs, weights = transform_mixture_params(state, sde, t)
-    return pdf_mixtr(MixState(means, covs, weights), x)
-
-
-def cdf_t(x, t, state, sde):
-    means, covs, weights = transform_mixture_params(state, sde, t)
-    return cdf_mixtr(MixState(means, covs, weights), x)
-
-
 def test_forward_sde_mixture(
-    sde_setup, time_space_setup, plot_if_enabled, get_percentiles
+    sde_setup, time_space_setup, plot_if_enabled, get_percentiles, init_mixture, key
 ):
-    key = jax.random.PRNGKey(666)
     sde = sde_setup
     t_init, t_final, n_samples, n_steps, ts, space, _ = time_space_setup
     perct = get_percentiles
     # samples from univariate gaussian
-    state = init_mixture(key)
+    state = init_mixture
     samples_mixt = sampler_mixtr(key, state, n_samples)
 
     # sample from noising process
@@ -132,13 +131,12 @@ def test_forward_sde_mixture(
 
 
 def test_backward_sde_mixture(
-    sde_setup, time_space_setup, plot_if_enabled, get_percentiles
+    sde_setup, time_space_setup, plot_if_enabled, get_percentiles, init_mixture, key
 ):
-    key = jax.random.PRNGKey(666)
     sde = sde_setup
     t_init, t_final, n_samples, n_steps, ts, space, dts = time_space_setup
     perct = get_percentiles
-    state = init_mixture(key)
+    state = init_mixture
 
     pdf = partial(rho_t, state=state, sde=sde)
     # score = lambda x, t: jax.grad(jnp.log(pdf(x, t)))
