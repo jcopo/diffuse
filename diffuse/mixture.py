@@ -1,5 +1,6 @@
 from typing import NamedTuple
-from jaxtyping import PyTreeDef
+import pdb
+from jaxtyping import PyTreeDef, Array
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import jax
@@ -22,7 +23,32 @@ class MixState(NamedTuple):
     mix_weights: PyTreeDef
 
 
-def pdf_mixtr(state: MixState, x: PyTreeDef):
+def cdf_mixtr(mix_state: MixState, x: Array) -> Array:
+    """
+    Calculate the cumulative distribution function (CDF) of a mixture of Gaussian distributions.
+
+    Args:
+        mix_state (MixState): The state of the mixture model, including means, covariances,
+                              and mixture weights.
+        x (jnp.ndarray): The input values at which to evaluate the CDF.
+
+    Returns:
+        jnp.ndarray: The CDF values of the mixture distribution at the input points.
+
+    Note:
+        This function assumes that the mixture components are univariate Gaussian distributions.
+        It uses jax.scipy.stats.norm.cdf for calculating individual CDFs.
+    """
+    means, covs, weights = mix_state
+    stds = jnp.sqrt(covs)
+
+    def single_cdf(mean, std, weight):
+        return weight * jax.scipy.stats.norm.cdf((x - mean) / std)
+
+    cdfs = jax.vmap(single_cdf)(means, stds, weights)
+    return jnp.sum(cdfs, axis=0).squeeze()
+
+def pdf_mixtr(mix_state: MixState, x: Array) -> Array:
     """
     Calculate the probability density function (PDF) of a multivariate normal distribution
     mixture given a state and input data.
@@ -30,12 +56,12 @@ def pdf_mixtr(state: MixState, x: PyTreeDef):
     Args:
         state (MixState): The state of the mixture model, including means, cholesky factors,
                           mixture weights, and other parameters.
-        x (PyTreeDef): The input data.
+        x (Array): The input data.
 
     Returns:
         float: The PDF of the multivariate normal distribution mixture.
     """
-    means, sigmas, weights = state
+    means, sigmas, weights = mix_state
 
     def pdf_multivariate_normal(mean, sigma):
         return jax.scipy.stats.multivariate_normal.pdf(x, mean, sigma)

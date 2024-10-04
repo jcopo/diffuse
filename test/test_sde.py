@@ -76,7 +76,7 @@ def test_mixture():
     # reverse rpoceess
     init_samples = jax.scipy.stats.norm.ppf(
         jnp.arange(0, n_samples) / n_samples + 1 / (2 * n_samples)
-    )
+    )[:, None]
     tf = jnp.array([t_final] * n_samples)
     state_f = SDEState(position=init_samples, t=tf)
     keys = jax.random.split(key, n_samples)
@@ -106,10 +106,7 @@ def test_mixture():
     perct = [0, 0.03, 0.06, 0.08, 0.1, 0.3, 0.7, 0.8, 0.9, 1]
     n_plots = len(perct)
     fig, axs = plt.subplots(n_plots, 1, figsize=(10 * n_plots, n_plots))
-    # end_particles = jnp.vstack([state_mixt.position, sample_mixt_T.position]).T
-    end_particles, _ = einops.pack(
-        [state_mixt.position, sample_mixt_T.position], "n * d"
-    )
+    end_particles = sample_mixt_T.position
     for i, x in enumerate(perct):
         k = int(x * n_steps)
         t = k * t_final / n_steps
@@ -126,7 +123,7 @@ def test_mixture():
     perct = [0, 0.1, 0.3, 0.7, 0.8, 0.9, 0.93, 0.9, 0.99, 1]
     n_plots = len(perct)
     fig, axs = plt.subplots(n_plots, 1, figsize=(10 * n_plots, n_plots))
-    end_particles = jnp.vstack([state_f.position, state_Ts.position.T]).T
+    end_particles = state_Ts.position
     for i, x in enumerate(perct):
         k = int(x * n_steps)
         t = k * t_final / n_steps
