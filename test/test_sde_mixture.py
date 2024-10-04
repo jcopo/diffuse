@@ -42,16 +42,6 @@ def display_trajectories_at_times(
         axs[i].plot(space, jax.vmap(pdf, in_axes=(0, None))(space, t))
 
 
-@pytest.fixture
-def plot_if_enabled(request):
-    def _plot_if_enabled(plot_func):
-        if request.config.getoption("--plot"):
-            fig = plot_func()
-            plt.show()
-        else:
-            plt.close("all")
-
-    return _plot_if_enabled
 
 
 @pytest.fixture
