@@ -1,9 +1,12 @@
-from typing import NamedTuple
 import pdb
-from jaxtyping import PyTreeDef, Array
+from typing import NamedTuple
+
+import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
-import jax
+from jaxtyping import Array, PyTreeDef
+
+from diffuse.sde import SDE
 
 
 class MixState(NamedTuple):
@@ -48,6 +51,7 @@ def cdf_mixtr(mix_state: MixState, x: Array) -> Array:
     cdfs = jax.vmap(single_cdf)(means, stds, weights)
     return jnp.sum(cdfs, axis=0).squeeze()
 
+
 def pdf_mixtr(mix_state: MixState, x: Array) -> Array:
     """
     Calculate the probability density function (PDF) of a multivariate normal distribution
@@ -70,26 +74,27 @@ def pdf_mixtr(mix_state: MixState, x: Array) -> Array:
     return weights @ pdf
 
 
-def rho_t(x, t, state, sde):
-    means, covs, weights = transform_mixture_params(state, sde, t)
+def rho_t(x: Array, t: Array, init_mix_state: MixState, sde: SDE) -> Array:
+    """
+    Compute p_t(x_t) where x_t follows the noising process defined by sde
+    """
+    means, covs, weights = transform_mixture_params(init_mix_state, sde, t)
     return pdf_mixtr(MixState(means, covs, weights), x)
 
 
-def cdf_t(x, t, state, sde):
-    means, covs, weights = transform_mixture_params(state, sde, t)
+def cdf_t(x: Array, t: Array, init_mix_state: MixState, sde: SDE) -> Array:
+    """
+    Compute cdf_t(x_t) where x_t follows the noising process defined by sde
+    """
+    means, covs, weights = transform_mixture_params(init_mix_state, sde, t)
     return cdf_mixtr(MixState(means, covs, weights), x)
-
-
-# def pdf_mixtr(state:MixState, x):
-#     mu, sigma, weights = state
-#     pdfs = jax.scipy.stats.multivariate_normal.pdf(x, mu, sigma)
-#     return  weights @ pdfs
 
 
 def init_mixture(key, d=1):
     n_mixt = 3
     means = jax.random.uniform(key, (n_mixt, d), minval=-3, maxval=3)
-    covs = 0.1 * (jax.random.normal(key + 1, (n_mixt, d, d))) ** 2
+    chol = jax.random.normal(key + 1, (n_mixt, d, d))
+    covs = 0.1 * (chol @ chol.transpose(0, 2, 1))
     mix_weights = jax.random.uniform(key + 2, (n_mixt,))
     mix_weights /= jnp.sum(mix_weights)
 
