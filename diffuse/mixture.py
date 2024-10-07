@@ -110,7 +110,11 @@ def sampler_mixtr(key, state: MixState, N):
     key1, key2 = jax.random.split(key)
     idx = jax.random.choice(key1, jnp.arange(len(weights)), shape=(N,), p=weights)
     noise = jax.random.normal(key2, shape=(N, d))
-    return mu[idx] + jnp.einsum("nij, ni->nj", jnp.sqrt(sigma[idx]), noise)
+
+    chol = jnp.linalg.cholesky(sigma)
+    noise_scaled = jnp.einsum("nij, ni->nj", chol[idx], noise)
+
+    return mu[idx] + noise_scaled
 
 
 xmax = 4
@@ -125,7 +129,7 @@ def transform_mixture_params(state, sde, t):
     int_b = sde.beta.integrate(t, 0.0)
     alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
     means = alpha * means
-    covs = alpha**2 * covs + beta
+    covs = alpha**2 * covs + beta * jnp.eye(covs.shape[-1])
     return means, covs, weights
 
 
