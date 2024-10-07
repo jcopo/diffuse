@@ -22,4 +22,4 @@ conda init
 source ~/.bash_profile
 conda activate aoas
 
-python -u /lustre/fswork/projects/rech/hlp/uha64uw/aistat24/diffuse/vraie_vie/train_wmh.py
+python -u /lustre/fswork/projects/rech/hlp/uha64uw/projet_p/diffuse/vraie_vie/train_wmh.py
