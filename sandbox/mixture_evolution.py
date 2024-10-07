@@ -13,6 +13,7 @@ from diffuse.mixture import (
     pdf_mixtr,
     rho_t,
     transform_mixture_params,
+    sampler_mixtr,
 )
 from diffuse.sde import SDE, LinearSchedule
 
@@ -54,7 +55,7 @@ def init_mixture(key, d=1):
 
 
 def make_sde():
-    beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=5.0)
+    beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
     sde = SDE(beta=beta)
     return sde
 
@@ -86,7 +87,9 @@ def run_time_evolution_animation(sde, init_mix_state, num_frames=100, interval=5
         pdf_grid = jax.vmap(jax.vmap(pdf, in_axes=(0, None)), in_axes=(0, None))(xy, t)
 
         ax.clear()
-        contour = ax.contourf(x, y, pdf_grid, levels=20, cmap='viridis')
+        contour = ax.contourf(x, y, pdf_grid, levels=20)
+        #contour = ax.contourf(x, y, pdf_grid, levels=20, cmap='viridis')
+
         ax.set_xlim(-4, 4)
         ax.set_ylim(-4, 4)
         ax.set_title(f"Mixture Evolution (t = {t:.2f})")
@@ -95,7 +98,22 @@ def run_time_evolution_animation(sde, init_mix_state, num_frames=100, interval=5
     anim = FuncAnimation(fig, update, frames=num_frames, interval=interval, blit=True)
     plt.show()
 
+
+def run_time_evolution_sampling(sde, init_mix_state, num_samples=1000, num_frames=100, interval=50):
+    pdf = partial(rho_t, init_mix_state=init_mix_state, sde=sde)
+    score = lambda x, t: jax.grad(pdf)(x, t) / pdf(x, t)
+
+    key = jax.random.PRNGKey(666)
+    samples = sampler_mixtr(key, init_mix_state, num_samples)
+
+    pdb.set_trace()
+    # plot samples
+    plt.scatter(samples[:, 0], samples[:, 1], alpha=0.5)
+    plt.show()
+
+
 if __name__ == "__main__":
     sde = make_sde()
     state = make_mixture()
-    run_time_evolution_animation(sde, state)
+    #run_time_evolution_animation(sde, state)
+    run_time_evolution_sampling(sde, state)

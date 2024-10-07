@@ -19,7 +19,6 @@ from diffuse.mixture import (
     pdf_mixtr,
     rho_t,
     sampler_mixtr,
-    plot_2d_mixture,
     transform_mixture_params,
 )
 from diffuse.sde import SDE, LinearSchedule, SDEState
@@ -89,8 +88,8 @@ def test_forward_sde_mixture(
     t_init, t_final, n_samples, n_steps, ts, space, _ = time_space_setup
     perct = get_percentiles
     # samples from univariate gaussian
-    state = init_mixture
-    samples_mixt = sampler_mixtr(key, state, n_samples)
+    mix_state = init_mixture
+    samples_mixt = sampler_mixtr(key, mix_state, n_samples)
 
     # sample from noising process
     keys = jax.random.split(key, n_samples * n_steps).reshape((n_samples, n_steps, -1))
@@ -100,7 +99,7 @@ def test_forward_sde_mixture(
         jax.vmap(sde.path, in_axes=(0, None, 0)), in_axes=(0, 0, None)
     )(keys, state_mixt, ts)
 
-    pdf = partial(rho_t, state=state, sde=sde)
+    pdf = partial(rho_t, init_mix_state=mix_state, sde=sde)
     # plot if enabled
     plot_if_enabled(
         lambda: display_trajectories(noised_samples.position.squeeze(), 100)
@@ -123,7 +122,7 @@ def test_forward_sde_mixture(
         t = t_init + k * (t_final - t_init) / n_steps
         ks_statistic, p_value = sp.stats.kstest(
             np.array(noised_samples.position[:, k].squeeze()),
-            lambda x: cdf_t(x, t, state, sde),
+            lambda x: cdf_t(x, t, mix_state, sde),
         )
         assert (
             p_value > 0.05
@@ -136,9 +135,9 @@ def test_backward_sde_mixture(
     sde = sde_setup
     t_init, t_final, n_samples, n_steps, ts, space, dts = time_space_setup
     perct = get_percentiles
-    state = init_mixture
+    mix_state = init_mixture
 
-    pdf = partial(rho_t, state=state, sde=sde)
+    pdf = partial(rho_t, init_mix_state=mix_state, sde=sde)
     # score = lambda x, t: jax.grad(jnp.log(pdf(x, t)))
     score = lambda x, t: jax.grad(pdf)(x, t) / pdf(x, t)
 
@@ -175,7 +174,7 @@ def test_backward_sde_mixture(
         t = t_init + k * (t_final - t_init) / n_steps
         ks_statistic, p_value = sp.stats.kstest(
             state_Ts.position[:, k].squeeze(),
-            lambda x: cdf_t(x, t_final - t, state, sde),
+            lambda x: cdf_t(x, t_final - t, mix_state, sde),
         )
         assert (
             p_value > 0.05
