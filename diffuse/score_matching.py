@@ -1,12 +1,9 @@
-import pdb
-from diffuse.sde import SDE, SDEState, LinearSchedule
-from jaxtyping import PyTreeDef, PRNGKeyArray
-import jax.numpy as jnp
 import jax
-from typing import Callable
+import jax.numpy as jnp
 import einops
-import matplotlib.pyplot as plt
-import optax
+from typing import Callable
+from jaxtyping import PyTreeDef, PRNGKeyArray
+from diffuse.sde import SDE, SDEState
 
 
 def score_match_loss(

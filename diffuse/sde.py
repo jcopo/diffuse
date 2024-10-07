@@ -1,4 +1,3 @@
-import pdb
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import partial
@@ -84,21 +83,6 @@ class SDE:
         alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
 
         return -(x - alpha * x0) / beta
-
-    def path1(self, key: PRNGKeyArray, state: SDEState, dts: float) -> SDEState:
-        """
-        Generate a path
-        """
-        step = partial(euler_maryama_step, drift=self.drift, diffusion=self.diffusion)
-
-        def body_fun(state, tup):
-            dt, key = tup
-            next_state = step(state, dt, key)
-            return next_state, next_state
-
-        n_dt = dts.shape[0]
-        keys = jax.random.split(key, n_dt)
-        return jax.lax.scan(body_fun, state, (dts, keys))
 
     def path(self, key: PRNGKeyArray, state: SDEState, ts: float) -> SDEState:
         """

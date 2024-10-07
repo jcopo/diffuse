@@ -1,85 +1,16 @@
+import einops
 from functools import partial
 from typing import Tuple
-import pdb
 
 import jax
 import jax.experimental
 import jax.numpy as jnp
 import jax.scipy as jsp
 from jaxtyping import Array, PRNGKeyArray
-import einops
 
 from diffuse.conditional import CondSDE
-from diffuse.sde import SDEState, euler_maryama_step, euler_maryama_step_array
+from diffuse.sde import SDEState, euler_maryama_step_array
 from blackjax.smc.resampling import stratified
-
-"""
-def log_density_multivariate_complex_gaussian(x, mean, sq_std):
-    diff = x - mean
-
-    quad_form = diff.conj() * diff / sq_std
-
-    log_density = -jnp.log(jnp.pi) - jnp.log(sq_std) - quad_form
-
-    return jnp.real(log_density)
-
-def logprob_y(theta, y, design, cond_sde):
-    f_y = cond_sde.mask.measure(design, theta)
-
-    log_density = log_density_multivariate_complex_gaussian(y, f_y, 1)
-    return log_density
-
-
-
-def logpdf_change_y(
-    x_sde_state: SDEState,
-    drift_x: Array,
-    y_next: Array,
-    design: Array,
-    cond_sde: CondSDE,
-    dt,
-):
-    x, t = x_sde_state
-    alpha = jnp.sqrt(jnp.exp(cond_sde.beta.integrate(0.0, t)))
-    cov = cond_sde.reverse_diffusion(x_sde_state) * jnp.sqrt(dt) + alpha
-
-    mean = cond_sde.mask.measure_from_mask(design, x + drift_x * dt)
-    logsprobs = log_density_multivariate_complex_gaussian(y_next, mean, cov)
-    logsprobs = cond_sde.mask.measure_from_mask(design, logsprobs)
-    logsprobs = einops.reduce(logsprobs, "t ... -> t ", "sum")
-    return logsprobs
-"""
-
-
-def logprob_y(theta, y, design, cond_sde):
-    """
-    log p(y | theta, design)
-    """
-    f_y = cond_sde.mask.measure(design, theta)
-    return jax.scipy.stats.norm.logpdf(y, f_y, 1.0)
-
-
-def logpdf_change_y(
-    x_sde_state: SDEState,
-    drift_x: Array,
-    y_next: Array,
-    design: Array,
-    cond_sde: CondSDE,
-    dt,
-):
-    r"""
-    log p(y_new | y_old, x_old)
-    with y_{k-1} | y_{k}, x_k ~ N(.| y_k + rev_drift*dt, sqrt(dt)*rev_diff)
-    """
-    x, t = x_sde_state
-    alpha = jnp.sqrt(jnp.exp(cond_sde.beta.integrate(0.0, t)))
-    cov = cond_sde.reverse_diffusion(x_sde_state) * jnp.sqrt(dt) + alpha
-
-    mean = cond_sde.mask.measure_from_mask(design, x + drift_x * dt)
-    logsprobs = jax.scipy.stats.norm.logpdf(y_next, mean, cov)
-    logsprobs = cond_sde.mask.measure_from_mask(design, logsprobs)
-    logsprobs = einops.reduce(logsprobs, "t ... -> t ", "sum")
-    return logsprobs
 
 
 def ess(log_weights: Array) -> float:
@@ -103,6 +34,42 @@ def log_ess(log_weights: Array) -> float:
     return 2 * jsp.special.logsumexp(log_weights) - jsp.special.logsumexp(
         2 * log_weights
     )
+
+
+def log_density_multivariate_complex_gaussian(x, mean, sq_std):
+    diff = x - mean
+
+    quad_form = diff.conj() * diff / sq_std
+
+    log_density = -jnp.log(jnp.pi) - jnp.log(sq_std) - quad_form
+
+    return jnp.real(log_density)
+
+
+def logprob_y(theta, y, design, cond_sde):
+    f_y = cond_sde.mask.measure(design, theta)
+
+    log_density = log_density_multivariate_complex_gaussian(y, f_y, 1)
+    return log_density
+
+
+def logpdf_change_y(
+    x_sde_state: SDEState,
+    drift_x: Array,
+    y_next: Array,
+    design: Array,
+    cond_sde: CondSDE,
+    dt,
+):
+    x, t = x_sde_state
+    alpha = jnp.sqrt(jnp.exp(cond_sde.beta.integrate(0.0, t)))
+    cov = cond_sde.reverse_diffusion(x_sde_state) * jnp.sqrt(dt) + alpha
+
+    mean = cond_sde.mask.measure_from_mask(design, x + drift_x * dt)
+    logsprobs = log_density_multivariate_complex_gaussian(y_next, mean, cov)
+    logsprobs = cond_sde.mask.measure_from_mask(design, logsprobs)
+    logsprobs = einops.reduce(logsprobs, "t ... -> t ", "sum")
+    return logsprobs
 
 
 def calculate_drift_y(cond_sde: CondSDE, sde_state: SDEState, design: Array, y: Array):
@@ -215,7 +182,6 @@ def logpdf_change_expected(
 
 def generate_cond_sampleV2(
     y: Array,
-    design: Array,
     mask_history: Array,
     key: PRNGKeyArray,
     cond_sde: CondSDE,
@@ -238,7 +204,7 @@ def generate_cond_sampleV2(
         logpdf = partial(
             logpdf_change_y,
             y_next=ys_next.position,
-            design=design,
+            design=mask_history,
             cond_sde=cond_sde,
             dt=dt,
         )
