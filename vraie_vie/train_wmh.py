@@ -36,7 +36,7 @@ if __name__ == "__main__":
         "n_epochs": 4000,
         "batch_size": 32,
         "num_workers": 0,
-        "n_t": 32,
+        "n_t": 300,
         "tf": 2.0,
         "lr": 2e-4,
     }

@@ -227,7 +227,7 @@ def generate_cond_sampleV2(
 
     x_T = jax.random.normal(key_x, (n_particles, *x_shape))
     state_x = SDEState(x_T, 0.0)
-    weights = jnp.zeros((n_particles,))
+    weights = jnp.zeros((n_particles,), dtype=jnp.complex64)
     # scan pcmc over x0 for n_steps
     keys = jax.random.split(key, n_ts - 1)
 
