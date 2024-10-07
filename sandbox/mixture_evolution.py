@@ -38,21 +38,6 @@ def init_mixture(key, d=1):
 
     return MixState(means, covs, weights)
 
-    n_mixt = 3
-    #means = jax.random.uniform(key, (n_mixt, d), minval=-3, maxval=3)
-    means = jnp.array([[0.0, 0.0], [2.0, 2.0], [-2.0, -2.0]])
-    covs = jnp.array(
-        [
-            [[1.0, -0.1], [-0.1, 1.0]],
-            [[1.0, 0.8], [0.8, 1.0]],
-            [[1.0, 0.0], [0.0, 1.0]],
-        ]
-    )
-    mix_weights = jax.random.uniform(key + 2, (n_mixt,))
-    mix_weights /= jnp.sum(mix_weights)
-
-    return MixState(means, covs, mix_weights)
-
 
 def make_sde():
     beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
@@ -66,13 +51,13 @@ def make_mixture():
     return state
 
 
-def run_forward_evolution_animation(sde, init_mix_state, num_frames=100, interval=500):
+def run_forward_evolution_animation(sde, init_mix_state, num_frames=100, interval=200):
     key = jax.random.PRNGKey(666)
     pdf = partial(rho_t, init_mix_state=init_mix_state, sde=sde)
     score = lambda x, t: jax.grad(pdf)(x, t) / pdf(x, t)
 
     # sample mixture
-    num_samples = 500
+    num_samples = 100
     samples = sampler_mixtr(key, init_mix_state, num_samples)
 
 
@@ -94,11 +79,18 @@ def run_forward_evolution_animation(sde, init_mix_state, num_frames=100, interva
         t = frame / num_frames * sde.beta.T
         pdf_grid = jax.vmap(jax.vmap(pdf, in_axes=(0, None)), in_axes=(0, None))(xy, t)
 
+        # get score at current time
+        # plot scores vectors
+
         ax.clear()
+        ax.set_title('Forward Process')
         contour = ax.contourf(x, y, pdf_grid, levels=20, zorder=-1)
         # Update sample positions based on the SDE
         key = jax.random.PRNGKey(frame)  # Use frame as seed for reproducibility
         samples = sde.path(key, state, jnp.array([t])).position.squeeze()
+
+        score_samples = jax.vmap(score, in_axes=(0, None))(samples, t)
+        scores = ax.quiver(samples[:, 0], samples[:, 1], score_samples[:, 0], score_samples[:, 1], color='red')
 
         # Plot updated samples
         scatter = ax.scatter(samples[:, 0], samples[:, 1], zorder=1, marker='o', s=10, c='k')
@@ -109,22 +101,21 @@ def run_forward_evolution_animation(sde, init_mix_state, num_frames=100, interva
         # Update time text
         time_text = ax.text(0.02, 0.98, f'Time: {t:.2f}', transform=ax.transAxes, va='top', fontsize=12)
 
-        return scatter, contour, time_text
+        return scores, scatter, contour, time_text
 
     anim = FuncAnimation(fig, update, frames=num_frames, interval=interval, blit=True)
     plt.show()
 
 
-def run_backward_evolution_animation(sde, init_mix_state, num_frames=100, interval=500):
+def run_backward_evolution_animation(sde, init_mix_state, num_frames=100, interval=200):
     key = jax.random.PRNGKey(666)
     pdf = partial(rho_t, init_mix_state=init_mix_state, sde=sde)
     score = lambda x, t: jax.grad(pdf)(x, t) / pdf(x, t)
 
-    # sample from the diffused state (t=T)
-    num_samples = 500
+    # Sample from standard normal distribution
+    num_samples = 100
     T = sde.beta.T
-    diffused_samples = sampler_mixtr(key, init_mix_state, num_samples)
-    diffused_samples = sde.path(key, SDEState(position=diffused_samples, t=jnp.zeros((num_samples, 1))), jnp.array([T])).position.squeeze()
+    init_samples = jax.random.normal(key, (num_samples, 2))
 
     # Create 2D grid
     space = jnp.linspace(-5, 5, 100)
@@ -138,18 +129,29 @@ def run_backward_evolution_animation(sde, init_mix_state, num_frames=100, interv
     ax.set_ylim(-4, 4)
     time_text = ax.text(0.02, 0.98, '', transform=ax.transAxes, va='top', fontsize=12)
 
-    state = SDEState(position=diffused_samples, t=T * jnp.ones((num_samples, 1)))
+    state = SDEState(position=init_samples, t=T * jnp.ones((num_samples, 1)))
+
+    # Prepare reverse SDE function
+    num_steps = 200
+    dts = jnp.array([T / num_steps] * num_steps)
+    keys = jax.random.split(key, num_samples)
+    revert_sde = jax.jit(jax.vmap(partial(sde.reverso, score=score, dts=dts)))
+    state_0, state_Ts = revert_sde(keys, state)
 
     def update(frame):
-        t = T - (frame / num_frames * T)
-        pdf_grid = jax.vmap(jax.vmap(pdf, in_axes=(0, None)), in_axes=(0, None))(xy, t)
+
+        t = frame / num_frames * T
+        pdf_grid = jax.vmap(jax.vmap(lambda x, t: pdf(x, T - t), in_axes=(0, None)), in_axes=(0, None))(xy, t)
 
         ax.clear()
+        ax.set_title('Backward Process')
         contour = ax.contourf(x, y, pdf_grid, levels=20, zorder=-1)
 
         # Update sample positions based on the reverse SDE
-        key = jax.random.PRNGKey(frame)  # Use frame as seed for reproducibility
-        samples = sde.reverso(key, state, jnp.array([t])).position.squeeze()
+        idx_frame = int(t / T * num_steps)
+        samples = state_Ts.position[:, idx_frame]
+        score_samples = jax.vmap(score, in_axes=(0, None))(samples, T - t)
+        scores = ax.quiver(samples[:, 0], samples[:, 1], score_samples[:, 0], score_samples[:, 1], color='red')
 
         # Plot updated samples
         scatter = ax.scatter(samples[:, 0], samples[:, 1], zorder=1, marker='o', s=10, c='k')
@@ -158,23 +160,16 @@ def run_backward_evolution_animation(sde, init_mix_state, num_frames=100, interv
         ax.axis('off')
 
         # Update time text
-        time_text = ax.text(0.02, 0.98, f'Time: {t:.2f}', transform=ax.transAxes, va='top', fontsize=12)
+        time_text = ax.text(0.02, 0.98, f'Time: {T-t:.2f}', transform=ax.transAxes, va='top', fontsize=12)
 
-        return scatter, contour, time_text
+        return scores, scatter, contour, time_text
 
     anim = FuncAnimation(fig, update, frames=num_frames, interval=interval, blit=True)
     plt.show()
 
-if __name__ == "__main__":
-    sde = make_sde()
-    state = make_mixture()
-    #run_forward_evolution_animation(sde, state)
-    run_backward_evolution_animation(sde, state)
-
-
 
 if __name__ == "__main__":
     sde = make_sde()
     state = make_mixture()
-    # run_forward_evolution_animation(sde, state)
+    run_forward_evolution_animation(sde, state)
     run_backward_evolution_animation(sde, state)
