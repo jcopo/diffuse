@@ -175,7 +175,7 @@ from diffrax import diffeqsolve, ODETerm, Dopri5, PIDController
 
 
 def ode_step_array(state: SDEState, dt: float, drift: Array) -> SDEState:
-    ode_fn = lambda t, x, _: drift(x) * dt
+    ode_fn = lambda t, x, _: drift.flatten()
     term = ODETerm(ode_fn)
     solver = Dopri5()
     controller = PIDController(rtol=1e-3, atol=1e-6)
