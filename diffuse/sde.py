@@ -139,6 +139,19 @@ class SDE:
         )
         return state_f, history
 
+    def reverso_ode(self, tf: float, score: Callable) -> Callable:
+        """
+        Reverse time ODE
+        """
+
+        def reverse_drift(state: SDEState):
+            x, t = state
+            beta_t = self.beta(tf - t)
+            s = score(x, tf - t)
+            return 0.5 * beta_t * x + beta_t * s
+
+        return reverse_drift
+
 
 def euler_maryama_step(
     state: SDEState, dt: float, key: PRNGKeyArray, drift: Callable, diffusion: Callable
