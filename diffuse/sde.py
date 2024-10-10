@@ -173,11 +173,12 @@ def euler_maryama_step_array(
 
 from diffrax import diffeqsolve, ODETerm, Dopri5, PIDController
 
+from jax.experimental.host_callback import call
 
 def ode_step_array(state: SDEState, dt: float, drift: Array) -> SDEState:
-    jax.debug.print("drift{}", drift.shape)
-    jax.debug.print("state{}", state.position.shape)
-    jax.debug.print("dt{}", dt.shape)
+    call(lambda: print("state", state.position.shape))
+    call(lambda: print("dt", dt))
+    call(lambda: print("drift", drift.shape))
     ode_fn = lambda t, x, _: drift.flatten()
     term = ODETerm(ode_fn)
     solver = Dopri5()
