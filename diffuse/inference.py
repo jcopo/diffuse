@@ -9,7 +9,7 @@ import jax.scipy as jsp
 from jaxtyping import Array, PRNGKeyArray
 
 from diffuse.conditional import CondSDE
-from diffuse.sde import SDEState, euler_maryama_step_array
+from diffuse.sde import SDEState, euler_maryama_step_array, ode_step_array
 from blackjax.smc.resampling import stratified
 
 
@@ -139,7 +139,7 @@ def particle_step(
 
     drift_x = cond_sde.reverse_drift(sde_state)
     diffusion = cond_sde.reverse_diffusion(sde_state)
-    sde_state = euler_maryama_step_array(
+    sde_state = ode_step_array(
         sde_state, dt, rng_key, drift_x + drift_y, diffusion
     )
     # weights = jax.vmap(logpdf, in_axes=(SDEState(0, None),))(sde_state)
