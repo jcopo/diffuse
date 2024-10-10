@@ -187,6 +187,6 @@ def ode_step_array(state: SDEState, dt: float, drift: Array) -> SDEState:
         t1=state.t + dt,
         dt0=dt,
         y0=state.position.flatten(),
-        step_size_controller=controller,
+        stepsize_controller=controller,
     )
     return SDEState(sol.ys[-1].reshape(state.position.shape), state.t + dt)
