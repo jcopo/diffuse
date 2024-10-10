@@ -148,7 +148,7 @@ class SDE:
             x, t = state
             beta_t = self.beta(tf - t)
             s = score(x, tf - t)
-            return - 0.5 * beta_t * x + beta_t * s
+            return -0.5 * beta_t * x + beta_t * s
 
         return reverse_drift_ode
 
@@ -170,9 +170,22 @@ def euler_maryama_step_array(
     ) * jnp.sqrt(dt)
     return SDEState(state.position + dx, state.t + dt)
 
-def ode_step_array(
-    state: SDEState, dt: float, drift: Array
-) -> SDEState:
-    dx = drift * dt
-    return SDEState(state.position + dx, state.t + dt)
 
+from diffrax import diffeqsolve, ODETerm, Dopri5, PIDController
+
+
+def ode_step_array(state: SDEState, dt: float, drift: Array) -> SDEState:
+    ode_fn = lambda t, x, _: drift(x) * dt
+    term = ODETerm(ode_fn)
+    solver = Dopri5()
+    controller = PIDController(rtol=1e-3, atol=1e-6)
+    sol = diffeqsolve(
+        term,
+        solver,
+        controller,
+        t0=state.t,
+        t1=state.t + dt,
+        dt0=dt,
+        y0=state.position.flatten(),
+    )
+    return SDEState(sol.ys[-1].reshape(state.position.shape), state.t + dt)

@@ -41,7 +41,6 @@ class CondSDE(SDE):
     def reverse_diffusion(self, state: SDEState) -> Array:
         x, t = state
         return jnp.sqrt(self.beta(self.tf - t))
-    
 
     def logpdf(self, obs: Array, state_p: CondState, dt: float):
         """
