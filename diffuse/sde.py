@@ -176,9 +176,9 @@ from diffrax import diffeqsolve, ODETerm, Dopri5, PIDController
 from jax.experimental.host_callback import call
 
 def ode_step_array(state: SDEState, dt: float, drift: Array) -> SDEState:
-    call(lambda: print("state", state.position.shape))
-    call(lambda: print("dt", dt))
-    call(lambda: print("drift", drift.shape))
+    call(lambda x: print(f"state{x}"), state.position.shape)
+    call(lambda x: print(f"dt{x}"), dt)
+    call(lambda x: print(f"drift{x}"), drift.shape)
     ode_fn = lambda t, x, _: drift.flatten()
     term = ODETerm(ode_fn)
     solver = Dopri5()
