@@ -144,13 +144,13 @@ class SDE:
         Reverse time ODE
         """
 
-        def reverse_drift(state: SDEState):
+        def reverse_drift_ode(state: SDEState):
             x, t = state
             beta_t = self.beta(tf - t)
             s = score(x, tf - t)
-            return 0.5 * beta_t * x + beta_t * s
+            return - 0.5 * beta_t * x + beta_t * s
 
-        return reverse_drift
+        return reverse_drift_ode
 
 
 def euler_maryama_step(
@@ -171,7 +171,7 @@ def euler_maryama_step_array(
     return SDEState(state.position + dx, state.t + dt)
 
 def ode_step_array(
-    state: SDEState, dt: float, key: PRNGKeyArray, drift: Array, diffusion: Array
+    state: SDEState, dt: float, drift: Array
 ) -> SDEState:
     dx = drift * dt
     return SDEState(state.position + dx, state.t + dt)

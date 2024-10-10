@@ -137,10 +137,10 @@ def particle_step(
     Particle step for the conditional diffusion.
     """
 
-    drift_x = cond_sde.reverse_drift(sde_state)
-    diffusion = cond_sde.reverse_diffusion(sde_state)
+    drift_x = cond_sde.reverse_drift_ode(sde_state)
+    # diffusion = cond_sde.reverse_diffusion(sde_state)
     sde_state = ode_step_array(
-        sde_state, dt, rng_key, drift_x + drift_y, diffusion
+        sde_state, dt, drift_x + drift_y
     )
     # weights = jax.vmap(logpdf, in_axes=(SDEState(0, None),))(sde_state)
     weights = logpdf(sde_state, drift_x)

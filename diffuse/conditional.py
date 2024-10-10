@@ -41,6 +41,12 @@ class CondSDE(SDE):
     def reverse_diffusion(self, state: SDEState) -> Array:
         x, t = state
         return jnp.sqrt(self.beta(self.tf - t))
+    
+    def reverse_drift_ode(self, state: SDEState) -> Array:
+        x, t = state
+        beta_t = self.beta(self.tf - t)
+        s = self.score(x, self.tf - t)
+        return - 0.5 * beta_t * x + beta_t * s
 
     def logpdf(self, obs: Array, state_p: CondState, dt: float):
         """
