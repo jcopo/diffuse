@@ -169,3 +169,10 @@ def euler_maryama_step_array(
         key, state.position.shape
     ) * jnp.sqrt(dt)
     return SDEState(state.position + dx, state.t + dt)
+
+def ode_step_array(
+    state: SDEState, dt: float, key: PRNGKeyArray, drift: Array, diffusion: Array
+) -> SDEState:
+    dx = drift * dt
+    return SDEState(state.position + dx, state.t + dt)
+
