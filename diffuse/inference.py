@@ -137,7 +137,7 @@ def particle_step(
     Particle step for the conditional diffusion.
     """
 
-    drift_x = cond_sde.reverse_drift_ode(sde_state)
+    drift_x = cond_sde.reverse_drift(sde_state)
     # diffusion = cond_sde.reverse_diffusion(sde_state)
     sde_state = ode_step_array(
         sde_state, dt, drift_x + drift_y
