@@ -168,8 +168,8 @@ def ode_step_array(state: SDEState, dt: float, drift: Array) -> SDEState:
     term = ODETerm(ode_fn)
     sol = ode_solver(
         term,
-        t0=state.t + dt,
-        t1=state.t,
+        t0=state.t,
+        t1=state.t + dt,
         dt0=dt,
         y0=state.position.flatten(),
     )
