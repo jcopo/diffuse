@@ -6,6 +6,11 @@ from typing import Callable, NamedTuple
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray, PyTreeDef
+from diffrax import Dopri5, ODETerm, PIDController, diffeqsolve
+
+solver = Dopri5()
+controller = PIDController(rtol=1e-3, atol=1e-6)
+ode_solver = partial(diffeqsolve, solver=solver, stepsize_controller=controller)
 
 
 class SDEState(NamedTuple):
@@ -139,19 +144,6 @@ class SDE:
         )
         return state_f, history
 
-    def reverso_ode(self, tf: float, score: Callable) -> Callable:
-        """
-        Reverse time ODE
-        """
-
-        def reverse_drift_ode(state: SDEState):
-            x, t = state
-            beta_t = self.beta(tf - t)
-            s = score(x, tf - t)
-            return -0.5 * beta_t * x + beta_t * s
-
-        return reverse_drift_ode
-
 
 def euler_maryama_step(
     state: SDEState, dt: float, key: PRNGKeyArray, drift: Callable, diffusion: Callable
@@ -171,22 +163,14 @@ def euler_maryama_step_array(
     return SDEState(state.position + dx, state.t + dt)
 
 
-from diffrax import diffeqsolve, ODETerm, Dopri5, PIDController
-
-from jax.experimental.host_callback import call
-
 def ode_step_array(state: SDEState, dt: float, drift: Array) -> SDEState:
     ode_fn = lambda t, x, _: drift.flatten()
     term = ODETerm(ode_fn)
-    solver = Dopri5()
-    controller = PIDController(rtol=1e-3, atol=1e-6)
-    sol = diffeqsolve(
+    sol = ode_solver(
         term,
-        solver,
-        t0=state.t,
-        t1=state.t + dt,
+        t0=state.t + dt,
+        t1=state.t,
         dt0=dt,
         y0=state.position.flatten(),
-        stepsize_controller=controller,
     )
     return SDEState(sol.ys[-1].reshape(state.position.shape), state.t + dt)
