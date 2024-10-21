@@ -30,13 +30,13 @@ if __name__ == "__main__":
         "modality": "FLAIR",
         "slice_size_template": 49,
         "begin_slice": 26,
-        "flair_template_path": "/lustre/fswork/projects/rech/hlp/uha64uw/aistat24/WMH/MNI-FLAIR-2.0mm.nii.gz",
-        "path_dataset": "/lustre/fswork/projects/rech/hlp/uha64uw/aistat24/WMH",
-        "save_path": "/lustre/fswork/projects/rech/hlp/uha64uw/aistat24/WMH/models/",
+        "flair_template_path": "/lustre/fswork/projects/rech/hlp/uha64uw/projet_p/WMH/MNI-FLAIR-2.0mm.nii.gz",
+        "path_dataset": "/lustre/fswork/projects/rech/hlp/uha64uw/projet_p/WMH",
+        "save_path": "/lustre/fswork/projects/rech/hlp/uha64uw/projet_p/WMH/models/",
         "n_epochs": 4000,
         "batch_size": 32,
         "num_workers": 0,
-        "n_t": 32,
+        "n_t": 300,
         "tf": 2.0,
         "lr": 2e-4,
     }
@@ -119,7 +119,7 @@ if __name__ == "__main__":
             )
 
     np.savez(
-        os.path.join(config["save_path"], f"ann_end.npz"),
+        os.path.join(config["save_path"], "ann_end.npz"),
         params=params,
         ema_state=ema_state,
         opt_state_1=opt_state[0],

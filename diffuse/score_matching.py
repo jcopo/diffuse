@@ -1,16 +1,9 @@
-import pdb
-from diffuse.sde import SDE, SDEState, LinearSchedule
-from diffuse.neural_networks import MLP
-from diffuse.mixture import display_trajectories
-from jaxtyping import PyTreeDef, PRNGKeyArray
-import jax.numpy as jnp
 import jax
-from typing import Callable
+import jax.numpy as jnp
 import einops
-import matplotlib.pyplot as plt
-import optax
-
-from diffuse.mixture import init_mixture, sampler_mixtr
+from typing import Callable
+from jaxtyping import PyTreeDef, PRNGKeyArray
+from diffuse.sde import SDE, SDEState
 
 
 def score_match_loss(

@@ -1,4 +1,3 @@
-import pdb
 from typing import NamedTuple
 
 import jax
@@ -161,4 +160,3 @@ def display_trajectories(Y, m):
         plt.plot(
             Y[idx, :], c=[color_marker, 0, 1 - color_marker], alpha=0.3, linewidth=0.5
         )
-

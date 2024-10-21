@@ -1,4 +1,3 @@
-import pdb
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import partial
@@ -7,6 +6,12 @@ from typing import Callable, NamedTuple
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray, PyTreeDef, Array
+from jaxtyping import Array, PRNGKeyArray, PyTreeDef
+from diffrax import Dopri5, ODETerm, PIDController, diffeqsolve
+
+solver = Dopri5()
+controller = PIDController(rtol=1e-3, atol=1e-6)
+ode_solver = partial(diffeqsolve, solver=solver, stepsize_controller=controller)
 
 
 class SDEState(NamedTuple):
@@ -157,3 +162,16 @@ def euler_maryama_step_array(
         key, state.position.shape
     ) * jnp.sqrt(dt)
     return SDEState(state.position + dx, state.t + dt)
+
+
+def ode_step_array(state: SDEState, dt: float, drift: Array) -> SDEState:
+    ode_fn = lambda t, x, _: drift.flatten()
+    term = ODETerm(ode_fn)
+    sol = ode_solver(
+        term,
+        t0=state.t,
+        t1=state.t + dt,
+        dt0=dt,
+        y0=state.position.flatten(),
+    )
+    return SDEState(sol.ys[-1].reshape(state.position.shape), state.t + dt)

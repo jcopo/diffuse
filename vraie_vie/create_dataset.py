@@ -46,7 +46,7 @@ def load_nifti(cfg, type="Training"):
 
             subject_dict = {
                 "vol": tio.ScalarImage(path_img),
-                "mask": tio.LabelMap(path_mask) if type == "Training" else None,
+                "mask": tio.LabelMap(path_mask),
                 "center": sub.Center,
                 "ID": sub.ID,
                 "path": sub.Path,
@@ -75,23 +75,20 @@ class vol2slice(Dataset):
 
         subject["vol"][tio.DATA] = subject["vol"][tio.DATA][0, ..., idx_slice]
 
-        if self.type == "Training":
-            subject["mask"][tio.DATA] = subject["mask"][tio.DATA][0, ..., idx_slice]
+        subject["mask"][tio.DATA] = subject["mask"][tio.DATA][0, ..., idx_slice]
 
-            data_masked = torch.concatenate(
-                [
-                    subject["vol"][tio.DATA][..., None],
-                    subject["mask"][tio.DATA][..., None].type(torch.float32),
-                ],
-                dim=-1,
-            )
+        data_masked = torch.concatenate(
+            [
+                subject["vol"][tio.DATA][..., None],
+                subject["mask"][tio.DATA][..., None].type(torch.float32),
+            ],
+            dim=-1,
+        )
 
-            padding = (0, 0, 0, 3, 0, 1)
-            padded_tensor = F.pad(data_masked, padding, "constant", 0)
+        padding = (0, 0, 0, 3, 0, 1)
+        padded_tensor = F.pad(data_masked, padding, "constant", 0)
 
-            return padded_tensor
-
-        return subject["vol"][tio.DATA]
+        return padded_tensor
 
 
 def create_dataset(cfg, type="Training"):

@@ -1,20 +1,15 @@
 from functools import partial
-from typing import NamedTuple, Tuple
-import pdb
+from typing import NamedTuple
 
 import jax
 import jax.experimental
 import jax.numpy as jnp
-import jax.scipy as jsp
 import optax
 from jaxtyping import Array, PRNGKeyArray
 from optax import GradientTransformation
-import einops
-import matplotlib.pyplot as plt
 
 from diffuse.conditional import CondSDE
-from diffuse.sde import SDEState, euler_maryama_step
-from diffuse.filter import stratified
+from diffuse.sde import SDEState
 from diffuse.inference import (
     calculate_past_contribution_score,
     calculate_drift_expt_post,
@@ -23,11 +18,6 @@ from diffuse.inference import (
     particle_step,
     logprob_y,
 )
-
-
-
-
-
 
 
 class ImplicitState(NamedTuple):
@@ -123,7 +113,9 @@ def update_expected_posterior(
         cond_sde=cond_sde,
         dt=dt,
     )
-    positions, weights = particle_step(cntrst_sde_state, key, drift_y + drift_past, cond_sde, dt, logpdf)
+    positions, weights = particle_step(
+        cntrst_sde_state, key, drift_y + drift_past, cond_sde, dt, logpdf
+    )
 
     return positions, weights
 
@@ -178,10 +170,10 @@ def impl_step(
     position, weights = jax.vmap(step_joint)(
         sde_state, past_y.position[:-1], past_y.position[1:], keys_time
     )
-    #jax.experimental.io_callback(plotter_line, None, position[:-1, 0], ordered=True)
-    #jax.experimental.io_callback(plotter_line, None, thetas[:, 0], ordered=True)
+    # jax.experimental.io_callback(plotter_line, None, position[:-1, 0], ordered=True)
+    # jax.experimental.io_callback(plotter_line, None, thetas[:, 0], ordered=True)
     thetas = jnp.concatenate([thetas[:2], position[:-1]])
-    #jax.experimental.io_callback(plotter_line, None, thetas[:, 0], ordered=True)
+    # jax.experimental.io_callback(plotter_line, None, thetas[:, 0], ordered=True)
 
     # get ys
     ys = jax.vmap(cond_sde.mask.measure, in_axes=(None, 0))(design, thetas)
@@ -214,8 +206,8 @@ def impl_step(
     )
     cntrst_thetas = jnp.concatenate([cntrst_thetas[:2], position[:-1]])
 
-    #jax.experimental.io_callback(plotter_line, None, thetas[:, 0])
-    #jax.experimental.io_callback(plotter_line, None, cntrst_thetas[:, 0])
+    # jax.experimental.io_callback(plotter_line, None, thetas[:, 0])
+    # jax.experimental.io_callback(plotter_line, None, cntrst_thetas[:, 0])
     # get EIG gradient estimator
     #  1 - evaluate score_f on thetas and contrastives_theta
     #  2 - update design parameters with optax
@@ -257,12 +249,13 @@ def impl_one_step(
 
         return (SDEState(positions, t + dt), weights), (positions, weights)
 
-    ((thetas, weights), _) = step_joint(sde_state, past_y.position, past_y_next.position, key_joint)
+    ((thetas, weights), _) = step_joint(
+        sde_state, past_y.position, past_y_next.position, key_joint
+    )
 
     # get ys
     ys = cond_sde.mask.measure(design, thetas.position)
     ys_next = cond_sde.path(rng_key, SDEState(ys, past_y.t), past_y_next.t).position
-
 
     # update expected posterior
     #   1 - use y values to update post
@@ -287,8 +280,8 @@ def impl_one_step(
         cntrst_sde_state, ys, ys_next, past_y.position, key_cntrst
     )
 
-    #plot = lambda _: jax.experimental.io_callback(plot_samples, None, thetas.position, cntrst_thetas.position, weights, weights_c, past_y.position, ys_next.mean(axis=0))
-    #jax.lax.cond(past_y.t > 1.98, lambda _: jax.experimental.io_callback(plot_top_samples, None, thetas.position, cntrst_thetas.position, weights, weights_c, past_y.position, ys_next.mean(axis=0)), lambda _: None, None)
+    # plot = lambda _: jax.experimental.io_callback(plot_samples, None, thetas.position, cntrst_thetas.position, weights, weights_c, past_y.position, ys_next.mean(axis=0))
+    # jax.lax.cond(past_y.t > 1.98, lambda _: jax.experimental.io_callback(plot_top_samples, None, thetas.position, cntrst_thetas.position, weights, weights_c, past_y.position, ys_next.mean(axis=0)), lambda _: None, None)
     # get EIG gradient estimator
     #  1 - evaluate score_f on thetas and contrastives_theta
     #  2 - update design parameters with optax
@@ -299,15 +292,34 @@ def impl_one_step(
     def step(state, itr):
         design, opt_state = state
         design, opt_state, _ = calculate_and_apply_gradient(
-        thetas.position, cntrst_thetas.position, design, cond_sde, optx_opt, opt_state
-    )
-        design = optax.projections.projection_box(design, 0., 28.)
+            thetas.position,
+            cntrst_thetas.position,
+            design,
+            cond_sde,
+            optx_opt,
+            opt_state,
+        )
+        design = optax.projections.projection_box(design, 0.0, 28.0)
         return (design, opt_state), None
 
-    design, opt_state = jax.lax.cond(past_y.t > 1.4, lambda _: jax.lax.scan(step, (design, opt_state), jnp.arange(100))[0], lambda _: calculate_and_apply_gradient( thetas.position, cntrst_thetas.position, design, cond_sde, optx_opt, opt_state)[:2], None)
-    #design, opt_state, _ = calculate_and_apply_gradient( thetas.position, cntrst_thetas.position, design, cond_sde, optx_opt, opt_state)
+    design, opt_state = jax.lax.cond(
+        past_y.t > 1.4,
+        lambda _: jax.lax.scan(step, (design, opt_state), jnp.arange(100))[0],
+        lambda _: calculate_and_apply_gradient(
+            thetas.position,
+            cntrst_thetas.position,
+            design,
+            cond_sde,
+            optx_opt,
+            opt_state,
+        )[:2],
+        None,
+    )
+    # design, opt_state, _ = calculate_and_apply_gradient( thetas.position, cntrst_thetas.position, design, cond_sde, optx_opt, opt_state)
 
-    return ImplicitState(thetas.position, weights, cntrst_thetas.position, weights_c, design, opt_state)
+    return ImplicitState(
+        thetas.position, weights, cntrst_thetas.position, weights_c, design, opt_state
+    )
 
 
 def impl_full_scan(

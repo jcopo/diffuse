@@ -1,10 +1,8 @@
-import pdb
 from functools import partial
 
-import einops
+
 import jax
 import jax.numpy as jnp
-import jax.random as random
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
@@ -12,14 +10,11 @@ import scipy as sp
 
 from diffuse.mixture import (
     MixState,
-    cdf_mixtr,
     cdf_t,
     display_histogram,
     display_trajectories,
-    pdf_mixtr,
     rho_t,
     sampler_mixtr,
-    transform_mixture_params,
 )
 from diffuse.sde import SDE, LinearSchedule, SDEState
 

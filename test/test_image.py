@@ -22,6 +22,7 @@ def plot_compare(img1, img2):
     ax2.imshow(img2, cmap="gray")
     plt.show()
 
+
 def test_measure_and_restore(random_image, square_mask, plot_if_enabled):
     key = jax.random.PRNGKey(1)
     xi = jax.random.uniform(key, (2,), minval=0, maxval=28)
@@ -29,8 +30,10 @@ def test_measure_and_restore(random_image, square_mask, plot_if_enabled):
     measured = square_mask.measure(xi, random_image)
     restored = square_mask.restore(xi, random_image, measured)
 
-    #almost equal
-    assert jnp.allclose(random_image, restored), plot_if_enabled(lambda: plot_compare(random_image, restored))
+    # almost equal
+    assert jnp.allclose(random_image, restored), plot_if_enabled(
+        lambda: plot_compare(random_image, restored)
+    )
 
 
 def test_restore_with_zero_measured(random_image, square_mask, plot_if_enabled):
@@ -59,7 +62,9 @@ def test_measure_restore(random_image, square_mask, plot_if_enabled):
     measured = square_mask.measure(xi, y)
     measured_restored = square_mask.measure(xi, restored)
 
-    assert jnp.allclose(measured, measured_restored, rtol=1e-1, atol=1e-1), plot_if_enabled(lambda: plot_compare(measured, measured_restored))
+    assert jnp.allclose(
+        measured, measured_restored, rtol=1e-1, atol=1e-1
+    ), plot_if_enabled(lambda: plot_compare(measured, measured_restored))
 
 
 def test_mask_shape(square_mask):

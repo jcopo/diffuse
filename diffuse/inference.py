@@ -1,6 +1,5 @@
 from functools import partial
 from typing import Tuple
-import pdb
 
 import jax
 import jax.experimental
@@ -10,7 +9,7 @@ from jaxtyping import Array, PRNGKeyArray
 import einops
 
 from diffuse.conditional import CondSDE
-from diffuse.sde import SDEState, euler_maryama_step, euler_maryama_step_array
+from diffuse.sde import SDEState, euler_maryama_step_array
 from diffuse.filter import stratified
 
 
@@ -115,7 +114,7 @@ def particle_step(
     sde_state = euler_maryama_step_array(
         sde_state, dt, rng_key, drift_x + drift_y, diffusion
     )
-    #weights = jax.vmap(logpdf, in_axes=(SDEState(0, None),))(sde_state)
+    # weights = jax.vmap(logpdf, in_axes=(SDEState(0, None),))(sde_state)
     weights = logpdf(sde_state, drift_x)
 
     _norm = jax.scipy.special.logsumexp(weights, axis=0)
@@ -126,10 +125,10 @@ def particle_step(
     n_particles = sde_state.position.shape[0]
     idx = stratified(rng_key, weights, n_particles)
 
-    #return sde_state.position, weights
+    # return sde_state.position, weights
     return jax.lax.cond(
         (ess_val < 0.6 * n_particles) & (ess_val > 0.2 * n_particles),
-        #(ess_val > 0.2 * n_particles),
+        # (ess_val > 0.2 * n_particles),
         lambda x: (x[idx], weights[idx]),
         lambda x: (x, weights),
         sde_state.position,
@@ -156,9 +155,9 @@ def logpdf_change_y(
     mean = cond_sde.mask.measure_from_mask(design, x + drift_x * dt)
     logsprobs = jax.scipy.stats.norm.logpdf(y_next, mean, cov)
     logsprobs = cond_sde.mask.measure_from_mask(design, logsprobs)
-    #jax.experimental.io_callback(plot_lines, None, logsprobs)
-    #jax.experimental.io_callback(sigle_plot, None, y_next)
-    #logsprobs = jax.vmap(cond_sde.mask.measure, in_axes=(None, 0))(design, logsprobs)
+    # jax.experimental.io_callback(plot_lines, None, logsprobs)
+    # jax.experimental.io_callback(sigle_plot, None, y_next)
+    # logsprobs = jax.vmap(cond_sde.mask.measure, in_axes=(None, 0))(design, logsprobs)
     logsprobs = einops.reduce(logsprobs, "t ... -> t ", "sum")
     return logsprobs
 
@@ -208,7 +207,9 @@ def generate_cond_sampleV2(
             cond_sde=cond_sde,
             dt=dt,
         )
-        positions, weights = particle_step(sde_state, key, drift_past, cond_sde, dt, logpdf)
+        positions, weights = particle_step(
+            sde_state, key, drift_past, cond_sde, dt, logpdf
+        )
         return SDEState(positions, t + dt), weights
 
     # generate path for y

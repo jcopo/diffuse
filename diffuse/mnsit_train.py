@@ -1,7 +1,5 @@
 import jax
 import jax.numpy as jnp
-import pdb
-import matplotlib.pyplot as plt
 import einops
 from diffuse.unet import UNet
 from diffuse.score_matching import score_match_loss

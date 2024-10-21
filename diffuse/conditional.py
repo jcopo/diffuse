@@ -1,16 +1,11 @@
-from dataclasses import dataclass
-from functools import partial
-from typing import Callable, NamedTuple, Tuple
-import pdb
-
-import einops
 import jax
 import jax.numpy as jnp
-from blackjax.smc.resampling import stratified
 from jax.tree_util import register_pytree_node_class
-from jaxtyping import Array, PRNGKeyArray, PyTreeDef
+from dataclasses import dataclass
+from typing import Callable, NamedTuple
+from jaxtyping import Array, PRNGKeyArray
 
-from diffuse.sde import SDE, SDEState, euler_maryama_step
+from diffuse.sde import SDE, SDEState, euler_maryama_step, ode_step_array
 from diffuse.images import SquareMask
 
 
@@ -92,6 +87,8 @@ class CondSDE(SDE):
         x, _ = euler_maryama_step(
             SDEState(x, t), dt, key, revese_drift, reverse_diffusion
         )
+
+        # x, _ = ode_step_array(SDEState(x, t), dt, revese_drift)
         y = self.mask.measure(xi, x)
         return CondState(x, y, xi, t - dt)
 
