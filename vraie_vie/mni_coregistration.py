@@ -39,7 +39,7 @@ def coregister(cfg):
         )
         moving_data, moving_affine = load_nifti(path_img)
 
-        path_mask = os.path.join(path_dataset, sub.Path, str(sub.ID), f"wmh.nii.gz")
+        path_mask = os.path.join(path_dataset, sub.Path, str(sub.ID), "wmh.nii.gz")
         mask_data, _ = load_nifti(path_mask)
 
         nbins = 32
@@ -98,7 +98,7 @@ def coregister(cfg):
             path_dataset, sub.Path, str(sub.ID), f"pre/mni_{cfg['modality']}.nii.gz"
         )
         save_path_mask = os.path.join(
-            path_dataset, sub.Path, str(sub.ID), f"mni_wmh.nii.gz"
+            path_dataset, sub.Path, str(sub.ID), "mni_wmh.nii.gz"
         )
 
         save_nifti(save_path_data, transformed.astype(np.float32), resulting_affine)

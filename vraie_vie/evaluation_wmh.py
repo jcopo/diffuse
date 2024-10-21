@@ -3,8 +3,7 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
-
-jax.config.update("jax_enable_x64", False)
+from tqdm import tqdm
 
 import numpy as np
 import pandas as pd
@@ -19,7 +18,7 @@ from diffuse.unet import UNet
 from vraie_vie.create_dataset import WMH
 from vraie_vie.utils import maskAno
 
-from tqdm import tqdm
+jax.config.update("jax_enable_x64", False)
 
 
 def dice_coefficient(y_true, y_pred):

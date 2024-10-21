@@ -1,27 +1,25 @@
+import os
 from functools import partial
 from typing import Tuple
+
+import einops
 import jax
 import jax.numpy as jnp
-import numpy as np
-import optax
-from jaxtyping import Array, PRNGKeyArray
-from optax import GradientTransformation
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
 from jax_tqdm import scan_tqdm
-import einops
+from jaxtyping import Array, PRNGKeyArray
+import optax
+from optax import GradientTransformation
 
-from diffuse.sde import SDE, SDEState
 from diffuse.conditional import CondSDE
-from diffuse.inference import generate_cond_sampleV2
-from diffuse.optimizer import ImplicitState, impl_step, impl_one_step, impl_full_scan
-from diffuse.sde import LinearSchedule
+from diffuse.optimizer import ImplicitState, impl_one_step, impl_full_scan
+from diffuse.sde import LinearSchedule, SDE, SDEState
 from diffuse.unet import UNet
 
 from vraie_vie.create_dataset import WMH
 from vraie_vie.utils import maskSpiral, plotter_line_measure, plotter_line_obs
-
-import os
 
 config = {
     "modality": "FLAIR",
@@ -266,7 +264,6 @@ def main(key):
 
     # Time initialization (kept outside the function)
     ts = jnp.linspace(0, tf, n_t)
-    dts = jnp.diff(ts)
 
     # init design and measurement hist
     design = jax.random.uniform(key_init, (2,), minval=0.1, maxval=2.0)

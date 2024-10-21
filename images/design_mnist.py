@@ -77,7 +77,16 @@ def optimize_design(
     @scan_tqdm(opt_steps)
     def step(new_state, tup):
         _, key = tup
-        new_state = impl_step(new_state, key, past_y, mask_history, cond_sde=cond_sde, optx_opt=optimizer, ts=ts, dt=dt)
+        new_state = impl_step(
+            new_state,
+            key,
+            past_y,
+            mask_history,
+            cond_sde=cond_sde,
+            optx_opt=optimizer,
+            ts=ts,
+            dt=dt,
+        )
         # new_state = impl_full_scan(
         #     new_state,
         #     key,
@@ -132,7 +141,14 @@ def optimize_design_one_step(
     )
 
     thetas, cntrst_thetas, design_hist = hist
-    state = ImplicitState(thetas, new_state.weights, cntrst_thetas, new_state.weights_c, new_state.design, new_state.opt_state)
+    state = ImplicitState(
+        thetas,
+        new_state.weights,
+        cntrst_thetas,
+        new_state.weights_c,
+        new_state.design,
+        new_state.opt_state,
+    )
     return state, design_hist
 
 
@@ -189,8 +205,13 @@ def init_start_time(
     return thetas, cntrst_thetas
 
 
-#@jax.jit
-def main(key: PRNGKeyArray, num_meas: int, plotter_theta: Callable, plotter_contrastive: Callable):
+# @jax.jit
+def main(
+    key: PRNGKeyArray,
+    num_meas: int,
+    plotter_theta: Callable,
+    plotter_contrastive: Callable,
+):
     key_init, key_step = jax.random.split(key)
 
     sde, cond_sde, mask, ground_truth, tf, n_t, nn_score = initialize_experiment(
@@ -205,7 +226,7 @@ def main(key: PRNGKeyArray, num_meas: int, plotter_theta: Callable, plotter_cont
     dts = jnp.diff(ts)
 
     # init design and measurement hist
-    #design = jax.random.uniform(key_init, (2,), minval=0, maxval=28)
+    # design = jax.random.uniform(key_init, (2,), minval=0, maxval=28)
     design = jnp.array([0.1, 0.1])
     y = cond_sde.mask.measure(design, ground_truth)
     design = jax.random.uniform(key_init, (2,), minval=0, maxval=28)
@@ -214,17 +235,21 @@ def main(key: PRNGKeyArray, num_meas: int, plotter_theta: Callable, plotter_cont
     measurement_history = measurement_history.at[0].set(y)
 
     # init optimizer
-    optimizer = optax.chain(optax.adam(learning_rate=.1), optax.scale(-1))
+    optimizer = optax.chain(optax.adam(learning_rate=0.1), optax.scale(-1))
     opt_state = optimizer.init(design)
 
     ts = jnp.linspace(0, tf, n_t)
 
     # init thetas
-    #thetas, cntrst_thetas = init_trajectory(key_init, sde, nn_score, n_samples, n_samples_cntrst, tf, ts, dts, ground_truth.shape)
-    thetas, cntrst_thetas = init_start_time( key_init, n_samples, n_samples_cntrst, ground_truth.shape)
+    # thetas, cntrst_thetas = init_trajectory(key_init, sde, nn_score, n_samples, n_samples_cntrst, tf, ts, dts, ground_truth.shape)
+    thetas, cntrst_thetas = init_start_time(
+        key_init, n_samples, n_samples_cntrst, ground_truth.shape
+    )
     weights_0 = jnp.zeros((n_samples,))
     weights_c_0 = jnp.zeros((n_samples_cntrst,))
-    implicit_state = ImplicitState(thetas, weights_0, cntrst_thetas, weights_c_0, design, opt_state)
+    implicit_state = ImplicitState(
+        thetas, weights_0, cntrst_thetas, weights_c_0, design, opt_state
+    )
 
     # stock in joint_y all measurements
     joint_y = y
@@ -240,11 +265,13 @@ def main(key: PRNGKeyArray, num_meas: int, plotter_theta: Callable, plotter_cont
     ax1.imshow(ground_truth, cmap="gray")
     ax2.imshow(joint_y, cmap="gray")
     ax3.imshow(mask_history, cmap="gray")
-    #jax.experimental.io_callback(plot_results, None, opt_hist, ground_truth, joint_y, mask_history, thetas, cntrst_thetas)
+    # jax.experimental.io_callback(plot_results, None, opt_hist, ground_truth, joint_y, mask_history, thetas, cntrst_thetas)
 
     plt.show()
-    #design_step = jax.jit(partial(optimize_design, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde))
-    design_step = partial(optimize_design_one_step, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde)
+    # design_step = jax.jit(partial(optimize_design, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde))
+    design_step = partial(
+        optimize_design_one_step, optimizer=optimizer, ts=ts, dt=dt, cond_sde=cond_sde
+    )
     for n_meas in range(num_meas):
         key_noise, key_opt, key_gen = jax.random.split(key_step, 3)
         # make noised path for measurements
@@ -254,7 +281,7 @@ def main(key: PRNGKeyArray, num_meas: int, plotter_theta: Callable, plotter_cont
             keys_noise, state_0, ts
         )
         past_y = SDEState(past_y.position[::-1], past_y.t)
-        #plotter_line(past_y.position)
+        # plotter_line(past_y.position)
 
         # optimize design
         optimal_state, hist_implicit = design_step(
@@ -271,24 +298,40 @@ def main(key: PRNGKeyArray, num_meas: int, plotter_theta: Callable, plotter_cont
         mask_history = cond_sde.mask.restore(
             optimal_state.design, mask_history, cond_sde.mask.make(optimal_state.design)
         )
-        #plt.imshow(mask_history, cmap="gray")
+        # plt.imshow(mask_history, cmap="gray")
 
         print(joint_y[10, 20])
 
         # logging
         print(f"Design_start: {design} Design_end:{optimal_state.design}")
 
-        #jax.experimental.io_callback(plot_results, None, opt_hist, ground_truth, joint_y, mask_history, optimal_state.thetas[-1, :], optimal_state.cntrst_thetas[-1, :])
-        jax.experimental.io_callback(plotter_theta, None, opt_hist, ground_truth, joint_y, optimal_state.thetas[-1, :], optimal_state.weights, n_meas)
-        jax.experimental.io_callback(plotter_contrastive, None, opt_hist, ground_truth, joint_y, optimal_state.cntrst_thetas[-1, :], optimal_state.weights_c, n_meas)
-
-
+        # jax.experimental.io_callback(plot_results, None, opt_hist, ground_truth, joint_y, mask_history, optimal_state.thetas[-1, :], optimal_state.cntrst_thetas[-1, :])
+        jax.experimental.io_callback(
+            plotter_theta,
+            None,
+            opt_hist,
+            ground_truth,
+            joint_y,
+            optimal_state.thetas[-1, :],
+            optimal_state.weights,
+            n_meas,
+        )
+        jax.experimental.io_callback(
+            plotter_contrastive,
+            None,
+            opt_hist,
+            ground_truth,
+            joint_y,
+            optimal_state.cntrst_thetas[-1, :],
+            optimal_state.weights_c,
+            n_meas,
+        )
 
         print(jnp.max(joint_y))
-        #plotter_line(optimal_state.thetas[-1, :])
-        #plotter_line(optimal_state.cntrst_thetas[-1, :])
+        # plotter_line(optimal_state.thetas[-1, :])
+        # plotter_line(optimal_state.cntrst_thetas[-1, :])
 
-        #for i in range(10):
+        # for i in range(10):
         #   plotter_line(optimal_state.thetas[:, i])
         #   plotter_line(optimal_state.cntrst_thetas[:, i])
 
@@ -305,14 +348,14 @@ def main(key: PRNGKeyArray, num_meas: int, plotter_theta: Callable, plotter_cont
         thetas, cntrst_thetas = init_start_time(
             key_step, n_samples, n_samples_cntrst, ground_truth.shape
         )
-        implicit_state = ImplicitState(thetas, weights_0, cntrst_thetas, weights_c_0, design, opt_state)
-
+        implicit_state = ImplicitState(
+            thetas, weights_0, cntrst_thetas, weights_c_0, design, opt_state
+        )
 
     return ground_truth, (optimal_state.thetas[-1, :], optimal_state.weights), joint_y
 
 
-
-#@jax.jit
+# @jax.jit
 def main_random(key: PRNGKeyArray, num_meas: int, plotter_random: Callable):
     key_init, key_step = jax.random.split(key)
 
@@ -328,7 +371,7 @@ def main_random(key: PRNGKeyArray, num_meas: int, plotter_random: Callable):
     dts = jnp.diff(ts)
 
     # init design and measurement hist
-    #design = jax.random.uniform(key_init, (2,), minval=0, maxval=28)
+    # design = jax.random.uniform(key_init, (2,), minval=0, maxval=28)
     design = jnp.array([0.1, 0.1])
     y = cond_sde.mask.measure(design, ground_truth)
     design = jax.random.uniform(key_init, (2,), minval=0, maxval=28)
@@ -337,17 +380,21 @@ def main_random(key: PRNGKeyArray, num_meas: int, plotter_random: Callable):
     measurement_history = measurement_history.at[0].set(y)
 
     # init optimizer
-    optimizer = optax.chain(optax.adam(learning_rate=.9), optax.scale(-1))
+    optimizer = optax.chain(optax.adam(learning_rate=0.9), optax.scale(-1))
     opt_state = optimizer.init(design)
 
     ts = jnp.linspace(0, tf, n_t)
 
     # init thetas
-    #thetas, cntrst_thetas = init_trajectory(key_init, sde, nn_score, n_samples, n_samples_cntrst, tf, ts, dts, ground_truth.shape)
-    thetas, cntrst_thetas = init_start_time( key_init, n_samples, n_samples_cntrst, ground_truth.shape)
+    # thetas, cntrst_thetas = init_trajectory(key_init, sde, nn_score, n_samples, n_samples_cntrst, tf, ts, dts, ground_truth.shape)
+    thetas, cntrst_thetas = init_start_time(
+        key_init, n_samples, n_samples_cntrst, ground_truth.shape
+    )
     weights_0 = jnp.zeros((n_samples,))
     weights_c_0 = jnp.zeros((n_samples_cntrst,))
-    implicit_state = ImplicitState(thetas, weights_0, cntrst_thetas, weights_c_0, design, opt_state)
+    implicit_state = ImplicitState(
+        thetas, weights_0, cntrst_thetas, weights_c_0, design, opt_state
+    )
 
     # stock in joint_y all measurements
     joint_y = y
@@ -360,8 +407,10 @@ def main_random(key: PRNGKeyArray, num_meas: int, plotter_random: Callable):
         state_0 = SDEState(joint_y, jnp.zeros_like(y))
         past_y = noiser(keys_noise, state_0, ts)
         past_y = SDEState(past_y.position[::-1], past_y.t)
-        #plotter_line(past_y.position)
-        optimal_state = generate_cond_sampleV2(joint_y, mask_history, key_opt, cond_sde, ground_truth.shape, n_t, n_samples)[0]
+        # plotter_line(past_y.position)
+        optimal_state = generate_cond_sampleV2(
+            joint_y, mask_history, key_opt, cond_sde, ground_truth.shape, n_t, n_samples
+        )[0]
         thetas, weights = optimal_state
 
         # random design
@@ -376,13 +425,20 @@ def main_random(key: PRNGKeyArray, num_meas: int, plotter_random: Callable):
         mask_history = cond_sde.mask.restore(
             design, mask_history, cond_sde.mask.make(design)
         )
-        #plt.imshow(mask_history, cmap="gray")
+        # plt.imshow(mask_history, cmap="gray")
 
-        jax.experimental.io_callback(plotter_random, None, ground_truth, joint_y, design, thetas.position, weights, n_meas)
-
+        jax.experimental.io_callback(
+            plotter_random,
+            None,
+            ground_truth,
+            joint_y,
+            design,
+            thetas.position,
+            weights,
+            n_meas,
+        )
 
         key_step, _ = jax.random.split(key_step)
-
 
     return ground_truth, optimal_state, joint_y
 
@@ -407,14 +463,15 @@ if __name__ == "__main__":
     os.makedirs(logging_path_theta, exist_ok=True)
     os.makedirs(logging_path_contrastive, exist_ok=True)
     plotter_theta = partial(log_samples, logging_path=logging_path_theta, size=SIZE)
-    plotter_contrastive = partial(log_samples, logging_path=logging_path_contrastive, size=SIZE)
+    plotter_contrastive = partial(
+        log_samples, logging_path=logging_path_contrastive, size=SIZE
+    )
 
     if random:
         logging_path_random = f"{dir_path}/random"
         os.makedirs(logging_path_random, exist_ok=True)
         plotter_r = partial(plotter_random, logging_path=logging_path_random, size=SIZE)
         ground_truth, state_random, y_random = main_random(rng_key, num_meas, plotter_r)
-
 
     ground_truth, state, y = main(rng_key, num_meas, plotter_theta, plotter_contrastive)
 

@@ -119,7 +119,7 @@ if __name__ == "__main__":
             )
 
     np.savez(
-        os.path.join(config["save_path"], f"ann_end.npz"),
+        os.path.join(config["save_path"], "ann_end.npz"),
         params=params,
         ema_state=ema_state,
         opt_state_1=opt_state[0],

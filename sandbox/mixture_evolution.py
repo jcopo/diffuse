@@ -20,18 +20,22 @@ from diffuse.sde import SDE, LinearSchedule
 
 def init_mixture(key, d=1):
     # Means
-    means = jnp.array([
-        [-1.0, -1.0],  # Bottom-left
-        [1.0, 1.0],    # Top-right
-        [2.0, -2.0]    # Bottom-right
-    ])
+    means = jnp.array(
+        [
+            [-1.0, -1.0],  # Bottom-left
+            [1.0, 1.0],  # Top-right
+            [2.0, -2.0],  # Bottom-right
+        ]
+    )
 
     # Covariances
-    covs = 1.5*jnp.array([
-        [[0.5, 0.3], [0.3, 0.5]],     # Slightly correlated
-        [[0.7, -0.2], [-0.2, 0.7]],   # Slightly anti-correlated
-        [[.3, 0.0], [0.0, 1.0]]      # Stretched vertically
-    ])
+    covs = 1.5 * jnp.array(
+        [
+            [[0.5, 0.3], [0.3, 0.5]],  # Slightly correlated
+            [[0.7, -0.2], [-0.2, 0.7]],  # Slightly anti-correlated
+            [[0.3, 0.0], [0.0, 1.0]],  # Stretched vertically
+        ]
+    )
 
     # Weights
     weights = jnp.array([0.3, 0.4, 0.3])  # Slightly uneven weights
@@ -60,7 +64,6 @@ def run_forward_evolution_animation(sde, init_mix_state, num_frames=100, interva
     num_samples = 100
     samples = sampler_mixtr(key, init_mix_state, num_samples)
 
-
     # Create 2D grid
     space = jnp.linspace(-5, 5, 100)
     x, y = jnp.meshgrid(space, space)
@@ -71,7 +74,7 @@ def run_forward_evolution_animation(sde, init_mix_state, num_frames=100, interva
     contour = ax.contourf(x, y, jnp.zeros_like(x))
     ax.set_xlim(-4, 4)
     ax.set_ylim(-4, 4)
-    time_text = ax.text(0.02, 0.98, '', transform=ax.transAxes, va='top', fontsize=12)
+    time_text = ax.text(0.02, 0.98, "", transform=ax.transAxes, va="top", fontsize=12)
 
     state = SDEState(position=samples, t=jnp.zeros((num_samples, 1)))
 
@@ -83,23 +86,33 @@ def run_forward_evolution_animation(sde, init_mix_state, num_frames=100, interva
         # plot scores vectors
 
         ax.clear()
-        ax.set_title('Forward Process')
+        ax.set_title("Forward Process")
         contour = ax.contourf(x, y, pdf_grid, levels=20, zorder=-1)
         # Update sample positions based on the SDE
         key = jax.random.PRNGKey(frame)  # Use frame as seed for reproducibility
         samples = sde.path(key, state, jnp.array([t])).position.squeeze()
 
         score_samples = jax.vmap(score, in_axes=(0, None))(samples, t)
-        scores = ax.quiver(samples[:, 0], samples[:, 1], score_samples[:, 0], score_samples[:, 1], color='red')
+        scores = ax.quiver(
+            samples[:, 0],
+            samples[:, 1],
+            score_samples[:, 0],
+            score_samples[:, 1],
+            color="red",
+        )
 
         # Plot updated samples
-        scatter = ax.scatter(samples[:, 0], samples[:, 1], zorder=1, marker='o', s=10, c='k')
+        scatter = ax.scatter(
+            samples[:, 0], samples[:, 1], zorder=1, marker="o", s=10, c="k"
+        )
         ax.set_xlim(-4, 4)
         ax.set_ylim(-4, 4)
-        ax.axis('off')
+        ax.axis("off")
 
         # Update time text
-        time_text = ax.text(0.02, 0.98, f'Time: {t:.2f}', transform=ax.transAxes, va='top', fontsize=12)
+        time_text = ax.text(
+            0.02, 0.98, f"Time: {t:.2f}", transform=ax.transAxes, va="top", fontsize=12
+        )
 
         return scores, scatter, contour, time_text
 
@@ -127,7 +140,7 @@ def run_backward_evolution_animation(sde, init_mix_state, num_frames=100, interv
     contour = ax.contourf(x, y, jnp.zeros_like(x))
     ax.set_xlim(-4, 4)
     ax.set_ylim(-4, 4)
-    time_text = ax.text(0.02, 0.98, '', transform=ax.transAxes, va='top', fontsize=12)
+    time_text = ax.text(0.02, 0.98, "", transform=ax.transAxes, va="top", fontsize=12)
 
     state = SDEState(position=init_samples, t=T * jnp.ones((num_samples, 1)))
 
@@ -139,28 +152,44 @@ def run_backward_evolution_animation(sde, init_mix_state, num_frames=100, interv
     state_0, state_Ts = revert_sde(keys, state)
 
     def update(frame):
-
         t = frame / num_frames * T
-        pdf_grid = jax.vmap(jax.vmap(lambda x, t: pdf(x, T - t), in_axes=(0, None)), in_axes=(0, None))(xy, t)
+        pdf_grid = jax.vmap(
+            jax.vmap(lambda x, t: pdf(x, T - t), in_axes=(0, None)), in_axes=(0, None)
+        )(xy, t)
 
         ax.clear()
-        ax.set_title('Backward Process')
+        ax.set_title("Backward Process")
         contour = ax.contourf(x, y, pdf_grid, levels=20, zorder=-1)
 
         # Update sample positions based on the reverse SDE
         idx_frame = int(t / T * num_steps)
         samples = state_Ts.position[:, idx_frame]
         score_samples = jax.vmap(score, in_axes=(0, None))(samples, T - t)
-        scores = ax.quiver(samples[:, 0], samples[:, 1], score_samples[:, 0], score_samples[:, 1], color='red')
+        scores = ax.quiver(
+            samples[:, 0],
+            samples[:, 1],
+            score_samples[:, 0],
+            score_samples[:, 1],
+            color="red",
+        )
 
         # Plot updated samples
-        scatter = ax.scatter(samples[:, 0], samples[:, 1], zorder=1, marker='o', s=10, c='k')
+        scatter = ax.scatter(
+            samples[:, 0], samples[:, 1], zorder=1, marker="o", s=10, c="k"
+        )
         ax.set_xlim(-4, 4)
         ax.set_ylim(-4, 4)
-        ax.axis('off')
+        ax.axis("off")
 
         # Update time text
-        time_text = ax.text(0.02, 0.98, f'Time: {T-t:.2f}', transform=ax.transAxes, va='top', fontsize=12)
+        time_text = ax.text(
+            0.02,
+            0.98,
+            f"Time: {T-t:.2f}",
+            transform=ax.transAxes,
+            va="top",
+            fontsize=12,
+        )
 
         return scores, scatter, contour, time_text
 

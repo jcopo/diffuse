@@ -1,8 +1,14 @@
 import pytest
 import matplotlib.pyplot as plt
 
+
 def pytest_addoption(parser):
-    parser.addoption("--plot", action="store_true", default=False, help="Generate plots during testing")
+    parser.addoption(
+        "--plot",
+        action="store_true",
+        default=False,
+        help="Generate plots during testing",
+    )
 
 
 @pytest.fixture

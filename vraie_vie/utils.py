@@ -3,10 +3,9 @@ import matplotlib
 import matplotlib.pyplot as plt
 import jax
 import jax.numpy as jnp
-from jaxtyping import PRNGKeyArray, Array
+from jaxtyping import Array
 from functools import partial
 from dataclasses import dataclass
-from typing import Callable
 
 
 def slice_fourier(mri_slice):

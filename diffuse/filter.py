@@ -1,24 +1,14 @@
-from dataclasses import dataclass
-from functools import partial
-from typing import Callable, NamedTuple, Tuple
-import pdb
+from typing import Tuple
 
 import einops
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 from blackjax.smc.resampling import stratified
-from jax.tree_util import register_pytree_node_class
-import matplotlib.pyplot as plt
-from jaxtyping import Array, PRNGKeyArray, PyTreeDef
+from jaxtyping import Array, PRNGKeyArray
 
-from diffuse.sde import SDE, SDEState, euler_maryama_step
-from diffuse.conditional import (
-    CondSDE,
-    CondState,
-    cond_reverse_diffusion,
-    cond_reverse_drift,
-)
+from diffuse.sde import SDEState
+from diffuse.conditional import CondSDE, CondState
 
 
 def ess(log_weights: Array) -> float:
@@ -73,8 +63,8 @@ def filter_step(
 
     # resample particles according to weights
     # maybe resample based on ESS crit ?
-    idx = stratified(key_weights, jnp.exp(log_weights), n_particles)
-    ess_val = ess(log_weights)
+    # idx = stratified(key_weights, jnp.exp(log_weights), n_particles)
+    # ess_val = ess(log_weights)
     # particles_next = jax.lax.cond(ess_val < 0.2 * n_particles, lambda x: x[idx], lambda x: x, particles_next)
     # particles_next = particles_next[idx]
 

@@ -1,7 +1,6 @@
 import jax
 import jax.numpy as jnp
 from jax.tree_util import register_pytree_node_class
-from jaxtyping import Array, PRNGKeyArray, PyTreeDef
 from dataclasses import dataclass
 from typing import Callable, NamedTuple
 from jaxtyping import Array, PRNGKeyArray
@@ -85,10 +84,11 @@ class CondSDE(SDE):
         # jax.debug.print("y{}\n", y.shape)
         # jax.debug.print("diff{}\n", measure(xi, img, self.mask) - y )
 
-        # x, _ = euler_maryama_step(
-        #     SDEState(x, t), dt, key, revese_drift, reverse_diffusion
-        # )
-        x, _ = ode_step_array(SDEState(x, t), dt, revese_drift)
+        x, _ = euler_maryama_step(
+            SDEState(x, t), dt, key, revese_drift, reverse_diffusion
+        )
+
+        # x, _ = ode_step_array(SDEState(x, t), dt, revese_drift)
         y = self.mask.measure(xi, x)
         return CondState(x, y, xi, t - dt)
 
