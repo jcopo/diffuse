@@ -116,6 +116,7 @@ class SDE:
     ) -> SDEState:
         x_tf, tf = state_tf
         state_tf_0 = SDEState(x_tf, jnp.array([0.0]))
+        state_tf_0 = SDEState(x_tf, jnp.array([0.0]))
 
         def reverse_drift(state):
             x, t = state
@@ -140,6 +141,9 @@ class SDE:
         keys = jax.random.split(key, n_dt)
         state_f, history = jax.lax.scan(body_fun, state_tf_0, (dts, keys))
         # stack initial state into history
+        history = jax.tree_map(
+            lambda arr, x: jnp.concatenate([arr[None], x]), state_tf_0, history
+        )
         history = jax.tree_map(
             lambda arr, x: jnp.concatenate([arr[None], x]), state_tf_0, history
         )
