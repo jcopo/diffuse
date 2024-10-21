@@ -18,7 +18,7 @@ from diffuse.optimizer import ImplicitState, impl_one_step, impl_full_scan
 from diffuse.sde import LinearSchedule, SDE, SDEState
 from diffuse.unet import UNet
 
-from vraie_vie.create_dataset import WMH
+from vraie_vie.wmh.create_dataset import WMH
 from vraie_vie.utils import maskSpiral, plotter_line_measure, plotter_line_obs
 
 config = {

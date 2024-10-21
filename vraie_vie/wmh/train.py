@@ -5,7 +5,7 @@ import jax.numpy as jnp
 
 import optax
 
-from create_dataset import WMH
+from vraie_vie.wmh.create_dataset import WMH
 
 import os
 import sys

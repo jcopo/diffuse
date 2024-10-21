@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import optax
 from optax import EmaState, EmptyState, ScaleByAdamState, ScaleByScheduleState
 
-from create_dataset import WMH
+from vraie_vie.wmh.create_dataset import WMH
 
 import os
 import sys

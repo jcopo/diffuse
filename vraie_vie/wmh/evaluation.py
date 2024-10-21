@@ -15,7 +15,7 @@ from diffuse.inference import generate_cond_sampleV2
 from diffuse.sde import SDE, LinearSchedule
 from diffuse.unet import UNet
 
-from vraie_vie.create_dataset import WMH
+from vraie_vie.wmh.create_dataset import WMH
 from vraie_vie.utils import maskAno
 
 jax.config.update("jax_enable_x64", False)
