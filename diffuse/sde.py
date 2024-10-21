@@ -116,7 +116,6 @@ class SDE:
     ) -> SDEState:
         x_tf, tf = state_tf
         state_tf_0 = SDEState(x_tf, jnp.array([0.0]))
-        state_tf_0 = SDEState(x_tf, jnp.array([0.0]))
 
         def reverse_drift(state):
             x, t = state
