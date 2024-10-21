@@ -143,9 +143,6 @@ class SDE:
         history = jax.tree_map(
             lambda arr, x: jnp.concatenate([arr[None], x]), state_tf_0, history
         )
-        history = jax.tree_map(
-            lambda arr, x: jnp.concatenate([arr[None], x]), state_tf_0, history
-        )
         return state_f, history
 
 
@@ -153,15 +150,6 @@ def euler_maryama_step(
     state: SDEState, dt: float, key: PRNGKeyArray, drift: Callable, diffusion: Callable
 ) -> SDEState:
     dx = drift(state) * dt + diffusion(state) * jax.random.normal(
-        key, state.position.shape
-    ) * jnp.sqrt(dt)
-    return SDEState(state.position + dx, state.t + dt)
-
-
-def euler_maryama_step_array(
-    state: SDEState, dt: float, key: PRNGKeyArray, drift: Array, diffusion: Array
-) -> SDEState:
-    dx = drift * dt + diffusion * jax.random.normal(
         key, state.position.shape
     ) * jnp.sqrt(dt)
     return SDEState(state.position + dx, state.t + dt)
