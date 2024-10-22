@@ -43,7 +43,7 @@ def train(config, train_loader, continue_training=False):
     key, subkey = jax.random.split(key)
     init_params = nn_unet.init(
         subkey,
-        jnp.ones((config["batch_size"], *train_loader.dataset[0].shape)),
+        jnp.ones((config["batch_size"], *train_loader.dataset[0].shape[1:])),
         jnp.ones((config["batch_size"],)),
     )
 
@@ -109,6 +109,7 @@ def train(config, train_loader, continue_training=False):
 
         for batch in iterator:
             key, subkey = jax.random.split(key)
+            batch = batch["vol"].squeeze(1)
             params, opt_state, ema_state, val_loss, ema_params = batch_update(
                 subkey, params, opt_state, ema_state, batch
             )
