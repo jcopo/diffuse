@@ -9,7 +9,7 @@ from optax import EmaState, EmptyState, ScaleByAdamState, ScaleByScheduleState
 import os
 import sys
 
-sys.path.append(os.path.abspath("../../"))
+sys.path.append(os.path.abspath("/lustre/fswork/projects/rech/hlp/uha64uw/projet_p/diffuse"))
 
 from diffuse.score_matching import score_match_loss
 from diffuse.sde import SDE, LinearSchedule
