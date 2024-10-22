@@ -12,6 +12,6 @@ n_epochs: 4000
 batch_size: 32
 num_workers: 0
 
-n_t: 300
+n_t: 32
 tf: 2.0
 lr: 2.0e-4
