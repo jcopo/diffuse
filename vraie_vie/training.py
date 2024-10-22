@@ -1,11 +1,10 @@
 from functools import partial
-
+import argparse
 import jax
 import jax.numpy as jnp
 
 import optax
-
-from vraie_vie.wmh.create_dataset import WMH
+from optax import EmaState, EmptyState, ScaleByAdamState, ScaleByScheduleState
 
 import os
 import sys
@@ -20,31 +19,20 @@ import numpy as np
 
 
 from tqdm import tqdm
+import yaml
+
+from vraie_vie.wmh.create_dataset import (
+    get_train_dataloader as get_wmh_train_dataloader,
+)
+from vraie_vie.brats.create_dataset import (
+    get_train_dataloader as get_brats_train_dataloader,
+)
 
 
 jax.config.update("jax_enable_x64", False)
 
 
-if __name__ == "__main__":
-    config = {
-        "modality": "FLAIR",
-        "slice_size_template": 49,
-        "begin_slice": 26,
-        "flair_template_path": "/lustre/fswork/projects/rech/hlp/uha64uw/projet_p/WMH/MNI-FLAIR-2.0mm.nii.gz",
-        "path_dataset": "/lustre/fswork/projects/rech/hlp/uha64uw/projet_p/WMH",
-        "save_path": "/lustre/fswork/projects/rech/hlp/uha64uw/projet_p/WMH/models/",
-        "n_epochs": 4000,
-        "batch_size": 32,
-        "num_workers": 0,
-        "n_t": 300,
-        "tf": 2.0,
-        "lr": 2e-4,
-    }
-
-    wmh = WMH(config)
-    wmh.setup()
-    train_loader = wmh.get_train_dataloader()
-
+def train(config, train_loader, continue_training=False):
     key = jax.random.PRNGKey(0)
 
     beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
@@ -87,9 +75,33 @@ if __name__ == "__main__":
         partial(step, optimizer=optimizer, ema_kernel=ema_kernel, sde=sde, cfg=config)
     )
 
-    params = init_params
-    opt_state = optimizer.init(params)
-    ema_state = ema_kernel.init(params)
+    if continue_training:
+        checkpoint = jnp.load(
+            os.path.join(config["save_path"], f"ann_{config['begin_epoch']}.npz"),
+            allow_pickle=True,
+        )
+        params = checkpoint["params"].item()
+
+        ema_state = EmaState(
+            count=checkpoint["ema_state"][0], ema=checkpoint["ema_state"][1]
+        )
+
+        opt_state = (
+            EmptyState(),
+            (
+                ScaleByAdamState(
+                    count=checkpoint["opt_state_2"][0],
+                    mu=checkpoint["opt_state_2"][1],
+                    nu=checkpoint["opt_state_2"][2],
+                ),
+                ScaleByScheduleState(checkpoint["opt_state_3"][0]),
+            ),
+        )
+
+    else:
+        params = init_params
+        opt_state = optimizer.init(params)
+        ema_state = ema_kernel.init(params)
 
     for epoch in range(config["n_epochs"]):
         list_loss = []
@@ -112,17 +124,44 @@ if __name__ == "__main__":
             np.savez(
                 os.path.join(config["save_path"], f"ann_{epoch}.npz"),
                 params=params,
+                ema_params=ema_params,
                 ema_state=ema_state,
                 opt_state_1=opt_state[0],
                 opt_state_2=opt_state[1][0],
                 opt_state_3=opt_state[1][1],
             )
 
-    np.savez(
-        os.path.join(config["save_path"], "ann_end.npz"),
-        params=params,
-        ema_state=ema_state,
-        opt_state_1=opt_state[0],
-        opt_state_2=opt_state[1][0],
-        opt_state_3=opt_state[1][1],
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--config", type=str, default="config.yaml", help="Path to the config file"
     )
+
+    parser.add_argument(
+        "--continue_training", type=bool, default=False, help="Continue training"
+    )
+    args = parser.parse_args()
+
+    with open(args.config, "r") as f:
+        config = yaml.safe_load(f)
+
+    if config["dataset"] == "wmh":
+        train_loader = get_wmh_train_dataloader(config)
+
+    elif config["dataset"] == "brats":
+        train_loader = get_brats_train_dataloader(config)
+
+    if args.continue_training:
+        begin_epoch = max(
+            [
+                int(e.split(".")[0][4:])
+                for e in os.listdir(config["save_path"])
+                if e.endswith(".npz") and e[0] == "a"
+            ]
+        )
+
+        config["begin_epoch"] = begin_epoch
+        train(config, train_loader, continue_training=True)
+    else:
+        train(config, train_loader)

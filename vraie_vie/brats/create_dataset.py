@@ -48,7 +48,11 @@ def get_train_dataloader(cfg):
     dataset = create_dataset(cfg)
     sampler = tio.UniformSampler((160, 240, 1))
     queue = tio.Queue(
-        dataset, max_length=100, samples_per_volume=5, sampler=sampler, num_workers=0
+        dataset,
+        max_length=100,
+        samples_per_volume=5,
+        sampler=sampler,
+        num_workers=cfg["num_workers"],
     )
     patches_loader = tio.SubjectsLoader(
         queue, batch_size=cfg["batch_size"], num_workers=0, collate_fn=numpy_collate
