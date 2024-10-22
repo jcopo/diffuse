@@ -18,6 +18,7 @@ from diffuse.unet import UNet
 import numpy as np
 
 
+from torchio.utils import get_first_item
 from tqdm import tqdm
 import yaml
 
@@ -43,7 +44,7 @@ def train(config, train_loader, continue_training=False):
     key, subkey = jax.random.split(key)
     init_params = nn_unet.init(
         subkey,
-        jnp.ones((config["batch_size"], *train_loader.dataset[0])),
+        jnp.ones((config["batch_size"], *get_first_item(train_loader).shape[1:])),
         jnp.ones((config["batch_size"],)),
     )
 
