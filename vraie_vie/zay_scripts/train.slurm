@@ -22,4 +22,4 @@ conda init
 source ~/.bash_profile
 conda activate aoas
 
-python -u /lustre/fswork/projects/rech/hlp/uha64uw/projet_p/diffuse/vraie_vie/training.py --config /lustre/fswork/projects/rech/hlp/uha64uw/projet_p/diffuse/vraie_vie/configs/config_brats.yaml --continue_training False
+python -u /lustre/fswork/projects/rech/hlp/uha64uw/projet_p/diffuse/vraie_vie/training.py --config /lustre/fswork/projects/rech/hlp/uha64uw/projet_p/diffuse/vraie_vie/configs/config_brats.yml --continue_training False
