@@ -8,7 +8,8 @@ import os
 
 def numpy_collate(batch):
     collated_batch = data.default_collate(batch)
-    return {key: np.asarray(value) for key, value in collated_batch.items()}
+    # return {key: np.asarray(value) for key, value in collated_batch.items()}
+    return np.asarray(collated_batch["vol"]).squeeze(1)
 
 
 def get_transform():
