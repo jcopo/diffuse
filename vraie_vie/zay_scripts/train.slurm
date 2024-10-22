@@ -6,9 +6,9 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=10
 #SBATCH --hint=nomultithread
-#SBATCH --time=01:00:00
-#SBATCH --output=base.out
-#SBATCH --error=base.err
+#SBATCH --time=00:30:00
+#SBATCH --output=training.out
+#SBATCH --error=training.err
 #SBATCH -C a100
 #SBATCH -A hlp@a100
 
