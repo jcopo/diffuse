@@ -1,0 +1,10 @@
+path_dataset: "/lustre/fswork/projects/rech/hlp/uha64uw/projet_p/BRATS/ASNR-MICCAI-BraTS2023-Local-Synthesis-Challenge-Training"
+save_path: "/lustre/fswork/projects/rech/hlp/uha64uw/projet_p/BRATS/models/"
+
+n_epochs: 4000
+batch_size: 32
+num_workers: 0
+
+n_t: 300
+tf: 2.0
+lr: 2.0e-4
