@@ -6,9 +6,9 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=10
 #SBATCH --hint=nomultithread
-#SBATCH --time=08:00:00
-#SBATCH --output=base.out
-#SBATCH --error=base.err
+#SBATCH --time=00:30:00
+#SBATCH --output=training.out
+#SBATCH --error=training.err
 #SBATCH -C a100
 #SBATCH -A hlp@a100
 
@@ -22,4 +22,4 @@ conda init
 source ~/.bash_profile
 conda activate aoas
 
-python -u /lustre/fswork/projects/rech/hlp/uha64uw/projet_p/diffuse/vraie_vie/train_wmh.py
+python -u /lustre/fswork/projects/rech/hlp/uha64uw/projet_p/diffuse/vraie_vie/training.py --config /lustre/fswork/projects/rech/hlp/uha64uw/projet_p/diffuse/vraie_vie/configs/config_brats.yaml

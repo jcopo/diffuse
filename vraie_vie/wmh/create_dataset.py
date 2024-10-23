@@ -41,7 +41,7 @@ def load_nifti(cfg, type="Training"):
                 path_dataset, sub.Path, str(sub.ID), f"pre/mni_{cfg['modality']}.nii.gz"
             )
             path_mask = os.path.join(
-                path_dataset, sub.Path, str(sub.ID), f"mni_wmh.nii.gz"
+                path_dataset, sub.Path, str(sub.ID), "mni_wmh.nii.gz"
             )
 
             subject_dict = {
@@ -127,16 +127,7 @@ class WMH:
         )
 
 
-if __name__ == "__main__":
-    config = {
-        "modality": "FLAIR",
-        "slice_size_template": 91,
-        "path_dataset": "/Users/geoffroyoudoumanessah/Documents/these/projects/datasets/WMH",
-        "batch_size": 32,
-        "num_workers": 0,
-    }
-
-    wmh = WMH(config)
+def get_train_dataloader(cfg):
+    wmh = WMH(cfg)
     wmh.setup()
-
-    train_loader = wmh.get_train_dataloader()
+    return wmh.get_train_dataloader()
