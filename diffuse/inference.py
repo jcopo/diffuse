@@ -36,10 +36,41 @@ def log_ess(log_weights: Array) -> float:
     )
 
 
+def log_density_multivariate_complex_gaussian(x, mean, sq_std):
+    diff = x - mean
+
+    quad_form = diff.conj() * diff / sq_std
+
+    log_density = -jnp.log(jnp.pi) - jnp.log(sq_std) - quad_form
+
+    return jnp.real(log_density)
+
+
 def logprob_y(theta, y, design, cond_sde):
-    """
-    log p(y | theta, design)
-    """
+    f_y = cond_sde.mask.measure(design, theta)
+
+    log_density = log_density_multivariate_complex_gaussian(y, f_y, 1)
+    return log_density
+
+def logpdf_change_y(
+    x_sde_state: SDEState,
+    drift_x: Array,
+    y_next: Array,
+    design: Array,
+    cond_sde: CondSDE,
+    dt,
+):
+    x, t = x_sde_state
+    alpha = jnp.sqrt(jnp.exp(cond_sde.beta.integrate(0.0, t)))
+    cov = cond_sde.reverse_diffusion(x_sde_state) * jnp.sqrt(dt) + alpha
+
+    mean = cond_sde.mask.measure_from_mask(design, x + drift_x * dt)
+    logsprobs = log_density_multivariate_complex_gaussian(y_next, mean, cov)
+    logsprobs = cond_sde.mask.measure_from_mask(design, logsprobs)
+    logsprobs = einops.reduce(logsprobs, "t ... -> t ", "sum")
+    return logsprobs
+
+def _logprob_y(theta, y, design, cond_sde):
     f_y = cond_sde.mask.measure(design, theta)
     return jax.scipy.stats.norm.logpdf(y, f_y, 1.0)
 
@@ -135,7 +166,7 @@ def particle_step(
     )
 
 
-def logpdf_change_y(
+def _logpdf_change_y(
     x_sde_state: SDEState,
     drift_x: Array,
     y_next: Array,
@@ -226,7 +257,8 @@ def generate_cond_sampleV2(
 
     x_T = jax.random.normal(key_x, (n_particles, *x_shape))
     state_x = SDEState(x_T, 0.0)
-    weights = jnp.zeros((n_particles,))
+    # weights = jnp.zeros((n_particles,))
+    weights = jnp.zeros((n_particles,), dtype=jnp.complex64)
     # scan pcmc over x0 for n_steps
     keys = jax.random.split(key, n_ts - 1)
 
