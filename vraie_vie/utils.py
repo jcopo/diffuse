@@ -16,7 +16,7 @@ def slice_inverse_fourier(fourier_transform):
     return jnp.real(jnp.fft.ifft2(jnp.fft.ifftshift(fourier_transform)))
 
 
-def generate_spiral_2D(N=1, num_samples=1000, k_max=1.0, FOV=1.0):
+def generate_spiral_2D(N=1, num_samples=1000, k_max=1.0, FOV=1.0, angle_offset=0.0):
     theta_max = (2 * jnp.pi / N) * k_max * FOV
     theta = jnp.linspace(0, theta_max, num_samples)
 
@@ -25,7 +25,7 @@ def generate_spiral_2D(N=1, num_samples=1000, k_max=1.0, FOV=1.0):
     kx = jnp.zeros(num_samples * N)
     ky = jnp.zeros(num_samples * N)
 
-    theta_shifted = theta[:, None] + (2 * jnp.pi * jnp.arange(N) / N)
+    theta_shifted = theta[:, None] + (2 * jnp.pi * jnp.arange(N) / N) + angle_offset
     kx = (r[:, None] * jnp.cos(theta_shifted)).ravel()
     ky = (r[:, None] * jnp.sin(theta_shifted)).ravel()
 
@@ -65,13 +65,18 @@ class maskSpiral:
     def make(self, xi: float):
         fov = xi[0] ** 2
         k_max = xi[1]
-        kx, ky = generate_spiral_2D(self.num_spiral, self.num_samples, k_max, fov)
+        angle_offset = xi[2]
+
+        kx, ky = generate_spiral_2D(
+            self.num_spiral, self.num_samples, k_max, fov, angle_offset
+        )
         return grid(kx, ky, self.img_shape, self.sigma)
 
     def measure_from_mask(self, hist_mask: Array, x: Array):
         fourier_x = hist_mask * slice_fourier(x[..., 0])
         zero_channel = jnp.zeros_like(fourier_x)
         return jnp.stack([fourier_x, zero_channel], axis=-1)
+
 
     def measure(self, xi: float, x: Array):
         return self.measure_from_mask(self.make(xi), x)
