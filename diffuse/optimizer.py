@@ -304,7 +304,7 @@ def impl_one_step(
 
     design, opt_state = jax.lax.cond(
         past_y.t > 1.4,
-        lambda _: jax.lax.scan(step, (design, opt_state), jnp.arange(100))[0],
+        lambda _: jax.lax.scan(step, (design, opt_state), jnp.arange(1000))[0],
         lambda _: calculate_and_apply_gradient(
             thetas.position,
             cntrst_thetas.position,

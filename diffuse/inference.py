@@ -52,7 +52,7 @@ def logprob_y(theta, y, design, cond_sde):
     log_density = log_density_multivariate_complex_gaussian(y, f_y, 1)
     return log_density
 
-def logpdf_change_y(
+def _logpdf_change_y(
     x_sde_state: SDEState,
     drift_x: Array,
     y_next: Array,
@@ -166,7 +166,7 @@ def particle_step(
     )
 
 
-def _logpdf_change_y(
+def logpdf_change_y(
     x_sde_state: SDEState,
     drift_x: Array,
     y_next: Array,
@@ -257,8 +257,8 @@ def generate_cond_sampleV2(
 
     x_T = jax.random.normal(key_x, (n_particles, *x_shape))
     state_x = SDEState(x_T, 0.0)
-    # weights = jnp.zeros((n_particles,))
-    weights = jnp.zeros((n_particles,), dtype=jnp.complex64)
+    weights = jnp.zeros((n_particles,))
+    # weights = jnp.zeros((n_particles,), dtype=jnp.complex64)
     # scan pcmc over x0 for n_steps
     keys = jax.random.split(key, n_ts - 1)
 
