@@ -376,7 +376,7 @@ def main(
         #   plotter_line(optimal_state.cntrst_thetas[:, i])
 
         # reinitiazize implicit state
-        design = jax.random.uniform(key_step, (2,), minval=0, maxval=28)
+        design = jax.random.uniform(key_step+1, (2,), minval=0, maxval=28)
         opt_state = optimizer.init(design)
         key_t, key_c = jax.random.split(key_gen)
         # thetas = generate_cond_sample(joint_y, optimal_state.design, key_t, cond_sde, ground_truth.shape, n_t, n_samples)[1][0]

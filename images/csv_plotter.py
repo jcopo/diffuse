@@ -71,14 +71,20 @@ def plot_measurement_curves(root_dir):
 
     colors = {'theta': 'blue', 'random': 'red'}
 
-    pdb.set_trace()
     for method, stats in results.items():
         measurements = np.array(stats.index.astype(float))
+
+        if method == 'theta':
+            label = 'CoDiff'
+        else:
+            label = 'Random'
 
         # Plot PSNR
         psnr_median = stats['PSNR']['median'].to_numpy()
         psnr_std = stats['PSNR']['std'].to_numpy()
-        ax1.plot(measurements, psnr_median, label=method, color=colors[method])
+        # print median
+        #print(psnr_median)
+        ax1.plot(measurements, psnr_median, label=label, color=colors[method])
         ax1.fill_between(measurements,
                         psnr_median - psnr_std,
                         psnr_median + psnr_std,
@@ -87,8 +93,9 @@ def plot_measurement_curves(root_dir):
 
         # Plot SSIM
         ssim_median = stats['SSIM']['median'].to_numpy()
+        print(ssim_median)
         ssim_std = stats['SSIM']['std'].to_numpy()
-        ax2.plot(measurements, ssim_median, label=method, color=colors[method])
+        ax2.plot(measurements, ssim_median, label=label, color=colors[method])
         ax2.fill_between(measurements,
                         ssim_median - ssim_std,
                         ssim_median + ssim_std,
