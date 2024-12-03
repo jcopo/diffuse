@@ -1,9 +1,9 @@
 import jax
 import jax.numpy as jnp
 import einops
-from diffuse.unet import UNet
-from diffuse.score_matching import score_match_loss
-from diffuse.sde import SDE, LinearSchedule
+from diffuse.neural_network.unet import UNet
+from diffuse.diffusion.score_matching import score_match_loss
+from diffuse.diffusion.sde import SDE, LinearSchedule
 from functools import partial
 import numpy as np
 import optax

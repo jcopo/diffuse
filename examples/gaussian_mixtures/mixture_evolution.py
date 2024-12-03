@@ -5,13 +5,13 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
-from diffuse.sde import SDEState
-from diffuse.mixture import (
+from diffuse.diffusion.sde import SDEState
+from examples.gaussian_mixtures.mixture import (
     MixState,
     rho_t,
     sampler_mixtr,
 )
-from diffuse.sde import SDE, LinearSchedule
+from diffuse.diffusion.sde import SDE, LinearSchedule
 
 
 def init_mixture(key, d=1):

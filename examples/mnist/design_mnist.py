@@ -17,13 +17,13 @@ from jax_tqdm import scan_tqdm
 from jaxtyping import Array, PRNGKeyArray
 from optax import GradientTransformation
 
-from diffuse.conditional import CondSDE
-from diffuse.images import SquareMask
-from diffuse.inference import generate_cond_sampleV2
-from diffuse.optimizer import ImplicitState, impl_one_step, impl_step
-from diffuse.plotting import log_samples, plot_comparison, plotter_random
-from diffuse.sde import SDE, LinearSchedule, SDEState
-from diffuse.unet import UNet
+from diffuse.samplopt.conditional import CondSDE
+from diffuse.utils.plotting import log_samples, plot_comparison, plotter_random
+from diffuse.diffusion.sde import SDE, LinearSchedule, SDEState
+from diffuse.neural_network.unet import UNet
+from diffuse.samplopt.inference import generate_cond_sampleV2
+from diffuse.samplopt.optimizer import ImplicitState, impl_one_step, impl_step
+from examples.mnist.images import SquareMask
 
 SIZE = 7
 

@@ -8,9 +8,9 @@ import optax
 from jaxtyping import Array, PRNGKeyArray
 from optax import GradientTransformation
 
-from diffuse.conditional import CondSDE
-from diffuse.sde import SDEState
-from diffuse.inference import (
+from diffuse.samplopt.conditional import CondSDE
+from diffuse.diffusion.sde import SDEState
+from diffuse.samplopt.inference import (
     calculate_past_contribution_score,
     calculate_drift_expt_post,
     logpdf_change_expected,

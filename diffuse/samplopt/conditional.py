@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from typing import Callable, NamedTuple
 from jaxtyping import Array, PRNGKeyArray
 
-from diffuse.sde import SDE, SDEState, euler_maryama_step
-from diffuse.images import SquareMask
+from diffuse.diffusion.sde import SDE, SDEState, euler_maryama_step
+from examples.mnist.images import SquareMask
 
 
 @register_pytree_node_class

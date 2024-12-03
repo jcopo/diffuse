@@ -8,9 +8,9 @@ import jax.scipy as jsp
 from jaxtyping import Array, PRNGKeyArray
 import einops
 from matplotlib.colors import LogNorm
-from diffuse.conditional import CondSDE
-from diffuse.sde import SDEState, euler_maryama_step_array
-from diffuse.filter import stratified
+from diffuse.samplopt.conditional import CondSDE
+from diffuse.diffusion.sde import SDEState, euler_maryama_step_array
+from diffuse.utils.filter import stratified
 
 
 def ess(log_weights: Array) -> float:
@@ -282,7 +282,7 @@ def generate_cond_sampleV2(
     ys = jax.vmap(cond_sde.path_cond, in_axes=(None, 0, 0, 0))(
         mask_history, keys, state, ts
     )
-    from diffuse.plotting import plot_lines
+    from diffuse.utils import plot_lines
 
     plot_lines(
         cond_sde.mask.restore(
