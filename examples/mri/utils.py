@@ -1,0 +1,182 @@
+import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+import jax
+import jax.numpy as jnp
+from jaxtyping import Array
+from functools import partial
+from dataclasses import dataclass
+
+
+def slice_fourier(mri_slice):
+    return jnp.fft.fftshift(jnp.fft.fft2(mri_slice))
+
+
+def slice_inverse_fourier(fourier_transform):
+    return jnp.real(jnp.fft.ifft2(jnp.fft.ifftshift(fourier_transform)))
+
+
+def generate_spiral_2D(N=1, num_samples=1000, k_max=1.0, FOV=1.0, angle_offset=0.0):
+    theta_max = (2 * jnp.pi / N) * k_max * FOV
+    theta = jnp.linspace(0, theta_max, num_samples)
+
+    r = (N * theta) / (2 * jnp.pi * FOV)
+
+    kx = jnp.zeros(num_samples * N)
+    ky = jnp.zeros(num_samples * N)
+
+    theta_shifted = theta[:, None] + (2 * jnp.pi * jnp.arange(N) / N) + angle_offset
+    kx = (r[:, None] * jnp.cos(theta_shifted)).ravel()
+    ky = (r[:, None] * jnp.sin(theta_shifted)).ravel()
+
+    return kx, ky
+
+
+@partial(jax.vmap, in_axes=(0, 0, None, None, None))
+def gaussian_kernel(kx_i, ky_i, x, y, sigma=0.3):
+    distances = ((x - kx_i) ** 2 + (y - ky_i) ** 2) / (2 * sigma**2)
+    return jnp.exp(-distances)
+
+
+@partial(jax.jit, static_argnums=(2,))
+def grid(kx, ky, size, sigma=0.3, sharpness=400.0):
+    y, x = jnp.mgrid[0 : size[0], 0 : size[1]]
+    y = y.astype(float)
+    x = x.astype(float)
+
+    scale = min(size[0], size[1]) / 2 - 1
+
+    kx_scaled = kx * scale + size[1] / 2
+    ky_scaled = ky * scale + size[0] / 2
+
+    grid = gaussian_kernel(kx_scaled, ky_scaled, x, y, sigma).sum(axis=0)
+
+    grid = jax.nn.sigmoid(sharpness * (grid - 1))
+    return grid
+
+
+@dataclass
+class maskSpiral:
+    img_shape: tuple
+    num_spiral: int
+    num_samples: int
+    sigma: float
+
+    def make(self, xi: float):
+        fov = xi[0] ** 2
+        k_max = xi[1]
+        angle_offset = xi[2]
+
+        kx, ky = generate_spiral_2D(
+            self.num_spiral, self.num_samples, k_max, fov, angle_offset
+        )
+        return grid(kx, ky, self.img_shape, self.sigma)
+
+    def measure_from_mask(self, hist_mask: Array, x: Array):
+        fourier_x = hist_mask * slice_fourier(x[..., 0])
+        zero_channel = jnp.zeros_like(fourier_x)
+        return jnp.stack([fourier_x, zero_channel], axis=-1)
+
+    def measure(self, xi: float, x: Array):
+        return self.measure_from_mask(self.make(xi), x)
+
+    def restore_from_mask(self, hist_mask: Array, x: Array, measured: Array):
+        # On crée le masque inverse
+        inv_mask = 1 - hist_mask
+
+        # On calcule la transformée de Fourier de l'image
+        fourier_x = slice_fourier(x[..., 0])
+
+        # On masque les éléments observés
+        masked_inv_fourier_x = inv_mask * fourier_x
+
+        # On retrouve l'image originale
+        img = slice_inverse_fourier(masked_inv_fourier_x + measured[..., 0])
+
+        anomaly_map = x[..., 1]
+
+        final = jnp.stack([img, anomaly_map], axis=-1)
+
+        return final
+
+    def restore(self, xi: float, x: Array, measured: Array):
+        return self.restore_from_mask(self.make(xi), x, measured)
+
+    def supp_mask(self, xi: float, hist_mask: Array, new_mask: Array):
+        inv_mask = 1 - self.make(xi)
+        return hist_mask * inv_mask + new_mask
+
+    def supp_measure(self, sq_fov: float, old_measure: Array, new_measure: Array):
+        inv_mask = 1 - self.make(sq_fov)
+        supp = old_measure[..., 0] * inv_mask + new_measure[..., 0]
+        return jnp.stack([supp, old_measure[..., 1]], axis=-1)
+
+
+@dataclass
+class maskAno:
+    img_shape: tuple
+
+    def make(self, xi: float):
+        return jnp.stack([jnp.ones(self.img_shape), jnp.zeros(self.img_shape)], axis=-1)
+
+    def measure_from_mask(self, hist_mask: Array, x: Array):
+        return x * hist_mask
+
+    def measure(self, xi: float, x: Array):
+        return self.measure_from_mask(self.make(xi), x)
+
+    def restore_from_mask(self, hist_mask: Array, x: Array, measured: Array):
+        return x * hist_mask + measured
+
+    def restore(self, xi: float, x: Array, measured: Array):
+        inv_mask = 1 - self.make(xi)
+        return self.restore_from_mask(inv_mask, x, measured)
+
+
+def plotter_line_measure(array):
+    total_frames = len(array)
+
+    # Define the fractions
+    fractions = [0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
+    n = len(fractions)
+    # Create a figure with subplots
+    fig, axs = plt.subplots(1, n, figsize=(n * 3, n))
+
+    for idx, fraction in enumerate(fractions):
+        # Calculate the frame index
+        frame_index = int(fraction * total_frames)
+
+        # Plot the image
+        axs[idx].imshow(array[frame_index][..., 0], cmap="gray")
+        axs[idx].set_title(f"Frame at {fraction*100}% of total")
+        axs[idx].axis("off")  # Turn off axis labels
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plotter_line_obs(array):
+    total_frames = len(array)
+
+    # Define the fractions
+    fractions = [0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
+    n = len(fractions)
+    # Create a figure with subplots
+    fig, axs = plt.subplots(1, n, figsize=(n * 3, n))
+
+    for idx, fraction in enumerate(fractions):
+        # Calculate the frame index
+        frame_index = int(fraction * total_frames)
+
+        # Plot the image
+        y = np.real(np.abs(array[frame_index][..., 0]))
+        axs[idx].imshow(
+            y,
+            cmap="gray",
+            norm=matplotlib.colors.LogNorm(vmin=np.min(y), vmax=np.max(y)),
+        )
+        axs[idx].set_title(f"Frame at {fraction*100}% of total")
+        axs[idx].axis("off")  # Turn off axis labels
+
+    plt.tight_layout()
+    plt.show()
