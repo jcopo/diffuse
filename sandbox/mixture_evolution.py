@@ -1,17 +1,13 @@
-import pdb
 from functools import partial
 
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-import numpy as np
 
 from diffuse.sde import SDEState
 from diffuse.mixture import (
     MixState,
-    cdf_t,
-    pdf_mixtr,
     rho_t,
     sampler_mixtr,
 )
@@ -117,7 +113,7 @@ def run_forward_evolution_animation(sde, init_mix_state, num_frames=100, interva
         return scores, scatter, contour, time_text
 
     anim = FuncAnimation(fig, update, frames=num_frames, interval=interval, blit=True)
-    anim.save('forward_process.gif', writer='pillow')
+    anim.save("forward_process.gif", writer="pillow")
     plt.show()
 
 
@@ -196,7 +192,7 @@ def run_backward_evolution_animation(sde, init_mix_state, num_frames=100, interv
 
     anim = FuncAnimation(fig, update, frames=num_frames, interval=interval, blit=True)
     # save animation
-    anim.save('backward_process.gif', writer='pillow')
+    anim.save("backward_process.gif", writer="pillow")
     plt.show()
 
 

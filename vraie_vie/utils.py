@@ -77,7 +77,6 @@ class maskSpiral:
         zero_channel = jnp.zeros_like(fourier_x)
         return jnp.stack([fourier_x, zero_channel], axis=-1)
 
-
     def measure(self, xi: float, x: Array):
         return self.measure_from_mask(self.make(xi), x)
 

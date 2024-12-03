@@ -87,4 +87,4 @@ for epoch in range(n_epochs):
     if (epoch + 1) % 500 == 0:
         np.savez(f"ann_{epoch}.npz", params=params, ema_params=ema_params)
 
-np.savez(f"ann_end.npz", params=params, ema_params=ema_params)
+np.savez("ann_end.npz", params=params, ema_params=ema_params)

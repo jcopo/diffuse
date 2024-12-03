@@ -4,7 +4,6 @@ import einops
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
-from blackjax.smc.resampling import stratified
 from jaxtyping import Array, PRNGKeyArray
 
 from diffuse.sde import SDEState

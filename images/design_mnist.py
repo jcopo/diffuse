@@ -1,7 +1,6 @@
 import argparse
 import datetime
 import os
-import pdb
 import csv
 from functools import partial
 from typing import Callable, Tuple
@@ -21,12 +20,13 @@ from optax import GradientTransformation
 from diffuse.conditional import CondSDE
 from diffuse.images import SquareMask
 from diffuse.inference import generate_cond_sampleV2
-from diffuse.optimizer import ImplicitState, impl_full_scan, impl_one_step, impl_step
-from diffuse.plotting import log_samples, plot_comparison, plot_lines, plotter_random
+from diffuse.optimizer import ImplicitState, impl_one_step, impl_step
+from diffuse.plotting import log_samples, plot_comparison, plotter_random
 from diffuse.sde import SDE, LinearSchedule, SDEState
 from diffuse.unet import UNet
 
 SIZE = 7
+
 
 def logger_metrics(psnr_score: float, ssim_score: float, n_meas: int, dir_path: str):
     """
@@ -42,12 +42,12 @@ def logger_metrics(psnr_score: float, ssim_score: float, n_meas: int, dir_path: 
 
     # Create file with headers if it doesn't exist
     if not os.path.exists(scores_file):
-        with open(scores_file, 'w', newline='') as f:
+        with open(scores_file, "w", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(['Measurement', 'PSNR', 'SSIM'])
+            writer.writerow(["Measurement", "PSNR", "SSIM"])
 
     # Append new scores
-    with open(scores_file, 'a', newline='') as f:
+    with open(scores_file, "a", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([n_meas, float(psnr_score), float(ssim_score)])
 
@@ -345,7 +345,9 @@ def main(
             psnr_score, ssim_score = evaluate_metrics(
                 ground_truth, optimal_state.thetas[-1, :], optimal_state.weights
             )
-            jax.experimental.io_callback(logger_metrics, None, psnr_score, ssim_score, n_meas)
+            jax.experimental.io_callback(
+                logger_metrics, None, psnr_score, ssim_score, n_meas
+            )
             jax.experimental.io_callback(
                 plotter_theta,
                 None,
@@ -376,7 +378,7 @@ def main(
         #   plotter_line(optimal_state.cntrst_thetas[:, i])
 
         # reinitiazize implicit state
-        design = jax.random.uniform(key_step+1, (2,), minval=0, maxval=28)
+        design = jax.random.uniform(key_step + 1, (2,), minval=0, maxval=28)
         opt_state = optimizer.init(design)
         key_t, key_c = jax.random.split(key_gen)
         # thetas = generate_cond_sample(joint_y, optimal_state.design, key_t, cond_sde, ground_truth.shape, n_t, n_samples)[1][0]
@@ -396,7 +398,13 @@ def main(
 
 
 # @jax.jit
-def main_random(key: PRNGKeyArray, num_meas: int, plotter_random: Callable, plot: bool, logger_metrics_random: Callable):
+def main_random(
+    key: PRNGKeyArray,
+    num_meas: int,
+    plotter_random: Callable,
+    plot: bool,
+    logger_metrics_random: Callable,
+):
     key_init, key_step = jax.random.split(key)
 
     sde, cond_sde, mask, ground_truth, tf, n_t, nn_score = initialize_experiment(
@@ -418,7 +426,6 @@ def main_random(key: PRNGKeyArray, num_meas: int, plotter_random: Callable, plot
 
     measurement_history = jnp.zeros((num_meas, *y.shape))
     measurement_history = measurement_history.at[0].set(y)
-
 
     # init thetas
     thetas, _ = init_start_time(
@@ -446,7 +453,9 @@ def main_random(key: PRNGKeyArray, num_meas: int, plotter_random: Callable, plot
         psnr_score, ssim_score = evaluate_metrics(
             ground_truth, thetas.position, weights
         )
-        jax.experimental.io_callback(logger_metrics_random, None, psnr_score, ssim_score, n_meas)
+        jax.experimental.io_callback(
+            logger_metrics_random, None, psnr_score, ssim_score, n_meas
+        )
 
         # random design
         design = jax.random.uniform(key_step, (2,), minval=0, maxval=28)
@@ -465,14 +474,14 @@ def main_random(key: PRNGKeyArray, num_meas: int, plotter_random: Callable, plot
         if plot:
             jax.experimental.io_callback(
                 plotter_random,
-            None,
-            ground_truth,
-            joint_y,
-            design,
-            thetas.position,
-            weights,
-            n_meas,
-        )
+                None,
+                ground_truth,
+                joint_y,
+                design,
+                thetas.position,
+                weights,
+                n_meas,
+            )
 
         key_step, _ = jax.random.split(key_step)
 
@@ -495,7 +504,7 @@ if __name__ == "__main__":
     plot = args.plot
 
     rng_key = jax.random.PRNGKey(key_int)
-    output_dir = os.getenv('$SCRATCH', '')
+    output_dir = os.getenv("$SCRATCH", "")
     dir_path = f"{args.space}/{args.prefix}/{key_int}_{datetime.datetime.now().strftime('%m-%d_%H-%M-%S')}"
 
     scores_file = f"{dir_path}/scores.csv"
@@ -514,20 +523,28 @@ if __name__ == "__main__":
         os.makedirs(logging_path_random, exist_ok=True)
         plotter_r = partial(plotter_random, logging_path=logging_path_random, size=SIZE)
         logger_metrics_random = partial(logger_metrics, dir_path=logging_path_random)
-        ground_truth, state_random, y_random = main_random(rng_key, num_meas, plotter_r, plot, logger_metrics_random)
+        ground_truth, state_random, y_random = main_random(
+            rng_key, num_meas, plotter_r, plot, logger_metrics_random
+        )
         sde_state, weights = state_random
-        psnr_score_random, ssim_score_random = evaluate_metrics(ground_truth, sde_state.position, weights)
-    ground_truth, state, y = main(rng_key, num_meas, plotter_theta, plotter_contrastive, logger_metrics, plot)
+        psnr_score_random, ssim_score_random = evaluate_metrics(
+            ground_truth, sde_state.position, weights
+        )
+    ground_truth, state, y = main(
+        rng_key, num_meas, plotter_theta, plotter_contrastive, logger_metrics, plot
+    )
     samples, weights = state
     psnr_score, ssim_score = evaluate_metrics(ground_truth, samples, weights)
     print(f"PSNR: {psnr_score} SSIM: {ssim_score}")
     # Save scores to CSV
-    with open(scores_file, 'w', newline='') as f:
+    with open(scores_file, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(['Method', 'PSNR', 'SSIM'])
-        writer.writerow(['Optimized', float(psnr_score), float(ssim_score)])
+        writer.writerow(["Method", "PSNR", "SSIM"])
+        writer.writerow(["Optimized", float(psnr_score), float(ssim_score)])
         if random:
-                writer.writerow(['Random', float(psnr_score_random), float(ssim_score_random)])
+            writer.writerow(
+                ["Random", float(psnr_score_random), float(ssim_score_random)]
+            )
 
     if random:
         plot_comparison(ground_truth, state_random, state, y_random, y, dir_path)
