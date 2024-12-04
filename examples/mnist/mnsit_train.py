@@ -1,9 +1,9 @@
 import jax
 import jax.numpy as jnp
 import einops
-from diffuse.unet import UNet
-from diffuse.score_matching import score_match_loss
-from diffuse.sde import SDE, LinearSchedule
+from diffuse.neural_network.unet import UNet
+from diffuse.diffusion.score_matching import score_match_loss
+from diffuse.diffusion.sde import SDE, LinearSchedule
 from functools import partial
 import numpy as np
 import optax
@@ -87,4 +87,4 @@ for epoch in range(n_epochs):
     if (epoch + 1) % 500 == 0:
         np.savez(f"ann_{epoch}.npz", params=params, ema_params=ema_params)
 
-np.savez(f"ann_end.npz", params=params, ema_params=ema_params)
+np.savez("ann_end.npz", params=params, ema_params=ema_params)

@@ -1,7 +1,7 @@
 import pytest
 import jax
 import jax.numpy as jnp
-from diffuse.images import SquareMask
+from examples.mnist.images import SquareMask
 import matplotlib.pyplot as plt
 
 

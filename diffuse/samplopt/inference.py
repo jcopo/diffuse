@@ -1,16 +1,16 @@
 from functools import partial
 from typing import Tuple
-
+import matplotlib.pyplot as plt
 import jax
 import jax.experimental
 import jax.numpy as jnp
 import jax.scipy as jsp
 from jaxtyping import Array, PRNGKeyArray
 import einops
-
-from diffuse.conditional import CondSDE
-from diffuse.sde import SDEState, euler_maryama_step_array
-from diffuse.filter import stratified
+from matplotlib.colors import LogNorm
+from diffuse.samplopt.conditional import CondSDE
+from diffuse.diffusion.sde import SDEState, euler_maryama_step_array
+from diffuse.utils.filter import stratified
 
 
 def ess(log_weights: Array) -> float:
@@ -46,11 +46,23 @@ def log_density_multivariate_complex_gaussian(x, mean, sq_std):
     return jnp.real(log_density)
 
 
+def print_img(x, y, logprob_val, title):
+    plt.subplot(1, 2, 1)
+    plt.imshow(jnp.abs(x[..., 0]), cmap="gray", norm=LogNorm())
+    plt.colorbar()
+    plt.subplot(1, 2, 2)
+    plt.imshow(jnp.abs(y[..., 0]), cmap="gray", norm=LogNorm())
+    plt.colorbar()
+    plt.title(f"{title}: logprob: {logprob_val:.2f} hihi")
+    plt.show()
+
+
 def logprob_y(theta, y, design, cond_sde):
     f_y = cond_sde.mask.measure(design, theta)
 
     log_density = log_density_multivariate_complex_gaussian(y, f_y, 1)
     return log_density
+
 
 def logpdf_change_y(
     x_sde_state: SDEState,
@@ -60,15 +72,28 @@ def logpdf_change_y(
     cond_sde: CondSDE,
     dt,
 ):
+    r"""
+    log p(y_new | y_old, x_old)
+    with y_{k-1} | y_{k}, x_k ~ N(.| y_k + rev_drift*dt, sqrt(dt)*rev_diff)
+    """
     x, t = x_sde_state
     alpha = jnp.sqrt(jnp.exp(cond_sde.beta.integrate(0.0, t)))
     cov = cond_sde.reverse_diffusion(x_sde_state) * jnp.sqrt(dt) + alpha
 
     mean = cond_sde.mask.measure_from_mask(design, x + drift_x * dt)
     logsprobs = log_density_multivariate_complex_gaussian(y_next, mean, cov)
-    logsprobs = cond_sde.mask.measure_from_mask(design, logsprobs)
+    # jax.debug.print('{}', idx)
+
+    # logsprobs = cond_sde.mask.measure_from_mask(design, logsprobs)
+    logsprobs = logsprobs[..., 0] * design[None]
     logsprobs = einops.reduce(logsprobs, "t ... -> t ", "sum")
+
+    id_max = jnp.argmax(logsprobs)
+    id_min = jnp.argmin(logsprobs)
+    # jax.experimental.io_callback(print_img, None, mean[id_max], y_next, logsprobs[id_max], 1)
+    # jax.experimental.io_callback(print_img, None, mean[id_min], y_next, logsprobs[id_min], -1)
     return logsprobs
+
 
 def _logprob_y(theta, y, design, cond_sde):
     f_y = cond_sde.mask.measure(design, theta)
@@ -147,6 +172,7 @@ def particle_step(
     )
     # weights = jax.vmap(logpdf, in_axes=(SDEState(0, None),))(sde_state)
     weights = logpdf(sde_state, drift_x)
+    # jax.debug.print('{}', weights)
 
     _norm = jax.scipy.special.logsumexp(weights, axis=0)
     log_weights = weights - _norm
@@ -156,6 +182,12 @@ def particle_step(
     n_particles = sde_state.position.shape[0]
     idx = stratified(rng_key, weights, n_particles)
 
+    def print_img(x, id):
+        plt.imshow(x[id, ..., 0], cmap="gray")
+        plt.show()
+
+    # jax.debug.print('{}', idx)
+    # jax.experimental.io_callback(print_img, None, sde_state.position, idx[0])
     # return sde_state.position, weights
     return jax.lax.cond(
         (ess_val < 0.6 * n_particles) & (ess_val > 0.2 * n_particles),
@@ -247,7 +279,18 @@ def generate_cond_sampleV2(
     y = einops.repeat(y, "... -> ts ... ", ts=n_ts)
     state = SDEState(y, jnp.zeros((n_ts, 1)))
     keys = jax.random.split(key_y, n_ts)
-    ys = jax.vmap(cond_sde.path, in_axes=(0, 0, 0))(keys, state, ts)
+    ys = jax.vmap(cond_sde.path_cond, in_axes=(None, 0, 0, 0))(
+        mask_history, keys, state, ts
+    )
+    from diffuse.utils import plot_lines
+
+    plot_lines(
+        cond_sde.mask.restore(
+            mask_history, jnp.zeros_like(ys.position[..., 0]), ys.position[..., 0]
+        )
+    )
+    plot_lines(jnp.real(ys.position[..., 0]))
+    plot_lines(jnp.imag(ys.position[..., 0]))
 
     # u time reversal of y
     us = SDEState(ys.position[::-1], ys.t)
@@ -257,8 +300,8 @@ def generate_cond_sampleV2(
 
     x_T = jax.random.normal(key_x, (n_particles, *x_shape))
     state_x = SDEState(x_T, 0.0)
-    # weights = jnp.zeros((n_particles,))
-    weights = jnp.zeros((n_particles,), dtype=jnp.complex64)
+    weights = jnp.zeros((n_particles,))
+    # weights = jnp.zeros((n_particles,), dtype=jnp.complex64)
     # scan pcmc over x0 for n_steps
     keys = jax.random.split(key, n_ts - 1)
 

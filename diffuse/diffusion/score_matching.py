@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import einops
 from typing import Callable
 from jaxtyping import PyTreeDef, PRNGKeyArray
-from diffuse.sde import SDE, SDEState
+from diffuse.diffusion.sde import SDE, SDEState
 
 
 def score_match_loss(

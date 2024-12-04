@@ -469,7 +469,7 @@ class UNet(nn.Module):
             kernel_size=(3, 3),
             padding=1,
             dtype=self.dtype,
-            name=f"up_0.conv_0",
+            name="up_0.conv_0",
         )(h)
 
         # final

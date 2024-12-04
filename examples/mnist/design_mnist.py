@@ -1,31 +1,64 @@
-import os
 import argparse
+import datetime
+import os
+import csv
 from functools import partial
-from typing import Tuple, Callable
+from typing import Callable, Tuple
+
+import dm_pix
+import einops
 import jax
 import jax.experimental
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
 import numpy as np
 import optax
+from jax_tqdm import scan_tqdm
 from jaxtyping import Array, PRNGKeyArray
 from optax import GradientTransformation
-import matplotlib.pyplot as plt
-from jax_tqdm import scan_tqdm
-import datetime
-import einops
 
-from diffuse.sde import SDE, SDEState
-from diffuse.conditional import CondSDE
-from diffuse.plotting import log_samples, plot_lines, plotter_random, plot_comparison
-from diffuse.images import SquareMask
-from diffuse.inference import generate_cond_sampleV2
-from diffuse.optimizer import ImplicitState, impl_step, impl_one_step, impl_full_scan
-from diffuse.sde import LinearSchedule
-from diffuse.unet import UNet
-import pdb
-
+from diffuse.samplopt.conditional import CondSDE
+from diffuse.utils.plotting import log_samples, plot_comparison, plotter_random
+from diffuse.diffusion.sde import SDE, LinearSchedule, SDEState
+from diffuse.neural_network.unet import UNet
+from diffuse.samplopt.inference import generate_cond_sampleV2
+from diffuse.samplopt.optimizer import ImplicitState, impl_one_step, impl_step
+from examples.mnist.images import SquareMask
 
 SIZE = 7
+
+
+def logger_metrics(psnr_score: float, ssim_score: float, n_meas: int, dir_path: str):
+    """
+    Log PSNR and SSIM metrics to a CSV file during optimization.
+
+    Args:
+        psnr_score: Peak Signal-to-Noise Ratio score
+        ssim_score: Structural Similarity Index score
+        n_meas: Current measurement number
+    """
+    # Assuming scores_file is defined in the global scope
+    scores_file = f"{dir_path}/scores_during_opt.csv"
+
+    # Create file with headers if it doesn't exist
+    if not os.path.exists(scores_file):
+        with open(scores_file, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Measurement", "PSNR", "SSIM"])
+
+    # Append new scores
+    with open(scores_file, "a", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([n_meas, float(psnr_score), float(ssim_score)])
+
+
+@jax.jit
+def evaluate_metrics(grande_truite, theta_infered, weights_infered):
+    psnr_array = jax.vmap(dm_pix.psnr, in_axes=(None, 0))(grande_truite, theta_infered)
+    psnr_score = jnp.sum(psnr_array * weights_infered)
+    ssim_array = jax.vmap(dm_pix.ssim, in_axes=(None, 0))(grande_truite, theta_infered)
+    ssim_score = jnp.sum(ssim_array * weights_infered)
+    return psnr_score, ssim_score
 
 
 def initialize_experiment(key: PRNGKeyArray):
@@ -43,7 +76,7 @@ def initialize_experiment(key: PRNGKeyArray):
 
     # Initialize ScoreNetwork
     score_net = UNet(tf / n_t, 64, upsampling="pixel_shuffle")
-    nn_trained = jnp.load("ann_2999.npz", allow_pickle=True)
+    nn_trained = jnp.load("weights/ann_2999.npz", allow_pickle=True)
     params = nn_trained["params"].item()
 
     # Define neural network score function
@@ -211,6 +244,8 @@ def main(
     num_meas: int,
     plotter_theta: Callable,
     plotter_contrastive: Callable,
+    logger_metrics: Callable,
+    plot: bool,
 ):
     key_init, key_step = jax.random.split(key)
 
@@ -306,26 +341,33 @@ def main(
         print(f"Design_start: {design} Design_end:{optimal_state.design}")
 
         # jax.experimental.io_callback(plot_results, None, opt_hist, ground_truth, joint_y, mask_history, optimal_state.thetas[-1, :], optimal_state.cntrst_thetas[-1, :])
-        jax.experimental.io_callback(
-            plotter_theta,
-            None,
-            opt_hist,
-            ground_truth,
-            joint_y,
-            optimal_state.thetas[-1, :],
-            optimal_state.weights,
-            n_meas,
-        )
-        jax.experimental.io_callback(
-            plotter_contrastive,
-            None,
-            opt_hist,
-            ground_truth,
-            joint_y,
-            optimal_state.cntrst_thetas[-1, :],
-            optimal_state.weights_c,
-            n_meas,
-        )
+        if plot:
+            psnr_score, ssim_score = evaluate_metrics(
+                ground_truth, optimal_state.thetas[-1, :], optimal_state.weights
+            )
+            jax.experimental.io_callback(
+                logger_metrics, None, psnr_score, ssim_score, n_meas
+            )
+            jax.experimental.io_callback(
+                plotter_theta,
+                None,
+                opt_hist,
+                ground_truth,
+                joint_y,
+                optimal_state.thetas[-1, :],
+                optimal_state.weights,
+                n_meas,
+            )
+            jax.experimental.io_callback(
+                plotter_contrastive,
+                None,
+                opt_hist,
+                ground_truth,
+                joint_y,
+                optimal_state.cntrst_thetas[-1, :],
+                optimal_state.weights_c,
+                n_meas,
+            )
 
         print(jnp.max(joint_y))
         # plotter_line(optimal_state.thetas[-1, :])
@@ -336,7 +378,7 @@ def main(
         #   plotter_line(optimal_state.cntrst_thetas[:, i])
 
         # reinitiazize implicit state
-        design = jax.random.uniform(key_step, (2,), minval=0, maxval=28)
+        design = jax.random.uniform(key_step + 1, (2,), minval=0, maxval=28)
         opt_state = optimizer.init(design)
         key_t, key_c = jax.random.split(key_gen)
         # thetas = generate_cond_sample(joint_y, optimal_state.design, key_t, cond_sde, ground_truth.shape, n_t, n_samples)[1][0]
@@ -356,7 +398,13 @@ def main(
 
 
 # @jax.jit
-def main_random(key: PRNGKeyArray, num_meas: int, plotter_random: Callable):
+def main_random(
+    key: PRNGKeyArray,
+    num_meas: int,
+    plotter_random: Callable,
+    plot: bool,
+    logger_metrics_random: Callable,
+):
     key_init, key_step = jax.random.split(key)
 
     sde, cond_sde, mask, ground_truth, tf, n_t, nn_score = initialize_experiment(
@@ -379,21 +427,9 @@ def main_random(key: PRNGKeyArray, num_meas: int, plotter_random: Callable):
     measurement_history = jnp.zeros((num_meas, *y.shape))
     measurement_history = measurement_history.at[0].set(y)
 
-    # init optimizer
-    optimizer = optax.chain(optax.adam(learning_rate=0.9), optax.scale(-1))
-    opt_state = optimizer.init(design)
-
-    ts = jnp.linspace(0, tf, n_t)
-
     # init thetas
-    # thetas, cntrst_thetas = init_trajectory(key_init, sde, nn_score, n_samples, n_samples_cntrst, tf, ts, dts, ground_truth.shape)
-    thetas, cntrst_thetas = init_start_time(
+    thetas, _ = init_start_time(
         key_init, n_samples, n_samples_cntrst, ground_truth.shape
-    )
-    weights_0 = jnp.zeros((n_samples,))
-    weights_c_0 = jnp.zeros((n_samples_cntrst,))
-    implicit_state = ImplicitState(
-        thetas, weights_0, cntrst_thetas, weights_c_0, design, opt_state
     )
 
     # stock in joint_y all measurements
@@ -413,6 +449,14 @@ def main_random(key: PRNGKeyArray, num_meas: int, plotter_random: Callable):
         )[0]
         thetas, weights = optimal_state
 
+        # metrics
+        psnr_score, ssim_score = evaluate_metrics(
+            ground_truth, thetas.position, weights
+        )
+        jax.experimental.io_callback(
+            logger_metrics_random, None, psnr_score, ssim_score, n_meas
+        )
+
         # random design
         design = jax.random.uniform(key_step, (2,), minval=0, maxval=28)
 
@@ -427,16 +471,17 @@ def main_random(key: PRNGKeyArray, num_meas: int, plotter_random: Callable):
         )
         # plt.imshow(mask_history, cmap="gray")
 
-        jax.experimental.io_callback(
-            plotter_random,
-            None,
-            ground_truth,
-            joint_y,
-            design,
-            thetas.position,
-            weights,
-            n_meas,
-        )
+        if plot:
+            jax.experimental.io_callback(
+                plotter_random,
+                None,
+                ground_truth,
+                joint_y,
+                design,
+                thetas.position,
+                weights,
+                n_meas,
+            )
 
         key_step, _ = jax.random.split(key_step)
 
@@ -449,15 +494,20 @@ if __name__ == "__main__":
     parser.add_argument("--random", action="store_true")
     parser.add_argument("--num_meas", type=int, default=3)
     parser.add_argument("--prefix", type=str, default="")
+    parser.add_argument("--plot", action="store_true")
+    parser.add_argument("--space", type=str, default="runs")
 
     args = parser.parse_args()
     num_meas = args.num_meas
     key_int = args.rng_key
     random = args.random
+    plot = args.plot
 
     rng_key = jax.random.PRNGKey(key_int)
-    dir_path = f"runs/{args.prefix}/{key_int}_{datetime.datetime.now().strftime('%m-%d_%H-%M-%S')}"
+    output_dir = os.getenv("$SCRATCH", "")
+    dir_path = f"{args.space}/{args.prefix}/{key_int}_{datetime.datetime.now().strftime('%m-%d_%H-%M-%S')}"
 
+    scores_file = f"{dir_path}/scores.csv"
     logging_path_theta = f"{dir_path}/theta"
     logging_path_contrastive = f"{dir_path}/contrastive"
     os.makedirs(logging_path_theta, exist_ok=True)
@@ -466,14 +516,36 @@ if __name__ == "__main__":
     plotter_contrastive = partial(
         log_samples, logging_path=logging_path_contrastive, size=SIZE
     )
+    logger_metrics = partial(logger_metrics, dir_path=logging_path_theta)
 
     if random:
         logging_path_random = f"{dir_path}/random"
         os.makedirs(logging_path_random, exist_ok=True)
         plotter_r = partial(plotter_random, logging_path=logging_path_random, size=SIZE)
-        ground_truth, state_random, y_random = main_random(rng_key, num_meas, plotter_r)
-
-    ground_truth, state, y = main(rng_key, num_meas, plotter_theta, plotter_contrastive)
+        logger_metrics_random = partial(logger_metrics, dir_path=logging_path_random)
+        ground_truth, state_random, y_random = main_random(
+            rng_key, num_meas, plotter_r, plot, logger_metrics_random
+        )
+        sde_state, weights = state_random
+        psnr_score_random, ssim_score_random = evaluate_metrics(
+            ground_truth, sde_state.position, weights
+        )
+    ground_truth, state, y = main(
+        rng_key, num_meas, plotter_theta, plotter_contrastive, logger_metrics, plot
+    )
+    samples, weights = state
+    psnr_score, ssim_score = evaluate_metrics(ground_truth, samples, weights)
+    print(f"PSNR: {psnr_score} SSIM: {ssim_score}")
+    # Save scores to CSV
+    with open(scores_file, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Method", "PSNR", "SSIM"])
+        writer.writerow(["Optimized", float(psnr_score), float(ssim_score)])
+        if random:
+            writer.writerow(
+                ["Random", float(psnr_score_random), float(ssim_score_random)]
+            )
 
     if random:
         plot_comparison(ground_truth, state_random, state, y_random, y, dir_path)
+        print(f"PSNR_random: {psnr_score_random} SSIM_random: {ssim_score_random}")

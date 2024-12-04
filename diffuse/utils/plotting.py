@@ -210,7 +210,7 @@ def plot_top_samples(thetas, cntrst_thetas, weights, weights_c, past_y, y_c):
 
 
 def plot_lines(array):
-    fractions = [0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
+    fractions = [0.0, 0.1, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
     n = len(fractions)
     fig, axs = plt.subplots(1, n, figsize=(n * 3, 3))
     fig.suptitle("array")
@@ -218,7 +218,9 @@ def plot_lines(array):
     for idx, fraction in enumerate(fractions):
         # Calculate the frame index
         frame_index = int(fraction * array.shape[0])
-        axs[idx].imshow(array[frame_index], cmap="gray")
+        im = axs[idx].imshow(array[frame_index], cmap="gray")
+        # colorbar
+        plt.colorbar(im)
         axs[idx].axis("off")
 
         # fix colormap range
@@ -333,5 +335,33 @@ def plot_results(opt_hist, ground_truth, joint_y, mask_history, thetas, cntrst_t
     # ax2.scatter(opt_hist[:, 0], opt_hist[:, 1], marker="+")
     ax2.imshow(joint_y, cmap="gray")
     ax3.imshow(mask_history, cmap="gray")
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_top_10_samples(res):
+    """Plot the top 10 samples from the results array.
+
+    Parameters
+    ----------
+    res : tuple
+        Results tuple containing weights and positions
+    """
+    weights = res[0][1]
+    gen_img = res[0][0].position[-1, ..., 0]
+    gen_msk = res[0][0].position[-1, ..., 0]
+
+    n = 10
+    best_idx = jnp.argsort(weights)[-n:][::-1]
+
+    # Create figure with subplots
+    fig, axs = plt.subplots(1, n, figsize=(n * 3, 3))
+    fig.suptitle("Top 10 Samples", fontsize=16)
+
+    for idx in range(n):
+        axs[idx].imshow(gen_img[best_idx[idx]], cmap="gray")
+        axs[idx].imshow(gen_msk[best_idx[idx]], cmap="gray", alpha=0.5)
+        axs[idx].axis("off")
+
     plt.tight_layout()
     plt.show()

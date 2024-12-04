@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from typing import Callable, NamedTuple
 from jaxtyping import Array, PRNGKeyArray
 
-from diffuse.sde import SDE, SDEState, euler_maryama_step, ode_step_array
-from diffuse.images import SquareMask
+from diffuse.diffusion.sde import SDE, SDEState, euler_maryama_step
+from examples.mnist.images import SquareMask
 
 
 @register_pytree_node_class
@@ -91,6 +91,21 @@ class CondSDE(SDE):
         # x, _ = ode_step_array(SDEState(x, t), dt, revese_drift)
         y = self.mask.measure(xi, x)
         return CondState(x, y, xi, t - dt)
+
+    def path_cond(
+        self, mask: Array, key: PRNGKeyArray, state: SDEState, ts: float
+    ) -> SDEState:
+        """
+        Generate x_ts | x_t ~ N(.| exp(-0.5 \int_ts^t \beta(s) ds) x_0, 1 - exp(-\int_ts^t \beta(s) ds))
+        """
+        x, t = state
+
+        int_b = self.beta.integrate(ts, t)
+        alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
+
+        rndm = jax.random.normal(key, x.shape)
+        res = alpha * x + jnp.sqrt(beta) * self.mask.measure_from_mask(mask, rndm)
+        return SDEState(res, ts)
 
 
 def cond_reverse_drift(state: CondState, cond_sde: CondSDE) -> Array:

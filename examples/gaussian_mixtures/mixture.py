@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from jaxtyping import Array, PyTreeDef
 
-from diffuse.sde import SDE
+from diffuse.diffusion.sde import SDE
 
 
 class MixState(NamedTuple):
