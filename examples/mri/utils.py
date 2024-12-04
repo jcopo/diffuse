@@ -1,11 +1,13 @@
-import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
+import pdb
+from dataclasses import dataclass
+from functools import partial
+
 import jax
 import jax.numpy as jnp
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
 from jaxtyping import Array
-from functools import partial
-from dataclasses import dataclass
 
 
 def slice_fourier(mri_slice):
@@ -93,7 +95,7 @@ class maskSpiral:
         # On retrouve l'image originale
         img = slice_inverse_fourier(masked_inv_fourier_x + measured[..., 0])
 
-        anomaly_map = x[..., 1]
+        anomaly_map = jnp.real(x[..., 1])
 
         final = jnp.stack([img, anomaly_map], axis=-1)
 

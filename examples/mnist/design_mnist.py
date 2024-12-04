@@ -21,7 +21,7 @@ from diffuse.samplopt.conditional import CondSDE
 from diffuse.utils.plotting import log_samples, plot_comparison, plotter_random
 from diffuse.diffusion.sde import SDE, LinearSchedule, SDEState
 from diffuse.neural_network.unet import UNet
-from diffuse.samplopt.inference import generate_cond_sampleV2
+from diffuse.samplopt.inference import generate_cond_sample
 from diffuse.samplopt.optimizer import ImplicitState, impl_one_step, impl_step
 from examples.mnist.images import SquareMask
 
@@ -383,8 +383,8 @@ def main(
         key_t, key_c = jax.random.split(key_gen)
         # thetas = generate_cond_sample(joint_y, optimal_state.design, key_t, cond_sde, ground_truth.shape, n_t, n_samples)[1][0]
 
-        # thetas = generate_cond_sampleV2(joint_y, mask_history, key_t, cond_sde, ground_truth.shape, n_t, n_samples)[1][0]
-        # cntrst_thetas = generate_cond_sampleV2(joint_y, mask_history, key_c, cond_sde, ground_truth.shape, n_t, n_samples_cntrst)[1][0]
+        # thetas = generate_cond_sample(joint_y, mask_history, key_t, cond_sde, ground_truth.shape, n_t, n_samples)[1][0]
+        # cntrst_thetas = generate_cond_sample(joint_y, mask_history, key_c, cond_sde, ground_truth.shape, n_t, n_samples_cntrst)[1][0]
         key_step, _ = jax.random.split(key_step)
 
         thetas, cntrst_thetas = init_start_time(
@@ -444,7 +444,7 @@ def main_random(
         past_y = noiser(keys_noise, state_0, ts)
         past_y = SDEState(past_y.position[::-1], past_y.t)
         # plotter_line(past_y.position)
-        optimal_state = generate_cond_sampleV2(
+        optimal_state = generate_cond_sample(
             joint_y, mask_history, key_opt, cond_sde, ground_truth.shape, n_t, n_samples
         )[0]
         thetas, weights = optimal_state

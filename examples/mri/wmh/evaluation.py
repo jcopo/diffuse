@@ -11,7 +11,7 @@ from sklearn.metrics import f1_score, confusion_matrix
 from scipy.spatial.distance import directed_hausdorff
 
 from diffuse.samplopt.conditional import CondSDE
-from diffuse.samplopt.inference import generate_cond_sampleV2
+from diffuse.samplopt.inference import generate_cond_sample
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.neural_network.unet import UNet
 
@@ -105,7 +105,7 @@ if __name__ == "__main__":
     size = (92, 112, 2)
     n_particules = 300
     generate = partial(
-        generate_cond_sampleV2,
+        generate_cond_sample,
         design=xi,
         mask_history=mask,
         cond_sde=cond_sde,

@@ -357,10 +357,10 @@ def main(key):
         key_t, key_c = jax.random.split(key_gen)
         # thetas = generate_cond_sample(joint_y, optimal_state.design, key_t, cond_sde, ground_truth.shape, n_t, n_samples)[1][0]
 
-        # tmp = generate_cond_sampleV2(joint_y, mask_history, key_t, cond_sde, ground_truth.shape, n_t, n_samples)
+        # tmp = generate_cond_sample(joint_y, mask_history, key_t, cond_sde, ground_truth.shape, n_t, n_samples)
         # plt.imshow(tmp[0][0].position[-1, ..., 0], cmap="gray")
         # plt.show()
-        # cntrst_thetas = generate_cond_sampleV2(joint_y, mask_history, key_c, cond_sde, ground_truth.shape, n_t, n_samples_cntrst)[1][0]
+        # cntrst_thetas = generate_cond_sample(joint_y, mask_history, key_c, cond_sde, ground_truth.shape, n_t, n_samples_cntrst)[1][0]
         key_step, _ = jax.random.split(key_step)
 
         # implicit_state = ImplicitState(

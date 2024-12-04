@@ -1,16 +1,20 @@
+import pdb
 from functools import partial
 from typing import Tuple
-import matplotlib.pyplot as plt
+
+import einops
 import jax
 import jax.experimental
 import jax.numpy as jnp
 import jax.scipy as jsp
+import matplotlib.pyplot as plt
+from blackjax.smc.resampling import stratified
 from jaxtyping import Array, PRNGKeyArray
-import einops
 from matplotlib.colors import LogNorm
-from diffuse.samplopt.conditional import CondSDE
+
 from diffuse.diffusion.sde import SDEState, euler_maryama_step_array
 from blackjax.smc.resampling import stratified
+from diffuse.samplopt.conditional import CondSDE
 
 
 def ess(log_weights: Array) -> float:
@@ -242,7 +246,7 @@ def logpdf_change_expected(
     return logliks.mean(axis=0)
 
 
-def generate_cond_sampleV2(
+def generate_cond_sample(
     y: Array,
     mask_history: Array,
     key: PRNGKeyArray,
@@ -282,13 +286,12 @@ def generate_cond_sampleV2(
     ys = jax.vmap(cond_sde.path_cond, in_axes=(None, 0, 0, 0))(
         mask_history, keys, state, ts
     )
-    from diffuse.utils import plot_lines
+    from diffuse.utils.plotting import plot_lines
 
-    plot_lines(
-        cond_sde.mask.restore(
-            mask_history, jnp.zeros_like(ys.position[..., 0]), ys.position[..., 0]
-        )
+    restored_y = jax.vmap(cond_sde.mask.restore_from_mask, in_axes=(None, 0, 0))(
+        mask_history, jnp.zeros_like(ys.position), ys.position
     )
+    plot_lines(restored_y[..., 0])
     plot_lines(jnp.real(ys.position[..., 0]))
     plot_lines(jnp.imag(ys.position[..., 0]))
 
