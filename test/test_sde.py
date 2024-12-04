@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 import jax.random as random
 
-from diffuse.sde import SDE, LinearSchedule, SDEState
+from diffuse.diffusion.sde import SDE, LinearSchedule, SDEState
 
 
 def test_path():

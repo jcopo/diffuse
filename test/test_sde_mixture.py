@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import scipy as sp
 
-from diffuse.mixture import (
+from examples.gaussian_mixtures.mixture import (
     MixState,
     cdf_t,
     display_histogram,
@@ -16,7 +16,7 @@ from diffuse.mixture import (
     rho_t,
     sampler_mixtr,
 )
-from diffuse.sde import SDE, LinearSchedule, SDEState
+from diffuse.diffusion.sde import SDE, LinearSchedule, SDEState
 
 
 @pytest.fixture
