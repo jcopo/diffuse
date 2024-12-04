@@ -13,13 +13,13 @@ from jaxtyping import Array, PRNGKeyArray
 import optax
 from optax import GradientTransformation
 
-from diffuse.conditional import CondSDE
-from diffuse.optimizer import ImplicitState, impl_one_step, impl_full_scan
-from diffuse.sde import LinearSchedule, SDE, SDEState
-from diffuse.unet import UNet
+from diffuse.samplopt.conditional import CondSDE
+from diffuse.samplopt.optimizer import ImplicitState, impl_one_step, impl_full_scan
+from diffuse.diffusion.sde import LinearSchedule, SDE, SDEState
+from diffuse.neural_network.unet import UNet
 
-from vraie_vie.wmh.create_dataset import WMH
-from vraie_vie.utils import maskSpiral, plotter_line_measure, plotter_line_obs
+from examples.mri.wmh.create_dataset import WMH
+from examples.mri.utils import maskSpiral, plotter_line_measure, plotter_line_obs
 
 config = {
     "modality": "FLAIR",

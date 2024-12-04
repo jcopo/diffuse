@@ -1,36 +1,31 @@
-from functools import partial
 import argparse
-import jax
-import jax.numpy as jnp
-
-import optax
-from optax import EmaState, EmptyState, ScaleByAdamState, ScaleByScheduleState
-
 import os
 import sys
+from functools import partial
+
+import jax
+import jax.numpy as jnp
+import optax
+from optax import EmaState, EmptyState, ScaleByAdamState, ScaleByScheduleState
 
 sys.path.append(
     os.path.abspath("/lustre/fswork/projects/rech/hlp/uha64uw/projet_p/diffuse")
 )
 
-from diffuse.score_matching import score_match_loss
-from diffuse.sde import SDE, LinearSchedule
-from diffuse.unet import UNet
-
 import numpy as np
-
-
+import yaml
 from torchio.utils import get_first_item
 from tqdm import tqdm
-import yaml
 
-from vraie_vie.wmh.create_dataset import (
-    get_train_dataloader as get_wmh_train_dataloader,
-)
-from vraie_vie.brats.create_dataset import (
+from diffuse.diffusion.score_matching import score_match_loss
+from diffuse.diffusion.sde import SDE, LinearSchedule
+from diffuse.neural_network.unet import UNet
+from examples.mri.brats.create_dataset import (
     get_train_dataloader as get_brats_train_dataloader,
 )
-
+from examples.mri.wmh.create_dataset import (
+    get_train_dataloader as get_wmh_train_dataloader,
+)
 
 jax.config.update("jax_enable_x64", False)
 

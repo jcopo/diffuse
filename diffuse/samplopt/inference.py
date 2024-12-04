@@ -10,7 +10,7 @@ import einops
 from matplotlib.colors import LogNorm
 from diffuse.samplopt.conditional import CondSDE
 from diffuse.diffusion.sde import SDEState, euler_maryama_step_array
-from diffuse.utils.filter import stratified
+from blackjax.smc.resampling import stratified
 
 
 def ess(log_weights: Array) -> float:

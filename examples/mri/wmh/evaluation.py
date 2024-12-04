@@ -10,13 +10,13 @@ import pandas as pd
 from sklearn.metrics import f1_score, confusion_matrix
 from scipy.spatial.distance import directed_hausdorff
 
-from diffuse.conditional import CondSDE
-from diffuse.inference import generate_cond_sampleV2
-from diffuse.sde import SDE, LinearSchedule
-from diffuse.unet import UNet
+from diffuse.samplopt.conditional import CondSDE
+from diffuse.samplopt.inference import generate_cond_sampleV2
+from diffuse.diffusion.sde import SDE, LinearSchedule
+from diffuse.neural_network.unet import UNet
 
-from vraie_vie.wmh.create_dataset import WMH
-from vraie_vie.utils import maskAno
+from examples.mri.wmh.create_dataset import WMH
+from examples.mri.utils import maskAno
 
 jax.config.update("jax_enable_x64", False)
 
