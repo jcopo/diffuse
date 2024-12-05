@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import jax
 
 from typing import Tuple
-
+from jaxtyping import ArrayLike
 from diffuse.neural_network.encoder import FlaxResnetBlock2D, FlaxUNetMidBlock2D
 
 
@@ -35,7 +35,7 @@ class FlaxUpsample2D(nn.Module):
             dtype=self.dtype,
         )
 
-    def __call__(self, hidden_states):
+    def __call__(self, hidden_states: ArrayLike):
         batch, height, width, channels = hidden_states.shape
         hidden_states = jax.image.resize(
             hidden_states,
@@ -93,7 +93,7 @@ class FlaxUpDecoderBlock2D(nn.Module):
         if self.add_upsample:
             self.upsamplers_0 = FlaxUpsample2D(self.out_channels, dtype=self.dtype)
 
-    def __call__(self, hidden_states, deterministic=True):
+    def __call__(self, hidden_states: ArrayLike, deterministic: bool = True):
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states, deterministic=deterministic)
 
@@ -200,7 +200,7 @@ class Decoder(nn.Module):
             dtype=self.dtype,
         )
 
-    def __call__(self, sample, deterministic: bool = True):
+    def __call__(self, sample: ArrayLike, deterministic: bool = True):
         # z to block_in
         sample = self.conv_in(sample)
 

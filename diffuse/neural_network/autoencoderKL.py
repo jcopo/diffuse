@@ -18,7 +18,7 @@ from diffuse.neural_network.decoder import Decoder
 
 
 class FlaxDiagonalGaussianDistribution(object):
-    def __init__(self, parameters, deterministic=False):
+    def __init__(self, parameters: ArrayLike, deterministic: bool = False):
         # Last axis to account for channels-last
         self.mean, self.logvar = jnp.split(parameters, 2, axis=-1)
         self.logvar = jnp.clip(self.logvar, -30.0, 20.0)
@@ -28,35 +28,15 @@ class FlaxDiagonalGaussianDistribution(object):
         if self.deterministic:
             self.var = self.std = jnp.zeros_like(self.mean)
 
-    def sample(self, key):
-        return self.mean + self.std * jax.random.normal(key, self.mean.shape)
+    def sample(self, rng: PRNGKeyArray):
+        return self.mean + self.std * jax.random.normal(rng, self.mean.shape)
 
-    def kl(self, other=None):
+    def kl(self):
         if self.deterministic:
             return jnp.array([0.0])
 
-        if other is None:
-            return 0.5 * jnp.sum(
-                self.mean**2 + self.var - 1.0 - self.logvar, axis=[1, 2, 3]
-            )
-
         return 0.5 * jnp.sum(
-            jnp.square(self.mean - other.mean) / other.var
-            + self.var / other.var
-            - 1.0
-            - self.logvar
-            + other.logvar,
-            axis=[1, 2, 3],
-        )
-
-    def nll(self, sample, axis=[1, 2, 3]):
-        if self.deterministic:
-            return jnp.array([0.0])
-
-        logtwopi = jnp.log(2.0 * jnp.pi)
-        return 0.5 * jnp.sum(
-            logtwopi + self.logvar + jnp.square(sample - self.mean) / self.var,
-            axis=axis,
+            self.mean**2 + self.var - 1.0 - self.logvar, axis=[1, 2, 3]
         )
 
     def mode(self):
@@ -163,7 +143,7 @@ class AutoencoderKL(nn.Module):
             dtype=self.dtype,
         )
 
-    def init_weights(self, rng: jax.Array):
+    def init_weights(self, rng: PRNGKeyArray):
         # init input tensors
         sample_shape = (1, self.in_channels, self.sample_size, self.sample_size)
         sample = jnp.zeros(sample_shape, dtype=jnp.float32)
@@ -173,7 +153,7 @@ class AutoencoderKL(nn.Module):
 
         return self.init(rngs, sample)
 
-    def encode(self, sample, deterministic: bool = True):
+    def encode(self, sample: ArrayLike, deterministic: bool = True):
         sample = jnp.transpose(sample, (0, 2, 3, 1))
         hidden_states = self.encoder(sample, deterministic=deterministic)
         moments = self.quant_conv(hidden_states)
@@ -181,7 +161,7 @@ class AutoencoderKL(nn.Module):
 
         return posterior
 
-    def decode(self, latents, deterministic: bool = True):
+    def decode(self, latents: ArrayLike, deterministic: bool = True):
         if latents.shape[-1] != self.latent_channels:
             latents = jnp.transpose(latents, (0, 2, 3, 1))
 
@@ -192,7 +172,9 @@ class AutoencoderKL(nn.Module):
 
         return hidden_states
 
-    def __call__(self, sample, deterministic: bool = True, training: bool = True):
+    def __call__(
+        self, sample: ArrayLike, deterministic: bool = True, training: bool = True
+    ):
         posterior = self.encode(sample, deterministic=deterministic)
         rng = self.make_rng("gaussian")
         hidden_states = posterior.sample(rng)

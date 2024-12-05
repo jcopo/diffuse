@@ -5,7 +5,7 @@ under the Apache-2.0 license.
 
 import flax.linen as nn
 import jax.numpy as jnp
-import jax
+from jaxtyping import ArrayLike
 import math
 from functools import partial
 
@@ -59,7 +59,7 @@ class FlaxDownEncoderBlock2D(nn.Module):
         if self.add_downsample:
             self.downsamplers_0 = FlaxDownsample2D(self.out_channels, dtype=self.dtype)
 
-    def __call__(self, hidden_states, deterministic=True):
+    def __call__(self, hidden_states: ArrayLike, deterministic: bool = True):
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states, deterministic=deterministic)
 
@@ -135,7 +135,7 @@ class FlaxResnetBlock2D(nn.Module):
                 dtype=self.dtype,
             )
 
-    def __call__(self, hidden_states, deterministic=True):
+    def __call__(self, hidden_states: ArrayLike, deterministic: bool = True):
         residual = hidden_states
         hidden_states = self.norm1(hidden_states)
         hidden_states = nn.swish(hidden_states)
@@ -175,7 +175,7 @@ class FlaxDownsample2D(nn.Module):
             dtype=self.dtype,
         )
 
-    def __call__(self, hidden_states):
+    def __call__(self, hidden_states: ArrayLike):
         pad = ((0, 0), (0, 1), (0, 1), (0, 0))  # pad height and width dim
         hidden_states = jnp.pad(hidden_states, pad_width=pad)
         hidden_states = self.conv(hidden_states)
@@ -292,7 +292,7 @@ class FlaxAttentionBlock(nn.Module):
         self.query, self.key, self.value = dense(), dense(), dense()
         self.proj_attn = dense()
 
-    def transpose_for_scores(self, projection):
+    def transpose_for_scores(self, projection: ArrayLike):
         new_projection_shape = projection.shape[:-1] + (self.num_heads, -1)
         # move heads to 2nd position (B, T, H * D) -> (B, T, H, D)
         new_projection = projection.reshape(new_projection_shape)
@@ -300,7 +300,7 @@ class FlaxAttentionBlock(nn.Module):
         new_projection = jnp.transpose(new_projection, (0, 2, 1, 3))
         return new_projection
 
-    def __call__(self, hidden_states):
+    def __call__(self, hidden_states: ArrayLike):
         residual = hidden_states
         batch, height, width, channels = hidden_states.shape
 
@@ -419,7 +419,7 @@ class Encoder(nn.Module):
             dtype=self.dtype,
         )
 
-    def __call__(self, sample, deterministic: bool = True):
+    def __call__(self, sample: ArrayLike, deterministic: bool = True):
         # in
         sample = self.conv_in(sample)
 
