@@ -42,7 +42,7 @@ class CondSDE(SDE):
         x, t = state
         return jnp.sqrt(self.beta(self.tf - t))
 
-    def logpdf(self, obs: Array, state_p: CondState, dt: float):
+    def _logpdf(self, obs: Array, state_p: CondState, dt: float):
         """
         y_{k-1} | y_{k}, x_k ~ N(.| y_k + rev_drift*dt, sqrt(dt)*rev_diff)
         Args:

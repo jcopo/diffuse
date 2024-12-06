@@ -1,6 +1,6 @@
 import pdb
 from functools import partial
-from typing import Tuple
+from typing import Callable, Tuple
 
 import einops
 import jax
@@ -13,7 +13,6 @@ from jaxtyping import Array, PRNGKeyArray
 from matplotlib.colors import LogNorm
 
 from diffuse.diffusion.sde import SDEState, euler_maryama_step_array
-from blackjax.smc.resampling import stratified
 from diffuse.samplopt.conditional import CondSDE
 
 
@@ -68,6 +67,50 @@ def logprob_y(theta, y, design, cond_sde):
     return log_density
 
 
+def logpdf_change_theta(
+    key: PRNGKeyArray,
+    x_sde_state: SDEState,
+    rev_drift_x: Array,
+    y_next: Array,
+    design: Array,
+    cond_sde: CondSDE,
+    dt,
+):
+    r"""
+    log p(theta_{k-1} | theta_{k}, xi_{k-1})
+    with theta_{k-1} | theta_{k}, xi_{k-1} ~ N(.| theta_{k} + drift_x*dt, sqrt(dt)*rev_diff)
+    """
+    NOISE_SCALE = 1.0
+
+    x, t = x_sde_state
+    diffusion_unc_theta = cond_sde.reverse_diffusion(x_sde_state)
+    uncond_theta = euler_maryama_step_array(
+        x_sde_state, dt, key, rev_drift_x, diffusion_unc_theta
+    )
+
+    # define mean, cov of gaussian p(A^T_xi y_{t-1} | y_{t}, \theta_{t-1}, \xi)
+    mu_y = cond_sde.mask.restore_from_mask(
+        design,
+        jnp.zeros_like(x),
+        cond_sde.mask.measure_from_mask(design, uncond_theta.position),
+    )
+    sigma_y = jnp.exp(cond_sde.beta.integrate(0.0, t)) * NOISE_SCALE
+
+    # define mean, cov of gaussian p(theta_{t-1} | theta_{t})
+    mu_theta = x + rev_drift_x * dt
+    sigma_theta = diffusion_unc_theta * jnp.sqrt(dt)
+
+    # combine gaussians
+    sigma = (1 / sigma_y + 1 / sigma_theta) ** -1
+    mean = (mu_y / sigma_y + mu_theta / sigma_theta) * sigma
+
+    restored_y = cond_sde.mask.restore_from_mask(design, jnp.zeros_like(x), y_next)
+    logprobs = jax.scipy.stats.multivariate_normal.logpdf( restored_y, mean, sigma)
+    logprobs = einops.reduce(logprobs, "t ... -> t ", "sum")
+
+    return logprobs
+
+
 def logpdf_change_y(
     x_sde_state: SDEState,
     drift_x: Array,
@@ -82,13 +125,24 @@ def logpdf_change_y(
     """
     x, t = x_sde_state
     alpha = jnp.sqrt(jnp.exp(cond_sde.beta.integrate(0.0, t)))
-    cov = cond_sde.reverse_diffusion(x_sde_state) * jnp.sqrt(dt) + alpha
+    rev_diff = cond_sde.reverse_diffusion(x_sde_state) + jnp.zeros_like(x[0])
+    cov_diff = cond_sde.mask.measure_from_mask(design, rev_diff) * jnp.sqrt(dt)
 
+    cov_diff = cov_diff[..., 0]
+    cov_diff_flat, unravel = jax.flatten_util.ravel_pytree(cov_diff)
+    y_next = y_next[..., 0]
+    # cov = jnp.einsum('ijk,ljk->ilk', cov_diff, cov_diff) + alpha
+    cov = cov_diff_flat**2 + alpha
     mean = cond_sde.mask.measure_from_mask(design, x + drift_x * dt)
+    mean = mean[..., 0]
+
+    mean = jax.lax.collapse(mean, 1, -1)
+
     logsprobs = log_density_multivariate_complex_gaussian(y_next, mean, cov)
     # jax.debug.print('{}', idx)
 
     # logsprobs = cond_sde.mask.measure_from_mask(design, logsprobs)
+    pdb.set_trace()
     logsprobs = logsprobs[..., 0] * design[None]
     logsprobs = einops.reduce(logsprobs, "t ... -> t ", "sum")
 
@@ -163,7 +217,12 @@ def calculate_drift_expt_post(
 
 
 def particle_step(
-    sde_state, rng_key, drift_y, cond_sde, dt, logpdf
+    sde_state: SDEState,
+    rng_key: PRNGKeyArray,
+    drift_y: Array,
+    cond_sde: CondSDE,
+    dt: float,
+    logpdf: Callable[[SDEState, Array], Array]
 ) -> Tuple[Array, Array]:
     """
     Particle step for the conditional diffusion.
@@ -175,7 +234,8 @@ def particle_step(
         sde_state, dt, rng_key, drift_x + drift_y, diffusion
     )
     # weights = jax.vmap(logpdf, in_axes=(SDEState(0, None),))(sde_state)
-    weights = logpdf(sde_state, drift_x)
+    key_pdf, key_resample = jax.random.split(rng_key)
+    weights = logpdf(key_pdf, sde_state, drift_x)
     # jax.debug.print('{}', weights)
 
     _norm = jax.scipy.special.logsumexp(weights, axis=0)
@@ -184,7 +244,7 @@ def particle_step(
 
     ess_val = ess(log_weights)
     n_particles = sde_state.position.shape[0]
-    idx = stratified(rng_key, weights, n_particles)
+    idx = stratified(key_resample, weights, n_particles)
 
     def print_img(x, id):
         plt.imshow(x[id, ..., 0], cmap="gray")
@@ -268,7 +328,8 @@ def generate_cond_sample(
             cond_sde, sde_state, mask_history, ys.position
         )
         logpdf = partial(
-            logpdf_change_y,
+            # logpdf_change_y,
+            logpdf_change_theta,
             y_next=ys_next.position,
             design=mask_history,
             cond_sde=cond_sde,

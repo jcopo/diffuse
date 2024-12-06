@@ -42,7 +42,7 @@ def score_match_loss(
     # generate samples of x_t \sim p(x_t|x_0)
     state_0 = SDEState(x0_samples, jnp.zeros((n_x0, 1)))
     keys_x = jax.random.split(key_x, n_x0)
-    state = jax.vmap(sde.path, in_axes=(0, 0, 0))(keys_x, state_0, ts)
+    state = jax.vmap(sde.path)(keys_x, state_0, ts)
 
     # nn eval
     nn_eval = network.apply(nn_params, state.position, ts)
