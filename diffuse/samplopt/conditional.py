@@ -95,7 +95,7 @@ class CondSDE(SDE):
     def path_cond(
         self, mask: Array, key: PRNGKeyArray, state: SDEState, ts: float
     ) -> SDEState:
-        """
+        r"""
         Generate x_ts | x_t ~ N(.| exp(-0.5 \int_ts^t \beta(s) ds) x_0, 1 - exp(-\int_ts^t \beta(s) ds))
         """
         x, t = state

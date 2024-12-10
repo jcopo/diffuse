@@ -94,8 +94,8 @@ def main():
 
     mask = mask_spiral.make(xi)
 
-    res = generate_cond_sample(y, mask, key, cond_sde, x.shape, 200, 100)
-    return res
+    end_state, hist = generate_cond_sample(y, mask, key, cond_sde, x.shape, 200, 100)
+    return end_state, hist
 
 
 if __name__ == "__main__":

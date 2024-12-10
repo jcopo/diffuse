@@ -209,11 +209,11 @@ def plot_top_samples(thetas, cntrst_thetas, weights, weights_c, past_y, y_c):
     plt.show()
 
 
-def plot_lines(array):
+def plot_lines(array, fl=0.0):
     fractions = [0.0, 0.1, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
     n = len(fractions)
     fig, axs = plt.subplots(1, n, figsize=(n * 3, 3))
-    fig.suptitle("array")
+    fig.suptitle(f"Fraction {fl}")
 
     for idx, fraction in enumerate(fractions):
         # Calculate the frame index

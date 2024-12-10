@@ -14,6 +14,7 @@ from matplotlib.colors import LogNorm
 
 from diffuse.diffusion.sde import SDEState, euler_maryama_step_array
 from diffuse.samplopt.conditional import CondSDE
+from diffuse.utils.plotting import plot_lines
 
 
 def ess(log_weights: Array) -> float:
@@ -68,8 +69,8 @@ def logprob_y(theta, y, design, cond_sde):
 
 
 def logpdf_change_theta(
-    key: PRNGKeyArray,
-    x_sde_state: SDEState,
+    x_sde_state_next: SDEState, #\theta_{k-1}
+    x_sde_state: SDEState, #\theta_{k}
     rev_drift_x: Array,
     y_next: Array,
     design: Array,
@@ -84,16 +85,16 @@ def logpdf_change_theta(
 
     x, t = x_sde_state
     diffusion_unc_theta = cond_sde.reverse_diffusion(x_sde_state)
-    uncond_theta = euler_maryama_step_array(
-        x_sde_state, dt, key, rev_drift_x, diffusion_unc_theta
-    )
+    next_theta = x_sde_state_next.position
 
     # define mean, cov of gaussian p(A^T_xi y_{t-1} | y_{t}, \theta_{t-1}, \xi)
-    mu_y = cond_sde.mask.restore_from_mask(
+    mu_y = cond_sde.mask.restore_from_mask( # A^T_xi A_xi \theta_{t-1}
         design,
         jnp.zeros_like(x),
-        cond_sde.mask.measure_from_mask(design, uncond_theta.position),
+        cond_sde.mask.measure_from_mask(design, next_theta),
     )
+    restored_y = cond_sde.mask.restore_from_mask(design, jnp.zeros_like(x), y_next) # A^T_xi y_{t-1}
+
     sigma_y = jnp.exp(cond_sde.beta.integrate(0.0, t)) * NOISE_SCALE
 
     # define mean, cov of gaussian p(theta_{t-1} | theta_{t})
@@ -102,10 +103,12 @@ def logpdf_change_theta(
 
     # combine gaussians
     sigma = (1 / sigma_y + 1 / sigma_theta) ** -1
-    mean = (mu_y / sigma_y + mu_theta / sigma_theta) * sigma
+    mean = (restored_y / sigma_y + mu_theta / sigma_theta) * sigma
 
-    restored_y = cond_sde.mask.restore_from_mask(design, jnp.zeros_like(x), y_next)
-    logprobs = jax.scipy.stats.multivariate_normal.logpdf( restored_y, mean, sigma)
+    #jax.experimental.io_callback(plot_lines, None, next_theta[..., 0], t)
+    #jax.experimental.io_callback(plot_lines, None, mean[..., 0], t)
+    #logprobs = jax.scipy.stats.multivariate_normal.logpdf(next_theta, mean, sigma)
+    logprobs = jax.scipy.stats.multivariate_normal.logpdf(restored_y, mu_y, sigma_y)
     logprobs = einops.reduce(logprobs, "t ... -> t ", "sum")
 
     return logprobs
@@ -230,12 +233,12 @@ def particle_step(
 
     drift_x = cond_sde.reverse_drift(sde_state)
     diffusion = cond_sde.reverse_diffusion(sde_state)
-    sde_state = euler_maryama_step_array(
+    sde_state_next = euler_maryama_step_array(
         sde_state, dt, rng_key, drift_x + drift_y, diffusion
     )
     # weights = jax.vmap(logpdf, in_axes=(SDEState(0, None),))(sde_state)
     key_pdf, key_resample = jax.random.split(rng_key)
-    weights = logpdf(key_pdf, sde_state, drift_x)
+    weights = logpdf(sde_state_next, sde_state, drift_x)
     # jax.debug.print('{}', weights)
 
     _norm = jax.scipy.special.logsumexp(weights, axis=0)
@@ -258,7 +261,7 @@ def particle_step(
         # (ess_val > 0.2 * n_particles),
         lambda x: (x[idx], weights[idx]),
         lambda x: (x, weights),
-        sde_state.position,
+        sde_state_next.position,
     )
 
 
@@ -347,14 +350,13 @@ def generate_cond_sample(
     ys = jax.vmap(cond_sde.path_cond, in_axes=(None, 0, 0, 0))(
         mask_history, keys, state, ts
     )
-    from diffuse.utils.plotting import plot_lines
 
     restored_y = jax.vmap(cond_sde.mask.restore_from_mask, in_axes=(None, 0, 0))(
         mask_history, jnp.zeros_like(ys.position), ys.position
     )
-    plot_lines(restored_y[..., 0])
-    plot_lines(jnp.real(ys.position[..., 0]))
-    plot_lines(jnp.imag(ys.position[..., 0]))
+    # plot_lines(restored_y[..., 0])
+    # plot_lines(jnp.real(ys.position[..., 0]))
+    # plot_lines(jnp.imag(ys.position[..., 0]))
 
     # u time reversal of y
     us = SDEState(ys.position[::-1], ys.t)
