@@ -13,45 +13,41 @@ from diffuse.samplopt.inference import SDEState
 
 
 class CondDenoiserState(NamedTuple):
-    position: Array
-    weights: Array
     integrator_state: IntegratorState
-    t: float
+    weights: Array
 
 
 @dataclass
 class CondDenoiser:
     """Conditional denoiser for conditional diffusion"""
     integrator: Integrator
-    logpdf: Callable[[SDEState, Array], Array]
+    logpdf: Callable[[SDEState, Array], Array] # x -> t -> logpdf(x, t)
     sde: SDE
+    score: Callable[[Array, float], Array] # x -> t -> score(x, t)
     _resample: bool
 
-    def init(self, position: Array, rng_key: PRNGKeyArray, dt: float, tf: float) -> CondDenoiserState:
+    def init(self, position: Array, rng_key: PRNGKeyArray, dt: float) -> CondDenoiserState:
         weights = jnp.ones_like(position) / position.shape[0]
-        integrator_state = self.integrator.init(position, rng_key, dt)
-        return CondDenoiserState(position, weights, integrator_state, tf)
+        integrator_state = self.integrator.init(position, rng_key, 0., dt)
+        return CondDenoiserState(integrator_state, weights)
 
     def particle_step(
         self,
         state: CondDenoiserState,
         rng_key: PRNGKeyArray,
-        drift_y: Array,
     ) -> CondDenoiserState:
         r"""
         sample p(\theta_t-1 | \theta_t, \y_t-1, \xi)
         """
-        position, weights, integrator_state, tf = state
-        drift_x = self.sde.reverse_drift(SDEState(position, tf))
-        diffusion = self.sde.reverse_diffusion(SDEState(position, tf))
-        integrator_state_next = self.integrator(integrator_state, drift_x + drift_y, diffusion)
-        # weights = jax.vmap(logpdf, in_axes=(SDEState(0, None),))(sde_state)
+        integrator_state, weights = state
+        integrator_state_next = self.integrator(integrator_state, self.score)
+
         position = integrator_state_next.position
         if self._resample:
-            weights = self.logpdf(integrator_state_next, integrator_state, drift_x)
+            weights = self.logpdf(integrator_state_next, integrator_state)
             position, weights = self._resampling(position, weights, rng_key)
 
-        return CondDenoiserState(position, weights, integrator_state_next, tf)
+        return CondDenoiserState(integrator_state_next, weights)
 
     def _resampling(self, position: Array, weights: Array, rng_key: PRNGKeyArray) -> Tuple[Array, Array]:
         """Resample particles based on weights if effective sample size is in target range"""
