@@ -2,14 +2,7 @@ from typing import Protocol, NamedTuple
 from jaxtyping import Array
 
 
-class IntegratorState(NamedTuple):
-    """
-    Base state class for integrators.
-
-    This class serves as a base NamedTuple for storing integrator state information.
-    Specific integrator implementations should subclass this and add relevant fields.
-    """
-    pass
+IntegratorState = NamedTuple
 
 
 class Integrator(Protocol):

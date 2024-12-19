@@ -35,9 +35,8 @@ class EulerMaruyama:
         position, rng_key, t, dt = integrator_state
         drift = self.sde.reverse_drift(integrator_state, score)
         diffusion = self.sde.reverse_diffusion(integrator_state)
+        noise = jax.random.normal(rng_key, position.shape) * jnp.sqrt(dt)
 
-        dx = drift * dt + diffusion * jax.random.normal(
-            rng_key, position.shape
-        ) * jnp.sqrt(dt)
-
-        return EulerMaruyamaState(position + dx, rng_key, t + dt, dt)
+        dx = drift * dt + diffusion * noise
+        _, rng_key_next = jax.random.split(rng_key)
+        return EulerMaruyamaState(position + dx, rng_key_next, t + dt, dt)

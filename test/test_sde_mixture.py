@@ -60,7 +60,7 @@ def display_trajectories_at_times(
 @pytest.fixture
 def sde_setup():
     beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
-    sde = SDE(beta=beta)
+    sde = SDE(beta=beta, tf=2.0)
     return sde
 
 
@@ -133,7 +133,6 @@ def test_backward_sde_mixture(
     mix_state = init_mixture
 
     pdf = partial(rho_t, init_mix_state=mix_state, sde=sde)
-    # score = lambda x, t: jax.grad(jnp.log(pdf(x, t)))
     score = lambda x, t: jax.grad(pdf)(x, t) / pdf(x, t)
 
     # reverse process
