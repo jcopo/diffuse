@@ -12,8 +12,7 @@ from blackjax.smc.resampling import stratified
 from jaxtyping import Array, PRNGKeyArray
 from matplotlib.colors import LogNorm
 
-from diffuse.diffusion.sde import SDEState, euler_maryama_step_array
-from diffuse.samplopt.conditional import CondSDE
+from diffuse.diffusion.sde import SDEState
 from diffuse.utils.plotting import plot_lines
 
 

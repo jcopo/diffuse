@@ -141,13 +141,12 @@ def test_backward_sde_mixture(
 
     # define Intergator and Denoiser
     integrator = EulerMaruyama(sde=sde)
-    denoise = Denoiser(integrator=integrator, logpdf=pdf, sde=sde, score=score)
+    denoise = Denoiser(integrator=integrator, sde=sde, score=score, n_steps=n_steps, x0_shape=(1,))
     init_samples = jax.random.normal(key, (n_samples, 1))
 
     # generate samples
     keys = jax.random.split(key, init_samples.shape[0])
-    dt = (t_final - t_init) / n_steps
-    state, hist_position = jax.vmap(denoise.generate, in_axes=(0, None, None, None))(keys, dt, t_final, (1,))
+    state, hist_position = jax.vmap(denoise.generate)(keys)
 
     # plot if enabled
     plot_if_enabled(lambda: display_trajectories(hist_position.squeeze(), 100))

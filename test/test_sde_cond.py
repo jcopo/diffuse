@@ -81,9 +81,10 @@ def test_denoise_mixture(noise_mask, init_mixture, plot_if_enabled, sde_setup, k
     score = lambda x, t: jax.grad(post_pdf)(x, t) / post_pdf(x, t)
     space = jnp.linspace(-3, 3, 100)
 
+    n_steps = 100
     # define Intergator and Denoiser
     integrator = EulerMaruyama(sde=sde)
-    denoise = Denoiser(integrator=integrator, logpdf=pdf, sde=sde, score=score)
+    denoise = Denoiser(integrator=integrator, sde=sde, score=score, n_steps=n_steps, x0_shape=(1,))
 
     init_samples = jax.random.normal(key, (1000, 1))
     keys = jax.random.split(key, init_samples.shape[0])
@@ -93,7 +94,7 @@ def test_denoise_mixture(noise_mask, init_mixture, plot_if_enabled, sde_setup, k
     state = jax.vmap(denoise.step)(state)
 
     # generate samples
-    state, hist = jax.vmap(denoise.generate, in_axes=(0, None, None, None))(keys, 0.01, 2.0, (1,))
+    state, hist = jax.vmap(denoise.generate)(keys)
     samples = state.integrator_state.position
 
     # plot samples

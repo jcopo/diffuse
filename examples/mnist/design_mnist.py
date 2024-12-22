@@ -89,7 +89,7 @@ def initialize_experiment(key: PRNGKeyArray):
 
     # Set up conditional SDE
     cond_sde = CondSDE(beta=beta, mask=mask, tf=tf, score=nn_score)
-    sde = SDE(beta=beta)
+    sde = SDE(beta=beta, tf=tf)
 
     return sde, cond_sde, mask, ground_truth, tf, n_t, nn_score
 
