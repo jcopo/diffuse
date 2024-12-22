@@ -16,7 +16,7 @@ from examples.gaussian_mixtures.mixture import display_trajectories
 
 @pytest.fixture
 def noise_mask():
-    return NoiseMask(alpha=0.8, std=3.)
+    return NoiseMask(alpha=0.8, std=1.3)
 
 @pytest.fixture
 def init_mixture(key):
@@ -77,15 +77,18 @@ def test_denoise_mixture(noise_mask, init_mixture, plot_if_enabled, sde_setup, k
     alpha, std_noise = noise_mask.alpha, noise_mask.std
 
     pdf = partial(rho_t, init_mix_state=mix_state, sde=sde)
-    score = lambda x, t: jax.grad(pdf)(x, t) / pdf(x, t) #- alpha * (noise_mask.measure(key, x) - y_meas) / std_noise**2
     post_pdf = partial(rho_t, init_mix_state=post_state, sde=sde)
+    score = lambda x, t: jax.grad(post_pdf)(x, t) / post_pdf(x, t)
     space = jnp.linspace(-3, 3, 100)
 
+    # define Intergator and Denoiser
     integrator = EulerMaruyama(sde=sde)
     denoise = Denoiser(integrator=integrator, logpdf=pdf, sde=sde, score=score)
 
     init_samples = jax.random.normal(key, (1000, 1))
     keys = jax.random.split(key, init_samples.shape[0])
+
+    # test if init and step work
     state = jax.vmap(denoise.init, in_axes=(0, 0, None))(init_samples, keys, 0.01)
     state = jax.vmap(denoise.step)(state)
 
@@ -101,11 +104,15 @@ def test_denoise_mixture(noise_mask, init_mixture, plot_if_enabled, sde_setup, k
         ax.plot(space, jax.vmap(post_pdf, in_axes=(0, None))(space, 0.0))
         ax.grid(True)
         plt.tight_layout()
+        plt.show()
 
-    fig, ax = plt.subplots()
-    display_trajectories(hist.squeeze(), 100)
-    ax.set_title("Samples from Posterior")
-    ax.grid(True)
-    plt.tight_layout()
-    plt.show()
+    def plot_trajectories():
+        fig, ax = plt.subplots()
+        display_trajectories(hist.squeeze(), 100)
+        ax.set_title("Samples from Posterior")
+        ax.grid(True)
+        plt.tight_layout()
+        plt.show()
+
     plot_if_enabled(plot_samples)
+    plot_if_enabled(plot_trajectories)

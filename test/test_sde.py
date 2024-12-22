@@ -6,7 +6,7 @@ from diffuse.diffusion.sde import SDE, LinearSchedule, SDEState
 
 def test_path():
     beta = LinearSchedule(b_min=0.5, b_max=1.5, t0=0.0, T=1.0)
-    sde = SDE(beta=beta)
+    sde = SDE(beta=beta, tf=1.0)
 
     key = random.PRNGKey(0)
     state = SDEState(position=jnp.array([1.0, 2.0]), t=0.0)

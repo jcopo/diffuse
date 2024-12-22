@@ -17,7 +17,8 @@ from examples.gaussian_mixtures.mixture import (
     sampler_mixtr,
 )
 from diffuse.diffusion.sde import SDE, LinearSchedule, SDEState
-
+from diffuse.denoisers.denoiser import Denoiser
+from diffuse.integrator.stochastic import EulerMaruyama
 
 @pytest.fixture
 def key():
@@ -135,24 +136,24 @@ def test_backward_sde_mixture(
     pdf = partial(rho_t, init_mix_state=mix_state, sde=sde)
     score = lambda x, t: jax.grad(pdf)(x, t) / pdf(x, t)
 
-    # reverse process
-    init_samples = jax.scipy.stats.norm.ppf(
-        jnp.arange(0, n_samples) / n_samples + 1 / (2 * n_samples)
-    )[:, None]
-
-    key_samples, key_t = jax.random.split(key)
     # init_samples = jax.random.normal(key_samples, (n_samples, 1))
-    tf = jnp.array([t_final] * n_samples)
-    state_f = SDEState(position=init_samples, t=tf)
-    keys = jax.random.split(key_t, n_samples)
-    revert_sde = jax.jit(jax.vmap(partial(sde.reverso, score=score, dts=dts)))
-    state_0, state_Ts = revert_sde(keys, state_f)
+    keys = jax.random.split(key, n_samples)
+
+    # define Intergator and Denoiser
+    integrator = EulerMaruyama(sde=sde)
+    denoise = Denoiser(integrator=integrator, logpdf=pdf, sde=sde, score=score)
+    init_samples = jax.random.normal(key, (n_samples, 1))
+
+    # generate samples
+    keys = jax.random.split(key, init_samples.shape[0])
+    dt = (t_final - t_init) / n_steps
+    state, hist_position = jax.vmap(denoise.generate, in_axes=(0, None, None, None))(keys, dt, t_final, (1,))
 
     # plot if enabled
-    plot_if_enabled(lambda: display_trajectories(state_Ts.position.squeeze(), 100))
+    plot_if_enabled(lambda: display_trajectories(hist_position.squeeze(), 100))
     plot_if_enabled(
         lambda: display_trajectories_at_times(
-            state_Ts.position.squeeze(),
+            hist_position.squeeze(),
             t_init,
             t_final,
             n_steps,
@@ -167,7 +168,7 @@ def test_backward_sde_mixture(
         k = int(x * n_steps)
         t = t_init + k * (t_final - t_init) / n_steps
         ks_statistic, p_value = sp.stats.kstest(
-            state_Ts.position[:, k].squeeze(),
+            hist_position[:, k].squeeze(),
             lambda x: cdf_t(x, t_final - t, mix_state, sde),
         )
         assert (
