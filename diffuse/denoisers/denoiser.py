@@ -19,7 +19,7 @@ class DenoiserState(NamedTuple):
 class Denoiser:
     """Denoiser"""
     integrator: Integrator
-    logpdf: Callable[[SDEState, Array], Array] # x -> t -> logpdf(x, t)
+    logpdf: Callable[[SDEState, Array], float] # x -> t -> logpdf(x, t)
     sde: SDE
     score: Callable[[Array, float], Array] # x -> t -> score(x, t)
 
@@ -39,8 +39,8 @@ class Denoiser:
 
         return DenoiserState(integrator_state_next)
 
-    def generate(self, rng_key: PRNGKeyArray, dt: float, tf: float, shape: Tuple[int, ...]) -> Array:
-        """Generate samples from the denoiser"""
+    def generate(self, rng_key: PRNGKeyArray, dt: float, tf: float, shape: Tuple[int, ...]) -> Tuple[Array, Array]:
+        r"""Generate denoised samples \theta_0"""
         rng_key, rng_key_start = jax.random.split(rng_key)
 
         rndm_start = jax.random.normal(rng_key_start, shape=shape)
@@ -48,6 +48,7 @@ class Denoiser:
         n_steps = int(tf / dt)
 
         def body_fun(state, _):
-            return self.step(state), None
+            state_next = self.step(state)
+            return state_next, state_next.integrator_state.position
 
         return jax.lax.scan(body_fun, state, jnp.arange(n_steps))

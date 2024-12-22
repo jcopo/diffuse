@@ -1,5 +1,5 @@
 from functools import partial
-
+import pdb
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -11,6 +11,8 @@ from examples.gaussian_mixtures.mixture import MixState, rho_t, display_histogra
 from diffuse.integrator.stochastic import EulerMaruyama
 from diffuse.denoisers.denoiser import Denoiser
 from diffuse.denoisers.cond_denoiser import CondDenoiser
+from examples.gaussian_mixtures.mixture import display_trajectories
+
 
 @pytest.fixture
 def noise_mask():
@@ -76,15 +78,19 @@ def test_denoise_mixture(noise_mask, init_mixture, plot_if_enabled, sde_setup, k
 
     pdf = partial(rho_t, init_mix_state=mix_state, sde=sde)
     score = lambda x, t: jax.grad(pdf)(x, t) / pdf(x, t) #- alpha * (noise_mask.measure(key, x) - y_meas) / std_noise**2
+    post_pdf = partial(rho_t, init_mix_state=post_state, sde=sde)
+    space = jnp.linspace(-3, 3, 100)
 
     integrator = EulerMaruyama(sde=sde)
     denoise = Denoiser(integrator=integrator, logpdf=pdf, sde=sde, score=score)
 
-    state = denoise.init(sample, key, 0.01)
-    state = denoise.step(state)
+    init_samples = jax.random.normal(key, (1000, 1))
+    keys = jax.random.split(key, init_samples.shape[0])
+    state = jax.vmap(denoise.init, in_axes=(0, 0, None))(init_samples, keys, 0.01)
+    state = jax.vmap(denoise.step)(state)
 
     # generate samples
-    state, _ = denoise.generate(key, 0.01, 2.0, (1,))
+    state, hist = jax.vmap(denoise.generate, in_axes=(0, None, None, None))(keys, 0.01, 2.0, (1,))
     samples = state.integrator_state.position
 
     # plot samples
@@ -92,7 +98,14 @@ def test_denoise_mixture(noise_mask, init_mixture, plot_if_enabled, sde_setup, k
         fig, ax = plt.subplots()
         display_histogram(samples, ax)
         ax.set_title("Samples from Posterior")
+        ax.plot(space, jax.vmap(post_pdf, in_axes=(0, None))(space, 0.0))
         ax.grid(True)
         plt.tight_layout()
 
+    fig, ax = plt.subplots()
+    display_trajectories(hist.squeeze(), 100)
+    ax.set_title("Samples from Posterior")
+    ax.grid(True)
+    plt.tight_layout()
+    plt.show()
     plot_if_enabled(plot_samples)
