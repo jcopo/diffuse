@@ -14,7 +14,9 @@ class Integrator(Protocol):
     implement the required methods with matching signatures.
     """
 
-    def __call__(self, integrator_state: IntegratorState, drift: Array, diffusion: Array) -> IntegratorState:
+    def __call__(
+        self, integrator_state: IntegratorState, drift: Array, diffusion: Array
+    ) -> IntegratorState:
         """
         Performs one step of numerical integration.
 

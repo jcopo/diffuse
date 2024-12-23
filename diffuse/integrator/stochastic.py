@@ -11,6 +11,7 @@ from diffuse.diffusion.sde import SDE
 
 class EulerMaruyamaState(IntegratorState):
     """Euler-Maruyama integrator state"""
+
     position: Array
     rng_key: PRNGKeyArray
     t: float
@@ -20,6 +21,7 @@ class EulerMaruyamaState(IntegratorState):
 @dataclass
 class EulerMaruyama:
     """Euler-Maruyama stochastic integrator for SDEs"""
+
     sde: SDE
 
     def init(

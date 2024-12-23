@@ -1,14 +1,12 @@
-
 from dataclasses import dataclass
 from typing import Callable, Tuple, NamedTuple
 
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray
-from blackjax.smc.resampling import stratified
 
 from diffuse.integrator.base import Integrator, IntegratorState
-from diffuse.diffusion.sde import SDE, SDEState
+from diffuse.diffusion.sde import SDE
 
 
 class DenoiserState(NamedTuple):
@@ -18,14 +16,15 @@ class DenoiserState(NamedTuple):
 @dataclass
 class Denoiser:
     """Denoiser"""
+
     integrator: Integrator
     sde: SDE
-    score: Callable[[Array, float], Array] # x -> t -> score(x, t)
+    score: Callable[[Array, float], Array]  # x -> t -> score(x, t)
     n_steps: int
     x0_shape: Tuple[int, ...]
 
     def init(self, position: Array, rng_key: PRNGKeyArray, dt: float) -> DenoiserState:
-        integrator_state = self.integrator.init(position, rng_key, 0., dt)
+        integrator_state = self.integrator.init(position, rng_key, 0.0, dt)
         return DenoiserState(integrator_state)
 
     def step(

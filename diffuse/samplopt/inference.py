@@ -13,7 +13,6 @@ from jaxtyping import Array, PRNGKeyArray
 from matplotlib.colors import LogNorm
 
 from diffuse.diffusion.sde import SDEState
-from diffuse.utils.plotting import plot_lines
 
 
 def ess(log_weights: Array) -> float:
@@ -68,8 +67,8 @@ def logprob_y(theta, y, design, cond_sde):
 
 
 def logpdf_change_theta(
-    x_sde_state_next: SDEState, #\theta_{k-1}
-    x_sde_state: SDEState, #\theta_{k}
+    x_sde_state_next: SDEState,  # \theta_{k-1}
+    x_sde_state: SDEState,  # \theta_{k}
     rev_drift_x: Array,
     y_next: Array,
     design: Array,
@@ -87,12 +86,14 @@ def logpdf_change_theta(
     next_theta = x_sde_state_next.position
 
     # define mean, cov of gaussian p(A^T_xi y_{t-1} | y_{t}, \theta_{t-1}, \xi)
-    mu_y = cond_sde.mask.restore_from_mask( # A^T_xi A_xi \theta_{t-1}
+    mu_y = cond_sde.mask.restore_from_mask(  # A^T_xi A_xi \theta_{t-1}
         design,
         jnp.zeros_like(x),
         cond_sde.mask.measure_from_mask(design, next_theta),
     )
-    restored_y = cond_sde.mask.restore_from_mask(design, jnp.zeros_like(x), y_next) # A^T_xi y_{t-1}
+    restored_y = cond_sde.mask.restore_from_mask(
+        design, jnp.zeros_like(x), y_next
+    )  # A^T_xi y_{t-1}
 
     sigma_y = jnp.exp(cond_sde.beta.integrate(0.0, t)) * NOISE_SCALE
 
@@ -104,9 +105,9 @@ def logpdf_change_theta(
     sigma = (1 / sigma_y + 1 / sigma_theta) ** -1
     mean = (restored_y / sigma_y + mu_theta / sigma_theta) * sigma
 
-    #jax.experimental.io_callback(plot_lines, None, next_theta[..., 0], t)
-    #jax.experimental.io_callback(plot_lines, None, mean[..., 0], t)
-    #logprobs = jax.scipy.stats.multivariate_normal.logpdf(next_theta, mean, sigma)
+    # jax.experimental.io_callback(plot_lines, None, next_theta[..., 0], t)
+    # jax.experimental.io_callback(plot_lines, None, mean[..., 0], t)
+    # logprobs = jax.scipy.stats.multivariate_normal.logpdf(next_theta, mean, sigma)
     logprobs = jax.scipy.stats.multivariate_normal.logpdf(restored_y, mu_y, sigma_y)
     logprobs = einops.reduce(logprobs, "t ... -> t ", "sum")
 
@@ -224,7 +225,7 @@ def particle_step(
     drift_y: Array,
     cond_sde: CondSDE,
     dt: float,
-    logpdf: Callable[[SDEState, Array], Array]
+    logpdf: Callable[[SDEState, Array], Array],
 ) -> Tuple[Array, Array]:
     """
     Particle step for the conditional diffusion.

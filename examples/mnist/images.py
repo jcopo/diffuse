@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import einops
 from dataclasses import dataclass
 from jaxtyping import Array
+from diffuse.base_forward_model import MeasurementState
 
 
 @dataclass
@@ -42,6 +43,21 @@ class SquareMask:
     def restore(self, xi: Array, img: Array, measured: Array):
         inv_mask = 1 - self.make(xi)
         return self.restore_from_mask(inv_mask, img, measured)
+
+    def init_measurement(self) -> MeasurementState:
+        y = jnp.zeros(self.img_shape)
+        mask_history = jnp.zeros_like(self.make(jnp.array([0.0, 0.0])))
+        return MeasurementState(y=y, mask_history=mask_history)
+
+    def update_measurement(
+        self, measurement_state: MeasurementState, new_measurement: Array, design: Array
+    ) -> MeasurementState:
+        joint_y = self.restore(design, measurement_state.y, new_measurement)
+        mask_history = self.restore(
+            design, measurement_state.mask_history, self.make(design)
+        )
+
+        return MeasurementState(y=joint_y, mask_history=mask_history)
 
 
 if __name__ == "__main__":

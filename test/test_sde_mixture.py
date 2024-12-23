@@ -20,6 +20,7 @@ from diffuse.diffusion.sde import SDE, LinearSchedule, SDEState
 from diffuse.denoisers.denoiser import Denoiser
 from diffuse.integrator.stochastic import EulerMaruyama
 
+
 @pytest.fixture
 def key():
     return jax.random.PRNGKey(666)
@@ -141,7 +142,9 @@ def test_backward_sde_mixture(
 
     # define Intergator and Denoiser
     integrator = EulerMaruyama(sde=sde)
-    denoise = Denoiser(integrator=integrator, sde=sde, score=score, n_steps=n_steps, x0_shape=(1,))
+    denoise = Denoiser(
+        integrator=integrator, sde=sde, score=score, n_steps=n_steps, x0_shape=(1,)
+    )
     init_samples = jax.random.normal(key, (n_samples, 1))
 
     # generate samples

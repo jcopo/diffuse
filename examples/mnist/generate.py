@@ -1,4 +1,3 @@
-
 import jax
 
 from diffuse.denoisers.denoiser import Denoiser
@@ -9,7 +8,6 @@ import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.neural_network.unet import UNet
-
 
 
 def initialize_experiment(key: PRNGKeyArray, n_t: int):
@@ -45,7 +43,13 @@ def main(n_samples=150, n_t=300):
     sde, ground_truth, tf, n_t, nn_score = initialize_experiment(key_init, n_t)
 
     integrator = EulerMaruyama(sde=sde)
-    denoiser = Denoiser(integrator=integrator, sde=sde, score=nn_score, n_steps=n_t, x0_shape=ground_truth.shape)
+    denoiser = Denoiser(
+        integrator=integrator,
+        sde=sde,
+        score=nn_score,
+        n_steps=n_t,
+        x0_shape=ground_truth.shape,
+    )
 
     keys = jax.random.split(key_init, n_samples)
     vec_generator = jax.jit(jax.vmap(denoiser.generate))
@@ -53,6 +57,7 @@ def main(n_samples=150, n_t=300):
 
     plot_lines(state.integrator_state.position)
     return state, hist
+
 
 if __name__ == "__main__":
     main()

@@ -1,5 +1,4 @@
 from functools import partial
-import pdb
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -7,16 +6,21 @@ import pytest
 
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from examples.gaussian_mixtures.cond_mixture import NoiseMask, posterior_distribution
-from examples.gaussian_mixtures.mixture import MixState, rho_t, display_histogram, sampler_mixtr
+from examples.gaussian_mixtures.mixture import (
+    MixState,
+    rho_t,
+    display_histogram,
+    sampler_mixtr,
+)
 from diffuse.integrator.stochastic import EulerMaruyama
 from diffuse.denoisers.denoiser import Denoiser
-from diffuse.denoisers.cond_denoiser import CondDenoiser
 from examples.gaussian_mixtures.mixture import display_trajectories
 
 
 @pytest.fixture
 def noise_mask():
     return NoiseMask(alpha=0.8, std=1.3)
+
 
 @pytest.fixture
 def init_mixture(key):
@@ -29,9 +33,11 @@ def init_mixture(key):
 
     return MixState(means, covs, mix_weights)
 
+
 @pytest.fixture
 def key():
     return jax.random.PRNGKey(666)
+
 
 @pytest.fixture
 def sde_setup():
@@ -40,7 +46,9 @@ def sde_setup():
     return sde
 
 
-def test_posterior_distribution_visual(noise_mask, init_mixture, plot_if_enabled, sde_setup, key):
+def test_posterior_distribution_visual(
+    noise_mask, init_mixture, plot_if_enabled, sde_setup, key
+):
     mix_state = init_mixture
     sample = sampler_mixtr(key, mix_state, 1).squeeze()
     y_meas = noise_mask.measure(key, sample)
@@ -55,6 +63,7 @@ def test_posterior_distribution_visual(noise_mask, init_mixture, plot_if_enabled
     space = jnp.linspace(-3, 3, 100)
     prior_pdf = partial(rho_t, init_mix_state=init_mixture, sde=sde)
     post_pdf = partial(rho_t, init_mix_state=post_state, sde=sde)
+
     # plot
     def plot_posterior():
         fig, ax = plt.subplots()
@@ -84,7 +93,9 @@ def test_denoise_mixture(noise_mask, init_mixture, plot_if_enabled, sde_setup, k
     n_steps = 100
     # define Intergator and Denoiser
     integrator = EulerMaruyama(sde=sde)
-    denoise = Denoiser(integrator=integrator, sde=sde, score=score, n_steps=n_steps, x0_shape=(1,))
+    denoise = Denoiser(
+        integrator=integrator, sde=sde, score=score, n_steps=n_steps, x0_shape=(1,)
+    )
 
     init_samples = jax.random.normal(key, (1000, 1))
     keys = jax.random.split(key, init_samples.shape[0])

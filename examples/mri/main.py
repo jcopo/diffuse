@@ -1,16 +1,15 @@
 import jax
 import jax.numpy as jnp
-from matplotlib.colors import LogNorm
 
 
 from diffuse.samplopt.conditional import CondSDE
 from diffuse.samplopt.inference import generate_cond_sample
-from diffuse.diffusion.sde import SDE, SDEState, LinearSchedule
+from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.neural_network.unet import UNet
 
 from examples.mri.wmh.create_dataset import WMH
 from examples.mri.wmh.design import main
-from examples.mri.utils import maskAno, maskSpiral, slice_inverse_fourier
+from examples.mri.utils import maskSpiral, slice_inverse_fourier
 
 import matplotlib.pyplot as plt
 from functools import partial
@@ -75,6 +74,8 @@ def nn_score_(x, t, scoreNet, params):
 
 nn_score = partial(nn_score_, scoreNet=nn_unet, params=params)
 sde = SDE(beta=beta)
+
+
 def main():
     idx = 20
     x = jnp.array(train_loader[idx])
@@ -88,7 +89,7 @@ def main():
     mask_spiral = maskSpiral(img_shape=size, num_spiral=3, num_samples=50000, sigma=0.2)
     cond_sde = CondSDE(beta=beta, mask=mask_spiral, tf=2.0, score=nn_score)
 
-    xi = jnp.array([.2, 2.0, jnp.pi/2])  # FOV, k_max
+    xi = jnp.array([0.2, 2.0, jnp.pi / 2])  # FOV, k_max
     y = mask_spiral.measure(xi, x)
     x_sub = slice_inverse_fourier(y[..., 0])
 

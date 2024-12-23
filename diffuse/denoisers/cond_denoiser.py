@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 from typing import Callable, Tuple, NamedTuple
 
@@ -19,15 +18,18 @@ class CondDenoiserState(NamedTuple):
 @dataclass
 class CondDenoiser:
     """Conditional denoiser for conditional diffusion"""
+
     integrator: Integrator
-    logpdf: Callable[[SDEState, Array], Array] # x -> t -> logpdf(x, t)
+    logpdf: Callable[[SDEState, Array], Array]  # x -> t -> logpdf(x, t)
     sde: SDE
-    score: Callable[[Array, float], Array] # x -> t -> score(x, t)
+    score: Callable[[Array, float], Array]  # x -> t -> score(x, t)
     _resample: bool
 
-    def init(self, position: Array, rng_key: PRNGKeyArray, dt: float) -> CondDenoiserState:
+    def init(
+        self, position: Array, rng_key: PRNGKeyArray, dt: float
+    ) -> CondDenoiserState:
         weights = jnp.ones_like(position) / position.sum()
-        integrator_state = self.integrator.init(position, rng_key, 0., dt)
+        integrator_state = self.integrator.init(position, rng_key, 0.0, dt)
         return CondDenoiserState(integrator_state, weights)
 
     def step(
@@ -48,7 +50,9 @@ class CondDenoiser:
 
         return CondDenoiserState(integrator_state_next, weights)
 
-    def _resampling(self, position: Array, weights: Array, rng_key: PRNGKeyArray) -> Tuple[Array, Array]:
+    def _resampling(
+        self, position: Array, weights: Array, rng_key: PRNGKeyArray
+    ) -> Tuple[Array, Array]:
         """Resample particles based on weights if effective sample size is in target range"""
         _norm = jax.scipy.special.logsumexp(weights, axis=0)
         log_weights = weights - _norm

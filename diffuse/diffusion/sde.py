@@ -6,7 +6,7 @@ from typing import Callable, NamedTuple
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray, PyTreeDef, Array
-from diffrax import Dopri5, ODETerm, PIDController, diffeqsolve
+from diffrax import Dopri5, PIDController, diffeqsolve
 
 solver = Dopri5()
 controller = PIDController(rtol=1e-3, atol=1e-6)
