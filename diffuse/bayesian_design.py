@@ -3,38 +3,84 @@ from typing import NamedTuple, Tuple
 import jax
 from jax import numpy as jnp
 import optax
+from optax import GradientTransformation
 from jaxtyping import PRNGKeyArray, Array
 
-from diffuse.denoisers.denoiser import Denoiser
-from diffuse.base_forward_model import ForwardModel
+from diffuse.denoisers.cond_denoiser import CondDenoiser, CondDenoiserState
+from diffuse.base_forward_model import ForwardModel, MeasurementState
 
 
 class BEDState(NamedTuple):
-    thetas: Array
-    weights: Array
-    cntrst_thetas: Array
-    cntrst_weights: Array
+    denoiser_state: CondDenoiserState
+    cntrst_denoiser_state: CondDenoiserState
     design: Array
     opt_state: optax.OptState
 
+
 class ExperimentOptimizer:
-    denoiser: Denoiser
+    denoiser: CondDenoiser
     mask: ForwardModel
-    optimizer: optax.GradientTransformation
+    optimizer: GradientTransformation
     base_shape: Tuple[int, ...]
 
-    def init(self, rng_key: PRNGKeyArray, n_samples: int, n_samples_cntrst: int) -> BEDState:
+    def init(
+        self, rng_key: PRNGKeyArray, n_samples: int, n_samples_cntrst: int, dt: float
+    ) -> BEDState:
         design = self.mask.init_design(rng_key)
         opt_state = self.optimizer.init(design)
 
-        thetas, cntrst_thetas = _init_start_time(rng_key, n_samples, n_samples_cntrst, self.base_shape)
-        weights = jnp.ones(n_samples) / n_samples
-        cntrst_weights = jnp.ones(n_samples_cntrst) / n_samples_cntrst
+        key_init, key_t, key_c = jax.random.split(rng_key, 3)
+        thetas, cntrst_thetas = _init_start_time(
+            key_t, n_samples, n_samples_cntrst, self.base_shape
+        )
+        denoiser_state = self.denoiser.init(thetas, key_init, dt)
+        cntrst_denoiser_state = self.denoiser.init(cntrst_thetas, key_c, dt)
 
-        return BEDState(thetas=thetas, weights=weights, cntrst_thetas=cntrst_thetas, cntrst_weights=cntrst_weights, design=design, opt_state=opt_state)
+        return BEDState(
+            denoiser_state=denoiser_state,
+            cntrst_denoiser_state=cntrst_denoiser_state,
+            design=design,
+            opt_state=opt_state,
+        )
 
+    def step(
+        self,
+        state: BEDState,
+        rng_key: PRNGKeyArray,
+        measurement_state: MeasurementState,
+    ) -> BEDState:
+        denoiser_state, cntrst_denoiser_state = (
+            state.denoiser_state,
+            state.cntrst_denoiser_state,
+        )
+        y = measurement_state.y
 
-    def step(self, state: BEDState, rng_key: PRNGKeyArray, measurement_state: MeasurementState) -> BEDState:
+        # step theta
+        score_likelihood = None
+        denoiser_state = self.denoiser.step(
+            denoiser_state, rng_key, y, score_likelihood
+        )
+
+        # step cntrst_theta
+        score_likelihood = None
+        cntrst_denoiser_state = self.denoiser.step(
+            cntrst_denoiser_state, rng_key, y, score_likelihood
+        )
+
+        # update design
+        design, opt_state = state.design, state.opt_state
+        thetas = denoiser_state.integrator_state.position
+        cntrst_thetas = cntrst_denoiser_state.integrator_state.position
+        design, opt_state, _ = calculate_and_apply_gradient(
+            thetas, cntrst_thetas, design, self.mask, self.optimizer, opt_state
+        )
+
+        return BEDState(
+            denoiser_state=denoiser_state,
+            cntrst_denoiser_state=cntrst_denoiser_state,
+            design=design,
+            opt_state=opt_state,
+        )
 
 
 def _init_start_time(
@@ -50,3 +96,44 @@ def _init_start_time(
     thetas = jax.random.normal(key_t, (n_samples, *ground_truth_shape))
     cntrst_thetas = jax.random.normal(key_c, (n_samples_cntrst, *ground_truth_shape))
     return thetas, cntrst_thetas
+
+
+def calculate_and_apply_gradient(
+    thetas: Array,
+    cntrst_thetas: Array,
+    design: Array,
+    mask: ForwardModel,
+    optx_opt: GradientTransformation,
+    opt_state: optax.OptState,
+):
+    grad_xi_score = jax.grad(information_gain, argnums=2, has_aux=True)
+    grad_xi, ys = grad_xi_score(thetas[-1], cntrst_thetas, design, mask)
+    updates, new_opt_state = optx_opt.update(grad_xi, opt_state, design)
+    new_design = optax.apply_updates(design, updates)
+
+    return new_design, new_opt_state, ys
+
+
+def information_gain(
+    theta: Array, cntrst_theta: Array, design: Array, mask: ForwardModel
+):
+    r"""
+    Information gain estimator
+    Estimator \sum_i log p(y_i | theta_i, design) - \sum_j w_{ij} log p(y_i | theta_j, design)
+    """
+    # sample y from p(y, theta_)
+    y_ref = mask.measure(design, theta)
+    logprob_ref = mask.logprob_y(theta, y_ref, design)
+    logprob_target = jax.vmap(mask.logprob_y, in_axes=(None, 0, None))(
+        cntrst_theta, y_ref, design
+    )
+    # logprob_target = jax.scipy.special.logsumexp(logprob_target, )
+    logprob_means = jnp.mean(logprob_target, axis=0, keepdims=True)
+    log_weights = jax.lax.stop_gradient(logprob_target - logprob_means)
+    # _norm = jax.scipy.special.logsumexp(log_weights, keepdims=True)
+    _norm = jax.scipy.special.logsumexp(log_weights, axis=1, keepdims=True)
+    log_weights = log_weights - _norm
+
+    weighted_logprobs = jnp.mean(log_weights + logprob_target, axis=1)
+
+    return (logprob_ref - weighted_logprobs).mean(), y_ref

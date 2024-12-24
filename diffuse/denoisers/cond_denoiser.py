@@ -36,6 +36,8 @@ class CondDenoiser:
         self,
         state: CondDenoiserState,
         rng_key: PRNGKeyArray,
+        y_meas: Array,
+        score_likelihood: Callable[[Array, float], Array],
     ) -> CondDenoiserState:
         r"""
         sample p(\theta_t-1 | \theta_t, \y_t-1, \xi)
