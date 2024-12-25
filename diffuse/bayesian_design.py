@@ -1,5 +1,7 @@
-from typing import NamedTuple, Tuple
+import pdb
 
+from typing import NamedTuple, Tuple
+from dataclasses import dataclass
 import jax
 from functools import partial
 from jax import numpy as jnp
@@ -8,6 +10,7 @@ from optax import GradientTransformation
 from jaxtyping import PRNGKeyArray, Array
 
 from diffuse.denoisers.cond_denoiser import CondDenoiser, CondDenoiserState
+from diffuse.integrator.base import IntegratorState
 from diffuse.base_forward_model import ForwardModel, MeasurementState
 
 
@@ -17,7 +20,18 @@ class BEDState(NamedTuple):
     design: Array
     opt_state: optax.OptState
 
+def _vmapper(fn, type):
+    def _set_axes(path, value):
+        # Vectorize only particles and rng_key fields
+        if any(field in str(path) for field in ['position', 'rng_key']):
+            return 0
+        return None
 
+    # Create tree with selective vectorization
+    in_axes = jax.tree_util.tree_map_with_path(_set_axes, type)
+    return jax.vmap(fn, in_axes=(in_axes, None))
+
+@dataclass
 class ExperimentOptimizer:
     denoiser: CondDenoiser
     mask: ForwardModel
@@ -56,12 +70,13 @@ class ExperimentOptimizer:
         )
         y = measurement_state.y
         design, opt_state = state.design, state.opt_state
+        rng_key, key_t, key_c, key_d = jax.random.split(rng_key, 4)
 
         # step theta
         t = state.denoiser_state.integrator_state.t
-        score_likelihood = self.denoiser.posterior_logpdf(t, y, design, self.mask)
-        denoiser_state = self.denoiser.step(
-            denoiser_state, rng_key, y, score_likelihood
+        score_likelihood = self.denoiser.posterior_logpdf(rng_key, t, y, design)
+        denoiser_state = _vmapper(self.denoiser.step, denoiser_state)(
+            denoiser_state, score_likelihood
         )
 
         # update design
@@ -72,9 +87,9 @@ class ExperimentOptimizer:
         )
 
         # step cntrst_theta
-        score_likelihood = self.denoiser.pooled_posterior_logpdf(t, y_cntrst, y, design, self.mask)
-        cntrst_denoiser_state = self.denoiser.step(
-            cntrst_denoiser_state, rng_key, y, score_likelihood
+        score_likelihood = self.denoiser.pooled_posterior_logpdf(key_t, t, y_cntrst, y, design)
+        cntrst_denoiser_state = _vmapper(self.denoiser.step, cntrst_denoiser_state)(
+            cntrst_denoiser_state, score_likelihood
         )
 
         return BEDState(
@@ -84,6 +99,11 @@ class ExperimentOptimizer:
             opt_state=opt_state,
         )
 
+    def get_design(self, state: BEDState, rng_key: PRNGKeyArray, measurement_state: MeasurementState):
+        def step(state, rng_key):
+            return self.step(state, rng_key, measurement_state), state.design
+        keys = jax.random.split(rng_key, 100)
+        return jax.lax.scan(step, state, keys)[0]
 
 def _init_start_time(
     key_init: PRNGKeyArray,
@@ -109,7 +129,7 @@ def calculate_and_apply_gradient(
     opt_state: optax.OptState,
 ):
     grad_xi_score = jax.grad(information_gain, argnums=2, has_aux=True)
-    grad_xi, ys = grad_xi_score(thetas[-1], cntrst_thetas, design, mask)
+    grad_xi, ys = grad_xi_score(thetas, cntrst_thetas, design, mask)
     updates, new_opt_state = optx_opt.update(grad_xi, opt_state, design)
     new_design = optax.apply_updates(design, updates)
 

@@ -1,9 +1,10 @@
+import pdb
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import einops
 from dataclasses import dataclass
-from jaxtyping import Array
+from jaxtyping import Array, PRNGKeyArray
 from diffuse.base_forward_model import MeasurementState
 
 
@@ -61,8 +62,20 @@ class SquareMask:
 
     def logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
         f_y = self.measure(design, theta)
-        return jax.scipy.stats.norm.logpdf(y, f_y, .1)
+        # Preserve batch dimension while flattening spatial dimensions
+        # If input is (batch, 28, 28, 1), output will be (batch, 784)
+        f_y_flat = einops.rearrange(f_y, '... h w c -> ... (h w c)')
+        y_flat = einops.rearrange(y, '... h w c -> ... (h w c)')
 
+        sigma = 0.1
+        return jax.scipy.stats.multivariate_normal.logpdf(
+            y_flat,
+            mean=f_y_flat,
+            cov=sigma**2
+        )  # returns shape (batch,)
+
+    def init_design(self, rng_key: PRNGKeyArray) -> Array:
+        return jax.random.uniform(rng_key, (2,), minval=0, maxval=28)
 
 if __name__ == "__main__":
     data = jnp.load("dataset/mnist.npz")

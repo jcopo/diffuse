@@ -6,7 +6,7 @@ import numpy as np
 from diffuse.neural_network.unet import UNet
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.integrator.stochastic import EulerMaruyama
-from diffuse.denoisers.denoiser import Denoiser
+from diffuse.denoisers.cond_denoiser import CondDenoiser
 from diffuse.bayesian_design import ExperimentOptimizer
 from examples.mnist.images import SquareMask
 
@@ -25,12 +25,13 @@ def initialize_experiment(key: PRNGKeyArray):
     # Initialize parameters
     tf = 2.0
     n_t = 300
+    dt = tf / n_t
 
     # Define beta schedule and SDE
     beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
 
     # Initialize ScoreNetwork
-    score_net = UNet(tf / n_t, 64, upsampling="pixel_shuffle")
+    score_net = UNet(dt, 64, upsampling="pixel_shuffle")
     nn_trained = jnp.load("weights/ann_2999.npz", allow_pickle=True)
     params = nn_trained["params"].item()
 
@@ -45,19 +46,19 @@ def initialize_experiment(key: PRNGKeyArray):
     # SDE
     sde = SDE(beta=beta, tf=tf)
 
-    return sde, mask, ground_truth, tf, n_t, nn_score
+    return sde, mask, ground_truth, dt, n_t, nn_score
 
 
 def main(key: PRNGKeyArray):
     # Initialize experiment forward model
-    sde, mask, ground_truth, tf, n_t, nn_score = initialize_experiment(key)
+    sde, mask, ground_truth, dt, n_t, nn_score = initialize_experiment(key)
     n_samples = 150
     n_samples_cntrst = 151
     num_measurements = 10
 
     # Conditional Denoiser
     integrator = EulerMaruyama(sde)
-    denoiser = Denoiser(integrator, sde, nn_score, n_t, ground_truth.shape)
+    denoiser = CondDenoiser(integrator, sde, nn_score, mask)#, n_t, ground_truth.shape)
 
     # init design
     measurement_state = mask.init_measurement()
@@ -68,10 +69,10 @@ def main(key: PRNGKeyArray):
         denoiser, mask, optimizer, ground_truth.shape
     )
 
-    exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst)
+    exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst, dt)
 
     for i in range(num_measurements):
-        optimal_state, hist_implicit = experiment_optimizer.step(
+        optimal_state, hist_implicit = experiment_optimizer.get_design(
             exp_state, key, measurement_state
         )
 
@@ -81,4 +82,8 @@ def main(key: PRNGKeyArray):
             measurement_state, new_measurement, optimal_state.design
         )
 
-        exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst)
+        exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst, dt)
+
+if __name__ == "__main__":
+    key = jax.random.PRNGKey(0)
+    main(key)

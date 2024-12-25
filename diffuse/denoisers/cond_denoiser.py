@@ -21,55 +21,54 @@ class CondDenoiser:
     """Conditional denoiser for conditional diffusion"""
 
     integrator: Integrator
-    logpdf: Callable[[SDEState, Array], Array]  # x -> t -> logpdf(x, t)
+    #logpdf: Callable[[SDEState, Array], Array]  # x -> t -> logpdf(x, t)
     sde: SDE
     score: Callable[[Array, float], Array]  # x -> t -> score(x, t)
-    _resample: bool
+    forward_model: ForwardModel
+    _resample: bool=False
 
     def init(
         self, position: Array, rng_key: PRNGKeyArray, dt: float
     ) -> CondDenoiserState:
-        weights = jnp.ones_like(position) / position.sum()
-        integrator_state = self.integrator.init(position, rng_key, 0.0, dt)
+        n_particles = position.shape[0]
+        weights = jnp.ones(n_particles) / n_particles
+        keys = jax.random.split(rng_key, n_particles)
+        integrator_state = self.integrator.init(position, keys, jnp.array(0.0), jnp.array(dt))
         return CondDenoiserState(integrator_state, weights)
 
     def step(
         self,
         state: CondDenoiserState,
-        rng_key: PRNGKeyArray,
-        y_meas: Array,
-        score_likelihood: Callable[[Array, Array], Array],
+        score: Callable[[Array, float], Array]
     ) -> CondDenoiserState:
         r"""
         sample p(\theta_t-1 | \theta_t, \y_t-1, \xi)
         """
         integrator_state, weights = state
-        def score_cond(x, t):
-            y_t = self.sde.path()#TODO)
-            return self.score(x, t) + score_likelihood(x, y_t)
-        integrator_state_next = self.integrator(integrator_state, score_cond)
+        integrator_state_next = self.integrator(integrator_state, score)
 
         position = integrator_state_next.position
-        if self._resample:
-            weights = self.logpdf(integrator_state_next, integrator_state)
-            position, weights = self._resampling(position, weights, rng_key)
+        # if self._resample:
+        #     weights = self.logpdf(integrator_state_next, integrator_state)
+        #     position, weights = self._resampling(position, weights, rng_key)
 
         return CondDenoiserState(integrator_state_next, weights)
 
-    def posterior_logpdf(self, rng_key:PRNGKeyArray, t:float, y_meas:Array, design:Array, mask:ForwardModel):
-        y_t = self.y_noiser(mask, rng_key, SDEState(y_meas, 0), t)
+    def posterior_logpdf(self, rng_key:PRNGKeyArray, t:float, y_meas:Array, design:Array):
+        y_t = self.y_noiser(self.forward_model.make(design), rng_key, SDEState(y_meas, 0), t).position
         def posterior_logpdf(x, t):
-            guidance = jax.grad(mask.logprob_y)(x, y_t, design)
+            guidance = jax.grad(self.forward_model.logprob_y)(x, y_t, design)
             return guidance + self.score(x, t)
 
         return posterior_logpdf
 
-    def pooled_posterior_logpdf(self, rng_key:PRNGKeyArray, t:float, y_cntrst:Array, y_past:Array, design:Array, mask:ForwardModel):
+    def pooled_posterior_logpdf(self, rng_key:PRNGKeyArray, t:float, y_cntrst:Array, y_past:Array, design:Array):
+        rng_key1, rng_key2 = jax.random.split(rng_key)
         vec_noiser = jax.vmap(self.y_noiser, in_axes=(None, None, SDEState(0, None), None))
-        y_t = vec_noiser(mask, rng_key, SDEState(y_cntrst, 0), t)
+        y_t = vec_noiser(self.forward_model.make(design), rng_key1, SDEState(y_cntrst, 0), t).position
         def pooled_posterior_logpdf(x, t):
-            guidance = jax.vmap(jax.grad(mask.logprob_y), in_axes=(None, 0, None))(x, y_t, design)
-            past_contribution = self.posterior_logpdf(x, t, y_past, design, mask)
+            guidance = jax.vmap(jax.grad(self.forward_model.logprob_y), in_axes=(None, 0, None))(x, y_t, design)
+            past_contribution = self.posterior_logpdf(rng_key2, t, y_past, design)
             return guidance.mean(axis=0) + past_contribution(x, t)
 
         return pooled_posterior_logpdf
@@ -78,15 +77,15 @@ class CondDenoiser:
         self, mask: Array, key: PRNGKeyArray, state: SDEState, ts: float
     ) -> SDEState:
         r"""
-        Generate x_ts | x_t ~ N(.| exp(-0.5 \int_ts^t \beta(s) ds) x_0, 1 - exp(-\int_ts^t \beta(s) ds))
+        Generate y^{(t)} = \sqrt{\bar{\alpha}_t} y + \sqrt{1-\bar{\alpha}_t} A_\xi \epsilon
         """
-        x, t = state
+        y, t = state
 
         int_b = self.sde.beta.integrate(ts, t)
         alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
 
-        rndm = jax.random.normal(key, x.shape)
-        res = alpha * x + jnp.sqrt(beta) * mask.measure_from_mask(mask, rndm)
+        rndm = jax.random.normal(key, y.shape)
+        res = alpha * y + jnp.sqrt(beta) * self.forward_model.measure_from_mask(mask, rndm)
         return SDEState(res, ts)
 
     def _resampling(
