@@ -10,6 +10,7 @@ from diffuse.integrator.base import Integrator, IntegratorState
 from diffuse.diffusion.sde import SDE, SDEState
 from diffuse.base_forward_model import ForwardModel
 
+
 class CondDenoiserState(NamedTuple):
     integrator_state: IntegratorState
     weights: Array
@@ -55,22 +56,38 @@ class CondDenoiser:
 
         return CondDenoiserState(integrator_state_next, weights)
 
-    def posterior_logpdf(self, x:Array, t:float, y_meas:Array, design:Array, mask:ForwardModel):
-        y_t = self.sde.path(y_meas, t) #TODO
+    def posterior_logpdf(self, rng_key:PRNGKeyArray, t:float, y_meas:Array, design:Array, mask:ForwardModel):
+        y_t = self.y_noiser(mask, rng_key, SDEState(y_meas, 0), t)
         def posterior_logpdf(x, t):
             guidance = jax.grad(mask.logprob_y)(x, y_t, design)
             return guidance + self.score(x, t)
 
         return posterior_logpdf
 
-    def pooled_posterior_logpdf(self, x:Array, t:float, y_cntrst:Array, y_past:Array, design:Array, mask:ForwardModel):
-        y_t = jax.vmap(self.sde.path, in_axes=(0, None))(y_cntrst, t)
+    def pooled_posterior_logpdf(self, rng_key:PRNGKeyArray, t:float, y_cntrst:Array, y_past:Array, design:Array, mask:ForwardModel):
+        vec_noiser = jax.vmap(self.y_noiser, in_axes=(None, None, SDEState(0, None), None))
+        y_t = vec_noiser(mask, rng_key, SDEState(y_cntrst, 0), t)
         def pooled_posterior_logpdf(x, t):
             guidance = jax.vmap(jax.grad(mask.logprob_y), in_axes=(None, 0, None))(x, y_t, design)
             past_contribution = self.posterior_logpdf(x, t, y_past, design, mask)
             return guidance.mean(axis=0) + past_contribution(x, t)
 
         return pooled_posterior_logpdf
+
+    def y_noiser(
+        self, mask: Array, key: PRNGKeyArray, state: SDEState, ts: float
+    ) -> SDEState:
+        r"""
+        Generate x_ts | x_t ~ N(.| exp(-0.5 \int_ts^t \beta(s) ds) x_0, 1 - exp(-\int_ts^t \beta(s) ds))
+        """
+        x, t = state
+
+        int_b = self.sde.beta.integrate(ts, t)
+        alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
+
+        rndm = jax.random.normal(key, x.shape)
+        res = alpha * x + jnp.sqrt(beta) * mask.measure_from_mask(mask, rndm)
+        return SDEState(res, ts)
 
     def _resampling(
         self, position: Array, weights: Array, rng_key: PRNGKeyArray

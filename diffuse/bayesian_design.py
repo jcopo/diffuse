@@ -59,22 +59,22 @@ class ExperimentOptimizer:
 
         # step theta
         t = state.denoiser_state.integrator_state.t
-        score_likelihood = self.denoiser.posterior_logpdf(design, t, y, design, self.mask)
+        score_likelihood = self.denoiser.posterior_logpdf(t, y, design, self.mask)
         denoiser_state = self.denoiser.step(
             denoiser_state, rng_key, y, score_likelihood
-        )
-
-        # step cntrst_theta
-        score_likelihood = self.denoiser.pooled_posterior_logpdf(design, t, y, y, design, self.mask)
-        cntrst_denoiser_state = self.denoiser.step(
-            cntrst_denoiser_state, rng_key, y, score_likelihood
         )
 
         # update design
         thetas = denoiser_state.integrator_state.position
         cntrst_thetas = cntrst_denoiser_state.integrator_state.position
-        design, opt_state, _ = calculate_and_apply_gradient(
+        design, opt_state, y_cntrst = calculate_and_apply_gradient(
             thetas, cntrst_thetas, design, self.mask, self.optimizer, opt_state
+        )
+
+        # step cntrst_theta
+        score_likelihood = self.denoiser.pooled_posterior_logpdf(t, y_cntrst, y, design, self.mask)
+        cntrst_denoiser_state = self.denoiser.step(
+            cntrst_denoiser_state, rng_key, y, score_likelihood
         )
 
         return BEDState(
