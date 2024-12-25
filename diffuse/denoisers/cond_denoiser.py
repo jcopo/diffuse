@@ -8,7 +8,7 @@ from blackjax.smc.resampling import stratified
 
 from diffuse.integrator.base import Integrator, IntegratorState
 from diffuse.diffusion.sde import SDE, SDEState
-
+from diffuse.base_forward_model import ForwardModel
 
 class CondDenoiserState(NamedTuple):
     integrator_state: IntegratorState
@@ -37,13 +37,16 @@ class CondDenoiser:
         state: CondDenoiserState,
         rng_key: PRNGKeyArray,
         y_meas: Array,
-        score_likelihood: Callable[[Array, float], Array],
+        score_likelihood: Callable[[Array, Array], Array],
     ) -> CondDenoiserState:
         r"""
         sample p(\theta_t-1 | \theta_t, \y_t-1, \xi)
         """
         integrator_state, weights = state
-        integrator_state_next = self.integrator(integrator_state, self.score)
+        def score_cond(x, t):
+            y_t = self.sde.path()#TODO)
+            return self.score(x, t) + score_likelihood(x, y_t)
+        integrator_state_next = self.integrator(integrator_state, score_cond)
 
         position = integrator_state_next.position
         if self._resample:
@@ -51,6 +54,23 @@ class CondDenoiser:
             position, weights = self._resampling(position, weights, rng_key)
 
         return CondDenoiserState(integrator_state_next, weights)
+
+    def posterior_logpdf(self, x:Array, t:float, y_meas:Array, design:Array, mask:ForwardModel):
+        y_t = self.sde.path(y_meas, t) #TODO
+        def posterior_logpdf(x, t):
+            guidance = jax.grad(mask.logprob_y)(x, y_t, design)
+            return guidance + self.score(x, t)
+
+        return posterior_logpdf
+
+    def pooled_posterior_logpdf(self, x:Array, t:float, y_cntrst:Array, y_past:Array, design:Array, mask:ForwardModel):
+        y_t = jax.vmap(self.sde.path, in_axes=(0, None))(y_cntrst, t)
+        def pooled_posterior_logpdf(x, t):
+            guidance = jax.vmap(jax.grad(mask.logprob_y), in_axes=(None, 0, None))(x, y_t, design)
+            past_contribution = self.posterior_logpdf(x, t, y_past, design, mask)
+            return guidance.mean(axis=0) + past_contribution(x, t)
+
+        return pooled_posterior_logpdf
 
     def _resampling(
         self, position: Array, weights: Array, rng_key: PRNGKeyArray

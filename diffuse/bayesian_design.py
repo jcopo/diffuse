@@ -1,6 +1,7 @@
 from typing import NamedTuple, Tuple
 
 import jax
+from functools import partial
 from jax import numpy as jnp
 import optax
 from optax import GradientTransformation
@@ -54,21 +55,22 @@ class ExperimentOptimizer:
             state.cntrst_denoiser_state,
         )
         y = measurement_state.y
+        design, opt_state = state.design, state.opt_state
 
         # step theta
-        score_likelihood = None
+        t = state.denoiser_state.integrator_state.t
+        score_likelihood = self.denoiser.posterior_logpdf(design, t, y, design, self.mask)
         denoiser_state = self.denoiser.step(
             denoiser_state, rng_key, y, score_likelihood
         )
 
         # step cntrst_theta
-        score_likelihood = None
+        score_likelihood = self.denoiser.pooled_posterior_logpdf(design, t, y, y, design, self.mask)
         cntrst_denoiser_state = self.denoiser.step(
             cntrst_denoiser_state, rng_key, y, score_likelihood
         )
 
         # update design
-        design, opt_state = state.design, state.opt_state
         thetas = denoiser_state.integrator_state.position
         cntrst_thetas = cntrst_denoiser_state.integrator_state.position
         design, opt_state, _ = calculate_and_apply_gradient(

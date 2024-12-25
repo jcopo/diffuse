@@ -59,6 +59,10 @@ class SquareMask:
 
         return MeasurementState(y=joint_y, mask_history=mask_history)
 
+    def logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
+        f_y = self.measure(design, theta)
+        return jax.scipy.stats.norm.logpdf(y, f_y, .1)
+
 
 if __name__ == "__main__":
     data = jnp.load("dataset/mnist.npz")
