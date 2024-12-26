@@ -58,7 +58,9 @@ def main(key: PRNGKeyArray):
 
     # Conditional Denoiser
     integrator = EulerMaruyama(sde)
-    denoiser = CondDenoiser(integrator, sde, nn_score, mask)#, n_t, ground_truth.shape)
+    denoiser = CondDenoiser(
+        integrator, sde, nn_score, mask
+    )  # , n_t, ground_truth.shape)
 
     # init design
     measurement_state = mask.init_measurement()
@@ -83,6 +85,7 @@ def main(key: PRNGKeyArray):
         )
 
         exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst, dt)
+
 
 if __name__ == "__main__":
     key = jax.random.PRNGKey(0)

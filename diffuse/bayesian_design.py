@@ -1,18 +1,14 @@
-import pdb
-
 from typing import NamedTuple, Tuple
 from dataclasses import dataclass
 import jax
-from functools import partial
 from jax import numpy as jnp
 import optax
 from optax import GradientTransformation
 from jaxtyping import PRNGKeyArray, Array
 
 from diffuse.denoisers.cond_denoiser import CondDenoiser, CondDenoiserState
-from diffuse.integrator.base import IntegratorState
 from diffuse.base_forward_model import ForwardModel, MeasurementState
-
+from diffuse.integrator.base import IntegratorState
 
 class BEDState(NamedTuple):
     denoiser_state: CondDenoiserState
@@ -20,16 +16,18 @@ class BEDState(NamedTuple):
     design: Array
     opt_state: optax.OptState
 
+
 def _vmapper(fn, type):
     def _set_axes(path, value):
         # Vectorize only particles and rng_key fields
-        if any(field in str(path) for field in ['position', 'rng_key']):
+        if any(field in str(path) for field in ["position", "rng_key", "weights"]):
             return 0
         return None
 
     # Create tree with selective vectorization
     in_axes = jax.tree_util.tree_map_with_path(_set_axes, type)
     return jax.vmap(fn, in_axes=(in_axes, None))
+
 
 @dataclass
 class ExperimentOptimizer:
@@ -87,10 +85,13 @@ class ExperimentOptimizer:
         )
 
         # step cntrst_theta
-        score_likelihood = self.denoiser.pooled_posterior_logpdf(key_t, t, y_cntrst, y, design)
+        score_likelihood = self.denoiser.pooled_posterior_logpdf(
+            key_t, t, y_cntrst, y, design
+        )
         cntrst_denoiser_state = _vmapper(self.denoiser.step, cntrst_denoiser_state)(
             cntrst_denoiser_state, score_likelihood
         )
+        denoiser_state, cntrst_denoiser_state = _fix_time(denoiser_state, cntrst_denoiser_state)
 
         return BEDState(
             denoiser_state=denoiser_state,
@@ -99,11 +100,18 @@ class ExperimentOptimizer:
             opt_state=opt_state,
         )
 
-    def get_design(self, state: BEDState, rng_key: PRNGKeyArray, measurement_state: MeasurementState):
+    def get_design(
+        self,
+        state: BEDState,
+        rng_key: PRNGKeyArray,
+        measurement_state: MeasurementState,
+    ):
         def step(state, rng_key):
             return self.step(state, rng_key, measurement_state), state.design
+
         keys = jax.random.split(rng_key, 100)
-        return jax.lax.scan(step, state, keys)[0]
+        return jax.lax.scan(step, state, keys)
+
 
 def _init_start_time(
     key_init: PRNGKeyArray,
@@ -159,3 +167,21 @@ def information_gain(
     weighted_logprobs = jnp.mean(log_weights + logprob_target, axis=1)
 
     return (logprob_ref - weighted_logprobs).mean(), y_ref
+
+
+def _fix_time(denoiser_state: CondDenoiserState, cntrst_denoiser_state: CondDenoiserState):
+    # Create new integrator states with fixed time
+    new_denoiser_integrator = denoiser_state.integrator_state._replace(
+        t=denoiser_state.integrator_state.t[0],
+        dt=denoiser_state.integrator_state.dt[0]
+    )
+    new_cntrst_integrator = cntrst_denoiser_state.integrator_state._replace(
+        t=cntrst_denoiser_state.integrator_state.t[0],
+        dt=cntrst_denoiser_state.integrator_state.dt[0]
+    )
+
+    # Return new denoiser states with updated integrator states
+    return (
+        denoiser_state._replace(integrator_state=new_denoiser_integrator),
+        cntrst_denoiser_state._replace(integrator_state=new_cntrst_integrator)
+    )

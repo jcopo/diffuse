@@ -21,11 +21,11 @@ class CondDenoiser:
     """Conditional denoiser for conditional diffusion"""
 
     integrator: Integrator
-    #logpdf: Callable[[SDEState, Array], Array]  # x -> t -> logpdf(x, t)
+    # logpdf: Callable[[SDEState, Array], Array]  # x -> t -> logpdf(x, t)
     sde: SDE
     score: Callable[[Array, float], Array]  # x -> t -> score(x, t)
     forward_model: ForwardModel
-    _resample: bool=False
+    _resample: bool = False
 
     def init(
         self, position: Array, rng_key: PRNGKeyArray, dt: float
@@ -33,13 +33,13 @@ class CondDenoiser:
         n_particles = position.shape[0]
         weights = jnp.ones(n_particles) / n_particles
         keys = jax.random.split(rng_key, n_particles)
-        integrator_state = self.integrator.init(position, keys, jnp.array(0.0), jnp.array(dt))
+        integrator_state = self.integrator.init(
+            position, keys, jnp.array(0.0), jnp.array(dt)
+        )
         return CondDenoiserState(integrator_state, weights)
 
     def step(
-        self,
-        state: CondDenoiserState,
-        score: Callable[[Array, float], Array]
+        self, state: CondDenoiserState, score: Callable[[Array, float], Array]
     ) -> CondDenoiserState:
         r"""
         sample p(\theta_t-1 | \theta_t, \y_t-1, \xi)
@@ -54,20 +54,39 @@ class CondDenoiser:
 
         return CondDenoiserState(integrator_state_next, weights)
 
-    def posterior_logpdf(self, rng_key:PRNGKeyArray, t:float, y_meas:Array, design:Array):
-        y_t = self.y_noiser(self.forward_model.make(design), rng_key, SDEState(y_meas, 0), t).position
+    def posterior_logpdf(
+        self, rng_key: PRNGKeyArray, t: float, y_meas: Array, design: Array
+    ):
+        y_t = self.y_noiser(
+            self.forward_model.make(design), rng_key, SDEState(y_meas, 0), t
+        ).position
+
         def posterior_logpdf(x, t):
             guidance = jax.grad(self.forward_model.logprob_y)(x, y_t, design)
             return guidance + self.score(x, t)
 
         return posterior_logpdf
 
-    def pooled_posterior_logpdf(self, rng_key:PRNGKeyArray, t:float, y_cntrst:Array, y_past:Array, design:Array):
+    def pooled_posterior_logpdf(
+        self,
+        rng_key: PRNGKeyArray,
+        t: float,
+        y_cntrst: Array,
+        y_past: Array,
+        design: Array,
+    ):
         rng_key1, rng_key2 = jax.random.split(rng_key)
-        vec_noiser = jax.vmap(self.y_noiser, in_axes=(None, None, SDEState(0, None), None))
-        y_t = vec_noiser(self.forward_model.make(design), rng_key1, SDEState(y_cntrst, 0), t).position
+        vec_noiser = jax.vmap(
+            self.y_noiser, in_axes=(None, None, SDEState(0, None), None)
+        )
+        y_t = vec_noiser(
+            self.forward_model.make(design), rng_key1, SDEState(y_cntrst, 0), t
+        ).position
+
         def pooled_posterior_logpdf(x, t):
-            guidance = jax.vmap(jax.grad(self.forward_model.logprob_y), in_axes=(None, 0, None))(x, y_t, design)
+            guidance = jax.vmap(
+                jax.grad(self.forward_model.logprob_y), in_axes=(None, 0, None)
+            )(x, y_t, design)
             past_contribution = self.posterior_logpdf(rng_key2, t, y_past, design)
             return guidance.mean(axis=0) + past_contribution(x, t)
 
@@ -85,7 +104,9 @@ class CondDenoiser:
         alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
 
         rndm = jax.random.normal(key, y.shape)
-        res = alpha * y + jnp.sqrt(beta) * self.forward_model.measure_from_mask(mask, rndm)
+        res = alpha * y + jnp.sqrt(beta) * self.forward_model.measure_from_mask(
+            mask, rndm
+        )
         return SDEState(res, ts)
 
     def _resampling(
