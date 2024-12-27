@@ -66,7 +66,7 @@ class SquareMask:
         f_y_flat = einops.rearrange(f_y, "... h w c -> ... (h w c)")
         y_flat = einops.rearrange(y, "... h w c -> ... (h w c)")
 
-        sigma = 0.1
+        sigma = 1.
         return jax.scipy.stats.multivariate_normal.logpdf(
             y_flat, mean=f_y_flat, cov=sigma**2
         )  # returns shape (batch,)

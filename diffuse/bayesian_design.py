@@ -9,6 +9,8 @@ from jaxtyping import PRNGKeyArray, Array
 from diffuse.denoisers.cond_denoiser import CondDenoiser, CondDenoiserState
 from diffuse.base_forward_model import ForwardModel, MeasurementState
 from diffuse.integrator.base import IntegratorState
+from diffuse.utils.plotting import plot_lines
+
 
 class BEDState(NamedTuple):
     denoiser_state: CondDenoiserState
@@ -84,6 +86,8 @@ class ExperimentOptimizer:
             thetas, cntrst_thetas, design, self.mask, self.optimizer, opt_state
         )
 
+        #jax.debug.print("thetas: {}", thetas)
+        # jax.experimental.io_callback( plot_lines, None, cntrst_thetas, t)
         # step cntrst_theta
         score_likelihood = self.denoiser.pooled_posterior_logpdf(
             key_t, t, y_cntrst, y, design
@@ -105,11 +109,13 @@ class ExperimentOptimizer:
         state: BEDState,
         rng_key: PRNGKeyArray,
         measurement_state: MeasurementState,
+        n_steps: int = 100,
     ):
         def step(state, rng_key):
-            return self.step(state, rng_key, measurement_state), state.design
+            state = self.step(state, rng_key, measurement_state)
+            return state, state.denoiser_state.integrator_state.position
 
-        keys = jax.random.split(rng_key, 100)
+        keys = jax.random.split(rng_key, n_steps)
         return jax.lax.scan(step, state, keys)
 
 

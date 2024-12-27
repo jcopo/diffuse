@@ -1,7 +1,11 @@
 import jax
 from jax import numpy as jnp
+import dm_pix
+
 import optax
 import numpy as np
+import os
+import csv
 
 from diffuse.neural_network.unet import UNet
 from diffuse.diffusion.sde import SDE, LinearSchedule
@@ -9,6 +13,7 @@ from diffuse.integrator.stochastic import EulerMaruyama
 from diffuse.denoisers.cond_denoiser import CondDenoiser
 from diffuse.bayesian_design import ExperimentOptimizer
 from examples.mnist.images import SquareMask
+from diffuse.utils.plotting import plot_lines
 
 from jaxtyping import PRNGKeyArray
 
@@ -49,12 +54,44 @@ def initialize_experiment(key: PRNGKeyArray):
     return sde, mask, ground_truth, dt, n_t, nn_score
 
 
-def main(key: PRNGKeyArray):
+def logger_metrics(psnr_score: float, ssim_score: float, n_meas: int, dir_path: str):
+    """
+    Log PSNR and SSIM metrics to a CSV file during optimization.
+
+    Args:
+        psnr_score: Peak Signal-to-Noise Ratio score
+        ssim_score: Structural Similarity Index score
+        n_meas: Current measurement number
+    """
+    # Assuming scores_file is defined in the global scope
+    scores_file = f"{dir_path}/scores_during_opt.csv"
+
+    # Create file with headers if it doesn't exist
+    if not os.path.exists(scores_file):
+        with open(scores_file, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Measurement", "PSNR", "SSIM"])
+
+    # Append new scores
+    with open(scores_file, "a", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([n_meas, float(psnr_score), float(ssim_score)])
+
+
+@jax.jit
+def evaluate_metrics(grande_truite, theta_infered, weights_infered):
+    psnr_array = jax.vmap(dm_pix.psnr, in_axes=(None, 0))(grande_truite, theta_infered)
+    psnr_score = jnp.sum(psnr_array * weights_infered)
+    ssim_array = jax.vmap(dm_pix.ssim, in_axes=(None, 0))(grande_truite, theta_infered)
+    ssim_score = jnp.sum(ssim_array * weights_infered)
+    return psnr_score, ssim_score
+
+
+def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False):
     # Initialize experiment forward model
     sde, mask, ground_truth, dt, n_t, nn_score = initialize_experiment(key)
-    n_samples = 150
-    n_samples_cntrst = 151
-    num_measurements = 10
+    n_samples = 15
+    n_samples_cntrst = 16
 
     # Conditional Denoiser
     integrator = EulerMaruyama(sde)
@@ -73,9 +110,9 @@ def main(key: PRNGKeyArray):
 
     exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst, dt)
 
-    for i in range(num_measurements):
-        optimal_state, hist_implicit = experiment_optimizer.get_design(
-            exp_state, key, measurement_state
+    for n_meas in range(num_measurements):
+        optimal_state, hist = experiment_optimizer.get_design(
+            exp_state, key, measurement_state, n_t
         )
 
         # make new measurement
@@ -85,8 +122,26 @@ def main(key: PRNGKeyArray):
         )
 
         exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst, dt)
+        if plot:
+            # psnr_score, ssim_score = evaluate_metrics(
+            #     ground_truth, optimal_state.denoiser_state.integrator_state.position[-1, :], optimal_state.weights
+            # )
+            # jax.experimental.io_callback(
+            #     logger_metrics, None, psnr_score, ssim_score, n_meas
+            # )
+            print(hist.shape)
+            jax.experimental.io_callback(
+                plot_lines,
+                None,
+                hist[-1],
+            )
+            jax.experimental.io_callback(
+                plot_lines,
+                None,
+                hist[-1],
+            )
 
 
 if __name__ == "__main__":
     key = jax.random.PRNGKey(0)
-    main(key)
+    main(10, key, plot=True)
