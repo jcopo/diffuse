@@ -113,7 +113,7 @@ class ExperimentOptimizer:
     ):
         def step(state, rng_key):
             state = self.step(state, rng_key, measurement_state)
-            return state, state.denoiser_state.integrator_state.position
+            return state, state.design
 
         keys = jax.random.split(rng_key, n_steps)
         return jax.lax.scan(step, state, keys)
@@ -144,6 +144,8 @@ def calculate_and_apply_gradient(
 ):
     grad_xi_score = jax.grad(information_gain, argnums=2, has_aux=True)
     grad_xi, ys = grad_xi_score(thetas, cntrst_thetas, design, mask)
+    #jax.debug.print("grad_xi: {}", grad_xi)
+    #jax.debug.print("design: {}", design)
     updates, new_opt_state = optx_opt.update(grad_xi, opt_state, design)
     new_design = optax.apply_updates(design, updates)
 

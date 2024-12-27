@@ -365,3 +365,70 @@ def plot_top_10_samples(res):
 
     plt.tight_layout()
     plt.show()
+
+def show_samples_plot(
+    opt_hist, ground_truth, joint_y, thetas, weights, n_meas, size=7
+):
+    n = 20
+    best_idx = jnp.argsort(weights)[-n:][::-1]
+    worst_idx = jnp.argsort(weights)[:n]
+
+    # Create a figure with subplots
+    fig = plt.figure(figsize=(40, 10))
+    fig.suptitle(
+        "High weight (top) and low weight (bottom) Samples", fontsize=18, y=0.67, x=0.6
+    )
+
+    # Create grid spec for layout with reduced vertical spacing
+    gs = fig.add_gridspec(4, n, hspace=0.0001)
+
+    # Add the larger subplot for the first 4 squares
+    ax_large = fig.add_subplot(gs[:2, :2])
+    ax_large.imshow(ground_truth, cmap="gray")
+    ax_large.text(
+        -2.0,
+        13.0,
+        f"Measurement {n_meas}",
+        ha="center",
+        va="center",
+        fontsize=14,
+        fontweight="bold",
+        rotation="vertical",
+    )
+
+    ax_large.axis("off")
+    ax_large.set_title("Ground Truth", fontsize=12)
+    ax_large.scatter(opt_hist[-1, 0], opt_hist[-1, 1], marker="o", c="red")
+
+    # Add another large subplot
+    ax_large = fig.add_subplot(gs[:2, 2:4])
+    ax_large.imshow(joint_y, cmap="gray")
+    ax_large.axis("off")
+    ax_large.set_title("Measure $y$", fontsize=12)
+    # ax_large.scatter(opt_hist[-1, 0], opt_hist[-1, 1], marker="o", c="red")
+    # add a square above the image. Around the design and 5 pixels from it
+    ax_large.add_patch(
+        plt.Rectangle(
+            (opt_hist[-1, 0] - size / 2, opt_hist[-1, 1] - size / 2),
+            size,
+            size,
+            fill=False,
+            edgecolor="red",
+            linewidth=2,
+        )
+    )
+
+    # Add the remaining subplots
+    for idx in range(n - 4):
+        ax1 = fig.add_subplot(gs[0, idx + 4])
+        ax2 = fig.add_subplot(gs[1, idx + 4])
+
+        ax1.imshow(thetas[best_idx[idx]], cmap="gray")
+        ax2.imshow(thetas[worst_idx[idx]], cmap="gray")
+
+        ax1.axis("off")
+        ax2.axis("off")
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.show()
+    plt.close()

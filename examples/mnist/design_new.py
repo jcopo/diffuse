@@ -14,6 +14,9 @@ from diffuse.denoisers.cond_denoiser import CondDenoiser
 from diffuse.bayesian_design import ExperimentOptimizer
 from examples.mnist.images import SquareMask
 from diffuse.utils.plotting import plot_lines
+import matplotlib.pyplot as plt
+from functools import partial
+from diffuse.utils.plotting import log_samples, plot_comparison, plotter_random
 
 from jaxtyping import PRNGKeyArray
 
@@ -87,17 +90,16 @@ def evaluate_metrics(grande_truite, theta_infered, weights_infered):
     return psnr_score, ssim_score
 
 
-def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False):
+def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
+         plotter_theta=None, plotter_contrastive=None, logger_metrics=None):
     # Initialize experiment forward model
     sde, mask, ground_truth, dt, n_t, nn_score = initialize_experiment(key)
     n_samples = 15
     n_samples_cntrst = 16
 
-    # Conditional Denoiser
+     # Conditional Denoiser
     integrator = EulerMaruyama(sde)
-    denoiser = CondDenoiser(
-        integrator, sde, nn_score, mask
-    )  # , n_t, ground_truth.shape)
+    denoiser = CondDenoiser(integrator, sde, nn_score, mask)
 
     # init design
     measurement_state = mask.init_measurement()
@@ -121,27 +123,99 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False):
             measurement_state, new_measurement, optimal_state.design
         )
 
-        exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst, dt)
         if plot:
-            # psnr_score, ssim_score = evaluate_metrics(
-            #     ground_truth, optimal_state.denoiser_state.integrator_state.position[-1, :], optimal_state.weights
-            # )
-            # jax.experimental.io_callback(
-            #     logger_metrics, None, psnr_score, ssim_score, n_meas
-            # )
-            print(hist.shape)
-            jax.experimental.io_callback(
-                plot_lines,
-                None,
-                hist[-1],
+            # Calculate metrics
+            psnr_score, ssim_score = evaluate_metrics(
+                ground_truth,
+                optimal_state.denoiser_state.integrator_state.position,
+                optimal_state.denoiser_state.weights
             )
-            jax.experimental.io_callback(
-                plot_lines,
-                None,
-                hist[-1],
-            )
+
+            # Log metrics
+            if logger_metrics:
+                jax.experimental.io_callback(
+                    logger_metrics, None, psnr_score, ssim_score, n_meas
+                )
+
+            # Plot theta samples
+            if plotter_theta:
+                jax.experimental.io_callback(
+                    plotter_theta,
+                    None,
+                    hist,
+                    ground_truth,
+                    measurement_state.y,
+                    optimal_state.denoiser_state.integrator_state.position,
+                    optimal_state.denoiser_state.weights,
+                    n_meas,
+                )
+
+            # Plot contrastive samples
+            if plotter_contrastive:
+                jax.experimental.io_callback(
+                    plotter_contrastive,
+                    None,
+                    hist,
+                    ground_truth,
+                    measurement_state.y,
+                    optimal_state.cntrst_denoiser_state.integrator_state.position,
+                    optimal_state.cntrst_denoiser_state.weights,
+                    n_meas,
+                )
+
+        exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst, dt)
+        key, _ = jax.random.split(key)
+
+    return ground_truth, optimal_state, measurement_state.y
 
 
 if __name__ == "__main__":
-    key = jax.random.PRNGKey(0)
-    main(10, key, plot=True)
+    import argparse
+    import datetime
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--rng_key", type=int, default=0)
+    parser.add_argument("--num_meas", type=int, default=3)
+    parser.add_argument("--prefix", type=str, default="")
+    parser.add_argument("--plot", action="store_true")
+    parser.add_argument("--space", type=str, default="runs")
+
+    args = parser.parse_args()
+    key_int = args.rng_key
+    plot = args.plot
+    num_meas = args.num_meas
+
+    rng_key = jax.random.PRNGKey(key_int)
+    dir_path = f"{args.space}/{args.prefix}/{key_int}_{datetime.datetime.now().strftime('%m-%d_%H-%M-%S')}"
+
+    # Setup logging paths
+    logging_path_theta = f"{dir_path}/theta"
+    logging_path_contrastive = f"{dir_path}/contrastive"
+    os.makedirs(logging_path_theta, exist_ok=True)
+    os.makedirs(logging_path_contrastive, exist_ok=True)
+
+    # Setup plotting functions
+    plotter_theta = partial(log_samples, logging_path=logging_path_theta, size=SIZE)
+    plotter_contrastive = partial(log_samples, logging_path=logging_path_contrastive, size=SIZE)
+    logger_metrics_fn = partial(logger_metrics, dir_path=dir_path)
+
+    ground_truth, optimal_state, final_measurement = main(
+        num_meas,
+        rng_key,
+        plot=plot,
+        plotter_theta=plotter_theta,
+        plotter_contrastive=plotter_contrastive,
+        logger_metrics=logger_metrics_fn
+    )
+
+    # Calculate final metrics
+    final_samples = optimal_state.denoiser_state.integrator_state.position[-1, :optimal_state.weights.shape[0]]
+    psnr_score, ssim_score = evaluate_metrics(ground_truth, final_samples, optimal_state.weights)
+    print(f"PSNR: {psnr_score} SSIM: {ssim_score}")
+
+    # Save final scores
+    scores_file = f"{dir_path}/scores.csv"
+    with open(scores_file, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Method", "PSNR", "SSIM"])
+        writer.writerow(["Optimized", float(psnr_score), float(ssim_score)])
