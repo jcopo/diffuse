@@ -11,6 +11,7 @@ from diffuse.base_forward_model import MeasurementState
 class SquareMask:
     size: int
     img_shape: tuple
+    sigma: float = 1.
 
     def make(self, xi: Array) -> Array:
         """Create a differentiable square mask."""
@@ -66,10 +67,14 @@ class SquareMask:
         f_y_flat = einops.rearrange(f_y, "... h w c -> ... (h w c)")
         y_flat = einops.rearrange(y, "... h w c -> ... (h w c)")
 
-        sigma = 1.
+        #import pdb; pdb.set_trace()
         return jax.scipy.stats.multivariate_normal.logpdf(
-            y_flat, mean=f_y_flat, cov=sigma**2
+            y_flat, mean=f_y_flat, cov=self.sigma**2
         )  # returns shape (batch,)
+
+    def grad_logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
+        meas_x = self.measure(design, theta)
+        return self.restore(design, jnp.zeros_like(theta), (y - meas_x)) / self.sigma
 
     def init_design(self, rng_key: PRNGKeyArray) -> Array:
         return jax.random.uniform(rng_key, (2,), minval=0, maxval=28)

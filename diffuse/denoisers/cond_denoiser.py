@@ -62,7 +62,10 @@ class CondDenoiser:
         ).position
 
         def posterior_logpdf(x, t):
-            guidance = jax.grad(self.forward_model.logprob_y)(x, y_t, design)
+            tf = self.sde.tf
+            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t))
+            #guidance = jax.grad(self.forward_model.logprob_y)(x, y_t, design) #/ alpha_t
+            guidance = self.forward_model.grad_logprob_y(x, y_t, design) / alpha_t
             return guidance + self.score(x, t)
 
         return posterior_logpdf
@@ -84,10 +87,15 @@ class CondDenoiser:
         ).position
 
         def pooled_posterior_logpdf(x, t):
+            tf = self.sde.tf
+            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t))
             guidance = jax.vmap(
-                jax.grad(self.forward_model.logprob_y), in_axes=(None, 0, None)
-            )(x, y_t, design)
+                #jax.grad(self.forward_model.logprob_y), in_axes=(None, 0, None)
+                self.forward_model.grad_logprob_y, in_axes=(None, 0, None)
+            )(x, y_t, design) / alpha_t
             past_contribution = self.posterior_logpdf(rng_key2, t, y_past, design)
+            # import pdb; pdb.set_trace()
+            # jax.debug.print("guidance: {}", guidance)
             return guidance.mean(axis=0) + past_contribution(x, t)
 
         return pooled_posterior_logpdf

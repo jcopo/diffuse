@@ -429,6 +429,6 @@ def show_samples_plot(
         ax1.axis("off")
         ax2.axis("off")
 
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    #plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
     plt.close()

@@ -11,6 +11,14 @@ from diffuse.base_forward_model import ForwardModel, MeasurementState
 from diffuse.integrator.base import IntegratorState
 from diffuse.utils.plotting import plot_lines
 
+def has_nans_des(position: Array):
+    has_nans = jnp.any(jnp.isnan(position))
+    jax.debug.print("Design has NaNs: {}", has_nans)
+
+def has_nans_theta(position: Array):
+    has_nans = jnp.any(jnp.isnan(position))
+    jax.debug.print("Theta has NaNs: {}", has_nans)
+
 
 class BEDState(NamedTuple):
     denoiser_state: CondDenoiserState
@@ -85,13 +93,13 @@ class ExperimentOptimizer:
         design, opt_state, y_cntrst = calculate_and_apply_gradient(
             thetas, cntrst_thetas, design, self.mask, self.optimizer, opt_state
         )
-
         #jax.debug.print("thetas: {}", thetas)
         # jax.experimental.io_callback( plot_lines, None, cntrst_thetas, t)
         # step cntrst_theta
         score_likelihood = self.denoiser.pooled_posterior_logpdf(
             key_t, t, y_cntrst, y, design
         )
+        #jax.experimental.io_callback( plot_lines, None, y_cntrst, t)
         cntrst_denoiser_state = _vmapper(self.denoiser.step, cntrst_denoiser_state)(
             cntrst_denoiser_state, score_likelihood
         )
@@ -144,11 +152,10 @@ def calculate_and_apply_gradient(
 ):
     grad_xi_score = jax.grad(information_gain, argnums=2, has_aux=True)
     grad_xi, ys = grad_xi_score(thetas, cntrst_thetas, design, mask)
-    #jax.debug.print("grad_xi: {}", grad_xi)
-    #jax.debug.print("design: {}", design)
     updates, new_opt_state = optx_opt.update(grad_xi, opt_state, design)
-    new_design = optax.apply_updates(design, updates)
-
+    #new_design = optax.apply_updates(design, updates)
+    new_design = design
+    #has_nans_des(new_design)
     return new_design, new_opt_state, ys
 
 

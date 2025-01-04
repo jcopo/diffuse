@@ -13,7 +13,7 @@ from diffuse.integrator.stochastic import EulerMaruyama
 from diffuse.denoisers.cond_denoiser import CondDenoiser
 from diffuse.bayesian_design import ExperimentOptimizer
 from examples.mnist.images import SquareMask
-from diffuse.utils.plotting import plot_lines
+from diffuse.utils.plotting import plot_lines, sigle_plot
 import matplotlib.pyplot as plt
 from functools import partial
 from diffuse.utils.plotting import log_samples, plot_comparison, plotter_random
@@ -94,8 +94,8 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
          plotter_theta=None, plotter_contrastive=None, logger_metrics=None):
     # Initialize experiment forward model
     sde, mask, ground_truth, dt, n_t, nn_score = initialize_experiment(key)
-    n_samples = 15
-    n_samples_cntrst = 16
+    n_samples = 150
+    n_samples_cntrst = 151
 
      # Conditional Denoiser
     integrator = EulerMaruyama(sde)
@@ -123,6 +123,7 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
             measurement_state, new_measurement, optimal_state.design
         )
 
+        sigle_plot(measurement_state.mask_history)
         if plot:
             # Calculate metrics
             psnr_score, ssim_score = evaluate_metrics(
