@@ -82,7 +82,8 @@ class ExperimentOptimizer:
 
         # step theta
         t = state.denoiser_state.integrator_state.t
-        score_likelihood = self.denoiser.posterior_logpdf(rng_key, t, y, design)
+        dt = state.denoiser_state.integrator_state.dt
+        score_likelihood = self.denoiser.posterior_logpdf(rng_key, t + dt, y, design)
         denoiser_state = _vmapper(self.denoiser.step, denoiser_state)(
             denoiser_state, score_likelihood
         )
@@ -97,7 +98,7 @@ class ExperimentOptimizer:
         # jax.experimental.io_callback( plot_lines, None, cntrst_thetas, t)
         # step cntrst_theta
         score_likelihood = self.denoiser.pooled_posterior_logpdf(
-            key_t, t, y_cntrst, y, design
+            key_t, t + dt, y_cntrst, y, design
         )
         #jax.experimental.io_callback( plot_lines, None, y_cntrst, t)
         cntrst_denoiser_state = _vmapper(self.denoiser.step, cntrst_denoiser_state)(
@@ -153,7 +154,7 @@ def calculate_and_apply_gradient(
     grad_xi_score = jax.grad(information_gain, argnums=2, has_aux=True)
     grad_xi, ys = grad_xi_score(thetas, cntrst_thetas, design, mask)
     updates, new_opt_state = optx_opt.update(grad_xi, opt_state, design)
-    #new_design = optax.apply_updates(design, updates)
+    # new_design = optax.apply_updates(design, updates)
     new_design = design
     #has_nans_des(new_design)
     return new_design, new_opt_state, ys

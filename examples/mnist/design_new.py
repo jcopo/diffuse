@@ -94,8 +94,8 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
          plotter_theta=None, plotter_contrastive=None, logger_metrics=None):
     # Initialize experiment forward model
     sde, mask, ground_truth, dt, n_t, nn_score = initialize_experiment(key)
-    n_samples = 150
-    n_samples_cntrst = 151
+    n_samples = 151
+    n_samples_cntrst = 150
 
      # Conditional Denoiser
     integrator = EulerMaruyama(sde)
@@ -124,6 +124,7 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
         )
 
         sigle_plot(measurement_state.mask_history)
+        sigle_plot(measurement_state.y)
         if plot:
             # Calculate metrics
             psnr_score, ssim_score = evaluate_metrics(

@@ -57,10 +57,13 @@ class CondDenoiser:
     def posterior_logpdf(
         self, rng_key: PRNGKeyArray, t: float, y_meas: Array, design: Array
     ):
+        tf = self.sde.tf
         y_t = self.y_noiser(
-            self.forward_model.make(design), rng_key, SDEState(y_meas, 0), t
+            self.forward_model.make(design), rng_key, SDEState(y_meas, 0), tf - t
         ).position
 
+        # will be called backward in time
+        # with t = tf - t, t from 0 to tf
         def posterior_logpdf(x, t):
             tf = self.sde.tf
             alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t))
@@ -86,6 +89,8 @@ class CondDenoiser:
             self.forward_model.make(design), rng_key1, SDEState(y_cntrst, 0), t
         ).position
 
+        # will be called backward in time
+        # with t = tf - t, t from 0 to tf
         def pooled_posterior_logpdf(x, t):
             tf = self.sde.tf
             alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t))

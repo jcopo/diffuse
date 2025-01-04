@@ -141,6 +141,7 @@ def plotter_random(
 def sigle_plot(array):
     plt.imshow(array, cmap="gray")
     plt.axis("off")
+    plt.colorbar()
     plt.show()
 
 

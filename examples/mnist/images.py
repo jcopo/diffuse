@@ -5,13 +5,13 @@ import einops
 from dataclasses import dataclass
 from jaxtyping import Array, PRNGKeyArray
 from diffuse.base_forward_model import MeasurementState
-
+from diffuse.utils.plotting import sigle_plot
 
 @dataclass
 class SquareMask:
     size: int
     img_shape: tuple
-    sigma: float = 1.
+    sigma: float = .1
 
     def make(self, xi: Array) -> Array:
         """Create a differentiable square mask."""
@@ -74,6 +74,8 @@ class SquareMask:
 
     def grad_logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
         meas_x = self.measure(design, theta)
+        #jax.experimental.io_callback(sigle_plot, None, y)
+        # jax.experimental.io_callback(sigle_plot, None, meas_x)
         return self.restore(design, jnp.zeros_like(theta), (y - meas_x)) / self.sigma
 
     def init_design(self, rng_key: PRNGKeyArray) -> Array:
