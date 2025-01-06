@@ -77,13 +77,14 @@ class ExperimentOptimizer:
             state.cntrst_denoiser_state,
         )
         y = measurement_state.y
+        mask_history = measurement_state.mask_history
         design, opt_state = state.design, state.opt_state
         rng_key, key_t, key_c, key_d = jax.random.split(rng_key, 4)
 
         # step theta
         t = state.denoiser_state.integrator_state.t
         dt = state.denoiser_state.integrator_state.dt
-        score_likelihood = self.denoiser.posterior_logpdf(rng_key, t + dt, y, design)
+        score_likelihood = self.denoiser.posterior_logpdf(rng_key, t , y, mask_history)
         denoiser_state = _vmapper(self.denoiser.step, denoiser_state)(
             denoiser_state, score_likelihood
         )
@@ -98,7 +99,7 @@ class ExperimentOptimizer:
         # jax.experimental.io_callback( plot_lines, None, cntrst_thetas, t)
         # step cntrst_theta
         score_likelihood = self.denoiser.pooled_posterior_logpdf(
-            key_t, t + dt, y_cntrst, y, design
+            key_t, t + dt, y_cntrst, y, design, mask_history
         )
         #jax.experimental.io_callback( plot_lines, None, y_cntrst, t)
         cntrst_denoiser_state = _vmapper(self.denoiser.step, cntrst_denoiser_state)(

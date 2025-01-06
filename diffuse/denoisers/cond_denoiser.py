@@ -55,23 +55,23 @@ class CondDenoiser:
         return CondDenoiserState(integrator_state_next, weights)
 
     def posterior_logpdf(
-        self, rng_key: PRNGKeyArray, t: float, y_meas: Array, design: Array
+        self, rng_key: PRNGKeyArray, t: float, y_meas: Array, design_mask: Array
     ):
         tf = self.sde.tf
         y_t = self.y_noiser(
-            self.forward_model.make(design), rng_key, SDEState(y_meas, 0), tf - t
+            design_mask, rng_key, SDEState(y_meas, 0), tf - t
         ).position
 
         # will be called backward in time
         # with t = tf - t, t from 0 to tf
-        def posterior_logpdf(x, t):
+        def _posterior_logpdf(x, t):
             tf = self.sde.tf
             alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t))
             #guidance = jax.grad(self.forward_model.logprob_y)(x, y_t, design) #/ alpha_t
-            guidance = self.forward_model.grad_logprob_y(x, y_t, design) / alpha_t
+            guidance = self.forward_model.grad_logprob_y(x, y_t, design_mask) / alpha_t
             return guidance + self.score(x, t)
 
-        return posterior_logpdf
+        return _posterior_logpdf
 
     def pooled_posterior_logpdf(
         self,
@@ -80,6 +80,7 @@ class CondDenoiser:
         y_cntrst: Array,
         y_past: Array,
         design: Array,
+        mask_history: Array,
     ):
         rng_key1, rng_key2 = jax.random.split(rng_key)
         vec_noiser = jax.vmap(
@@ -88,22 +89,23 @@ class CondDenoiser:
         y_t = vec_noiser(
             self.forward_model.make(design), rng_key1, SDEState(y_cntrst, 0), t
         ).position
+        mask = self.forward_model.make(design)
 
         # will be called backward in time
         # with t = tf - t, t from 0 to tf
-        def pooled_posterior_logpdf(x, t):
+        def _pooled_posterior_logpdf(x, t):
             tf = self.sde.tf
             alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t))
             guidance = jax.vmap(
                 #jax.grad(self.forward_model.logprob_y), in_axes=(None, 0, None)
                 self.forward_model.grad_logprob_y, in_axes=(None, 0, None)
-            )(x, y_t, design) / alpha_t
-            past_contribution = self.posterior_logpdf(rng_key2, t, y_past, design)
+            )(x, y_t, mask) / alpha_t
+            past_contribution = self.posterior_logpdf(rng_key2, t, y_past, mask_history)
             # import pdb; pdb.set_trace()
             # jax.debug.print("guidance: {}", guidance)
             return guidance.mean(axis=0) + past_contribution(x, t)
 
-        return pooled_posterior_logpdf
+        return _pooled_posterior_logpdf
 
     def y_noiser(
         self, mask: Array, key: PRNGKeyArray, state: SDEState, ts: float

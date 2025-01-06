@@ -15,6 +15,8 @@ class SquareMask:
 
     def make(self, xi: Array) -> Array:
         """Create a differentiable square mask."""
+        # assert xi is a 2D array
+        assert xi.shape[0] == 2
         height, width, *_ = self.img_shape
         y, x = jnp.mgrid[:height, :width]
 
@@ -73,10 +75,10 @@ class SquareMask:
         )  # returns shape (batch,)
 
     def grad_logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
-        meas_x = self.measure(design, theta)
+        meas_x = self.measure_from_mask(design, theta)
         #jax.experimental.io_callback(sigle_plot, None, y)
         # jax.experimental.io_callback(sigle_plot, None, meas_x)
-        return self.restore(design, jnp.zeros_like(theta), (y - meas_x)) / self.sigma
+        return self.restore_from_mask(design, jnp.zeros_like(theta), (y - meas_x)) / self.sigma
 
     def init_design(self, rng_key: PRNGKeyArray) -> Array:
         return jax.random.uniform(rng_key, (2,), minval=0, maxval=28)
