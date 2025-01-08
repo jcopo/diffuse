@@ -166,3 +166,5 @@ runs/*
 *.out
 
 .idea/
+rsync.batch
+outputs/

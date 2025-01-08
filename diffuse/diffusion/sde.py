@@ -6,11 +6,6 @@ from typing import Callable, NamedTuple
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray, PyTreeDef, Array
-from diffrax import Dopri5, PIDController, diffeqsolve
-
-solver = Dopri5()
-controller = PIDController(rtol=1e-3, atol=1e-6)
-ode_solver = partial(diffeqsolve, solver=solver, stepsize_controller=controller)
 
 
 class SDEState(NamedTuple):
@@ -89,6 +84,12 @@ class SDE:
         alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
 
         return -(x - alpha * x0) / beta
+    
+    def tweedie(self, state: SDEState, score: Callable) -> SDEState:
+        x, t = state.position, state.t
+        int_b = self.beta.integrate(t, self.beta.t0).squeeze()
+        alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
+        return SDEState(x + beta * score(x, t) / alpha, self.beta.t0)
 
     def path(self, key: PRNGKeyArray, state: SDEState, ts: float) -> SDEState:
         r"""
