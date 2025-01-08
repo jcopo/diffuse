@@ -25,10 +25,7 @@ class Denoiser:
     deterministic: bool = False
 
     def init(self, position: Array, rng_key: PRNGKeyArray, dt: float) -> DenoiserState:
-        if self.deterministic:
-            integrator_state = self.integrator.init(position, 0.0, dt)
-        else:
-            integrator_state = self.integrator.init(position, rng_key, 0.0, dt)
+        integrator_state = self.integrator.init(position, rng_key, 0.0, dt)
         return DenoiserState(integrator_state)
 
     def step(

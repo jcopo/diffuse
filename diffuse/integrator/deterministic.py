@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 import jax.numpy as jnp
-from jaxtyping import Array
+from jaxtyping import Array, PRNGKeyArray
 
 from diffuse.integrator.base import IntegratorState
 from diffuse.diffusion.sde import SDE, SDEState
@@ -17,7 +17,7 @@ class Euler:
     """Euler deterministic integrator for ODEs"""
     sde: SDE
 
-    def init(self, position: Array, t: float, dt: float) -> EulerState:
+    def init(self, position: Array, rng_key: PRNGKeyArray, t: float, dt: float) -> EulerState:
         """Initialize integrator state with position, timestep and step size"""
         return EulerState(position, t, dt)
 
@@ -33,7 +33,7 @@ class DPMpp2sIntegrator:
     """DPM++-P2S integrator for SDEs"""
     sde: SDE
 
-    def init(self, position: Array, t: float, dt: float) -> EulerState:
+    def init(self, position: Array, rng_key: PRNGKeyArray, t: float, dt: float) -> EulerState:
         """Initialize integrator state with position, timestep and step size"""
         return EulerState(position, t, dt)
     
