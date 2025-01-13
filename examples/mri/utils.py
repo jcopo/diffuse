@@ -1,12 +1,15 @@
 from dataclasses import dataclass
 from functools import partial
 
+from diffuse.base_forward_model import MeasurementState
+
 import jax
 import jax.numpy as jnp
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 from jaxtyping import Array
+import einops
 
 
 def slice_fourier(mri_slice):
@@ -103,35 +106,43 @@ class maskSpiral:
     def restore(self, xi: float, x: Array, measured: Array):
         return self.restore_from_mask(self.make(xi), x, measured)
 
+    def init_measurement(self) -> MeasurementState:
+        y = jnp.zeros(self.img_shape)
+        mask_history = jnp.zeros_like(self.make(jnp.array([0.0, 0.0])))
+        return MeasurementState(y=y, mask_history=mask_history)
+
     def supp_mask(self, xi: float, hist_mask: Array, new_mask: Array):
         inv_mask = 1 - self.make(xi)
         return hist_mask * inv_mask + new_mask
 
-    def supp_measure(self, sq_fov: float, old_measure: Array, new_measure: Array):
-        inv_mask = 1 - self.make(sq_fov)
-        supp = old_measure[..., 0] * inv_mask + new_measure[..., 0]
-        return jnp.stack([supp, old_measure[..., 1]], axis=-1)
+    def update_measurement(
+        self, measurement_state: MeasurementState, new_measurement: Array, design: Array
+    ) -> MeasurementState:
+        joint_y = self.restore(design, measurement_state.y, new_measurement)
+        mask_history = self.supp_mask(
+            design, measurement_state.mask_history, self.make(design)
+        )
+        return MeasurementState(y=joint_y, mask_history=mask_history)
+
+    def logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
+        f_y = self.measure(design, theta)
+
+        f_y_flat = einops.rearrange(f_y, "... h w c -> ... (h w c)")
+        y_flat = einops.rearrange(y, "... h w c -> ... (h w c)")
+
+        return log_complex_normal_pdf(y_flat, f_y_flat)
 
 
-@dataclass
-class maskAno:
-    img_shape: tuple
+@partial(jax.vmap, in_axes=(0, 0))
+def log_complex_normal_pdf(z: Array, mu: Array) -> Array:
+    diff = z - mu
 
-    def make(self, xi: float):
-        return jnp.stack([jnp.ones(self.img_shape), jnp.zeros(self.img_shape)], axis=-1)
+    # Log PDF = -n*log(pi) - |z-mu|^2
+    n = jnp.size(z)
+    log_norm_const = -n * jnp.log(jnp.pi)
+    log_exp_term = -(jnp.abs(diff) ** 2)
 
-    def measure_from_mask(self, hist_mask: Array, x: Array):
-        return x * hist_mask
-
-    def measure(self, xi: float, x: Array):
-        return self.measure_from_mask(self.make(xi), x)
-
-    def restore_from_mask(self, hist_mask: Array, x: Array, measured: Array):
-        return x * hist_mask + measured
-
-    def restore(self, xi: float, x: Array, measured: Array):
-        inv_mask = 1 - self.make(xi)
-        return self.restore_from_mask(inv_mask, x, measured)
+    return jnp.real(log_norm_const + log_exp_term)
 
 
 def plotter_line_measure(array):

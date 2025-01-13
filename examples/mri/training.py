@@ -8,10 +8,6 @@ import jax.numpy as jnp
 import optax
 from optax import EmaState, EmptyState, ScaleByAdamState, ScaleByScheduleState
 
-sys.path.append(
-    os.path.abspath("/lustre/fswork/projects/rech/hlp/uha64uw/projet_p/diffuse")
-)
-
 import numpy as np
 import yaml
 from torchio.utils import get_first_item
@@ -34,7 +30,7 @@ def train(config, train_loader, continue_training=False):
     key = jax.random.PRNGKey(0)
 
     beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
-    sde = SDE(beta)
+    sde = SDE(beta, tf=2.0)
 
     nn_unet = UNet(config["tf"] / config["n_t"], 64, upsampling="pixel_shuffle")
 
@@ -95,13 +91,15 @@ def train(config, train_loader, continue_training=False):
                 ScaleByScheduleState(checkpoint["opt_state_3"][0]),
             ),
         )
+        iterator_epoch = range(config["begin_epoch"], config["n_epochs"])
 
     else:
         params = init_params
         opt_state = optimizer.init(params)
         ema_state = ema_kernel.init(params)
+        iterator_epoch = range(config["n_epochs"])
 
-    for epoch in range(config["n_epochs"]):
+    for epoch in iterator_epoch:
         list_loss = []
         iterator = tqdm(train_loader, desc="Training", file=sys.stdout)
 
