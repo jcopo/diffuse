@@ -99,7 +99,8 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
 
      # Conditional Denoiser
     integrator = EulerMaruyama(sde)
-    denoiser = CondDenoiser(integrator, sde, nn_score, mask)
+    resample = True
+    denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
 
     # init design
     measurement_state = mask.init_measurement()

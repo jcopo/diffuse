@@ -85,9 +85,7 @@ class ExperimentOptimizer:
         t = state.denoiser_state.integrator_state.t
         dt = state.denoiser_state.integrator_state.dt
         score_likelihood = self.denoiser.posterior_logpdf(rng_key, t , y, mask_history)
-        denoiser_state = _vmapper(self.denoiser.step, denoiser_state)(
-            denoiser_state, score_likelihood
-        )
+        denoiser_state = self.denoiser.batch_step(rng_key, denoiser_state, score_likelihood, measurement_state)
 
         # update design
         thetas = denoiser_state.integrator_state.position
@@ -101,10 +99,7 @@ class ExperimentOptimizer:
         score_likelihood = self.denoiser.pooled_posterior_logpdf(
             key_t, t + dt, y_cntrst, y, design, mask_history
         )
-        #jax.experimental.io_callback( plot_lines, None, y_cntrst, t)
-        cntrst_denoiser_state = _vmapper(self.denoiser.step, cntrst_denoiser_state)(
-            cntrst_denoiser_state, score_likelihood
-        )
+        cntrst_denoiser_state = self.denoiser.batch_step(rng_key, cntrst_denoiser_state, score_likelihood, measurement_state)
         denoiser_state, cntrst_denoiser_state = _fix_time(denoiser_state, cntrst_denoiser_state)
 
         return BEDState(

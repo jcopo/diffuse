@@ -1,14 +1,51 @@
 from dataclasses import dataclass
 from typing import Callable, Tuple, NamedTuple
 
+import einops
 import jax
+import jax.experimental
 import jax.numpy as jnp
+import jax.scipy as jsp
 from jaxtyping import Array, PRNGKeyArray
 from blackjax.smc.resampling import stratified
 
 from diffuse.integrator.base import Integrator, IntegratorState
 from diffuse.diffusion.sde import SDE, SDEState
-from diffuse.base_forward_model import ForwardModel
+from diffuse.base_forward_model import ForwardModel, MeasurementState
+from diffuse.utils.plotting import sigle_plot
+
+def _vmapper(fn, type):
+    def _set_axes(path, value):
+        # Vectorize only particles and rng_key fields
+        if any(field in str(path) for field in ["position", "rng_key", "weights"]):
+            return 0
+        return None
+
+    # Create tree with selective vectorization
+    in_axes = jax.tree_util.tree_map_with_path(_set_axes, type)
+    return jax.vmap(fn, in_axes=(in_axes, None))
+
+def ess(log_weights: Array) -> float:
+    return jnp.exp(log_ess(log_weights))
+
+
+def log_ess(log_weights: Array) -> float:
+    """Compute the effective sample size.
+
+    Parameters
+    ----------
+    log_weights: 1D Array
+        log-weights of the sample
+
+    Returns
+    -------
+    log_ess: float
+        The logarithm of the effective sample size
+
+    """
+    return 2 * jsp.special.logsumexp(log_weights) - jsp.special.logsumexp(
+        2 * log_weights
+    )
 
 
 class CondDenoiserState(NamedTuple):
@@ -47,10 +84,39 @@ class CondDenoiser:
         integrator_state, weights = state
         integrator_state_next = self.integrator(integrator_state, score)
 
-        position = integrator_state_next.position
-        # if self._resample:
-        #     weights = self.logpdf(integrator_state_next, integrator_state)
-        #     position, weights = self._resampling(position, weights, rng_key)
+        return CondDenoiserState(integrator_state_next, weights)
+
+    def batch_step(
+        self, rng_key: PRNGKeyArray, state: CondDenoiserState, score: Callable[[Array, float], Array], measurement_state: MeasurementState
+    ) -> CondDenoiserState:
+        r"""
+        batch step for conditional diffusion
+        """
+        # vmap over position, rng_key, weights
+        state_next = _vmapper(self.step, state)(state, score)
+        integrator_state_next = state_next.integrator_state
+        integrator_state, weights = state.integrator_state, state.weights
+
+        mask = measurement_state.mask_history
+        y = measurement_state.y
+        t = integrator_state.t
+        tf = self.sde.tf
+
+        # resample if necessary
+        if self._resample:
+            position = integrator_state_next.position
+            weights = state_next.weights
+            y_noised = self.y_noiser(mask, rng_key, SDEState(y, 0), tf-t).position
+            A_theta = self.forward_model.measure_from_mask(mask, position)
+
+            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t))
+            #jax.experimental.io_callback(sigle_plot, None, y_noised)
+            logsprobs = jax.scipy.stats.norm.logpdf(y_noised, A_theta, alpha_t)
+            logsprobs = self.forward_model.measure_from_mask(mask, logsprobs)
+            logsprobs = einops.reduce(logsprobs, "t ... -> t ", "sum")
+
+
+            position, weights = self._resampling(position, logsprobs, rng_key)
 
         return CondDenoiserState(integrator_state_next, weights)
 
@@ -86,10 +152,11 @@ class CondDenoiser:
         vec_noiser = jax.vmap(
             self.y_noiser, in_axes=(None, None, SDEState(0, None), None)
         )
-        y_t = vec_noiser(
-            self.forward_model.make(design), rng_key1, SDEState(y_cntrst, 0), t
-        ).position
         mask = self.forward_model.make(design)
+
+        y_t = vec_noiser(
+            mask, rng_key1, SDEState(y_cntrst, 0), t
+        ).position
 
         # will be called backward in time
         # with t = tf - t, t from 0 to tf
@@ -125,11 +192,11 @@ class CondDenoiser:
         return SDEState(res, ts)
 
     def _resampling(
-        self, position: Array, weights: Array, rng_key: PRNGKeyArray
+        self, position: Array, log_weights: Array, rng_key: PRNGKeyArray
     ) -> Tuple[Array, Array]:
         """Resample particles based on weights if effective sample size is in target range"""
-        _norm = jax.scipy.special.logsumexp(weights, axis=0)
-        log_weights = weights - _norm
+        _norm = jax.scipy.special.logsumexp(log_weights, axis=0)
+        log_weights = log_weights - _norm
         weights = jnp.exp(log_weights)
 
         ess_val = ess(log_weights)
@@ -137,9 +204,10 @@ class CondDenoiser:
         key_resample = jax.random.split(rng_key)[1]
         idx = stratified(key_resample, weights, n_particles)
 
+        # jax.debug.print("ess_val: {}", ess_val/n_particles)
         return jax.lax.cond(
             (ess_val < 0.6 * n_particles) & (ess_val > 0.2 * n_particles),
-            lambda x: (x[idx], weights[idx]),
-            lambda x: (x, weights),
+            lambda x: (x[idx], log_weights[idx]),
+            lambda x: (x, log_weights),
             position,
         )

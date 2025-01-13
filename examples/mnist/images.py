@@ -11,7 +11,7 @@ from diffuse.utils.plotting import sigle_plot
 class SquareMask:
     size: int
     img_shape: tuple
-    sigma: float = .1
+    sigma: float = 1.
 
     def make(self, xi: Array) -> Array:
         """Create a differentiable square mask."""
