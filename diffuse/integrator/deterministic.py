@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Callable
 
+import jax
 import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray
 
@@ -10,6 +11,7 @@ from diffuse.diffusion.sde import SDE, SDEState
 
 class EulerState(IntegratorState):
     position: Array
+    rng_key: PRNGKeyArray
     t: float
     dt: float
 
@@ -24,31 +26,73 @@ class Euler:
         self, position: Array, rng_key: PRNGKeyArray, t: float, dt: float
     ) -> EulerState:
         """Initialize integrator state with position, timestep and step size"""
-        return EulerState(position, t, dt)
+        return EulerState(position, rng_key, t, dt)
 
     def __call__(self, integrator_state: EulerState, score: Callable) -> EulerState:
         """Perform one Euler integration step: dx = drift*dt"""
-        position, t, dt = integrator_state
+        position, t, dt, rng_key = integrator_state
         drift = self.sde.reverse_drift(integrator_state, score)
         dx = drift * dt
-        return EulerState(position + dx, t + dt, dt)
+        return EulerState(position + dx, rng_key, t + dt, dt)
 
 
 @dataclass
 class DPMpp2sIntegrator:
-    """DPM++-P2S integrator for SDEs"""
+    """DPM++-2S integrator for SDEs"""
 
     sde: SDE
+    stochastic_churn_rate: float = 0.0
+    churn_min: float = 0.05
+    churn_max: float = 1.95
+    noise_inflation_factor: float = 1.0
 
     def init(
         self, position: Array, rng_key: PRNGKeyArray, t: float, dt: float
     ) -> EulerState:
         """Initialize integrator state with position, timestep and step size"""
-        return EulerState(position, t, dt)
+        return EulerState(position, rng_key, t, dt)
+
+    def next_churn_noise_level(self, integrator_state: EulerState) -> float:
+        """Compute the next churn noise level"""
+        _, _, t, dt = integrator_state
+        t = self.sde.tf - t
+        n_steps = self.sde.tf / dt
+        churn_rate = jnp.where(
+            self.stochastic_churn_rate / n_steps - jnp.sqrt(2) + 1 > 0,
+            jnp.sqrt(2) - 1,
+            self.stochastic_churn_rate / n_steps,
+        )
+        churn_rate = jnp.where(
+            t > self.churn_min, jnp.where(t < self.churn_max, churn_rate, 0), 0
+        )
+        return t * (1 + churn_rate)
+
+    def apply_stochastic_churn(self, integrator_state: EulerState) -> EulerState:
+        """Apply stochastic churn to the sample"""
+        position, rng_key, noise_level, dt = integrator_state
+        noise_level = self.sde.tf - noise_level
+        next_noise_level = self.next_churn_noise_level(integrator_state)
+        extra_noise_stddev = (
+            jnp.sqrt(next_noise_level**2 - noise_level**2) * self.noise_inflation_factor
+        )
+        new_position = (
+            position + jax.random.normal(rng_key, position.shape) * extra_noise_stddev
+        )
+        _, rng_key_next = jax.random.split(rng_key)
+
+        return EulerState(
+            new_position, rng_key_next, self.sde.tf - next_noise_level, dt
+        )
 
     def __call__(self, integrator_state: EulerState, score: Callable) -> EulerState:
-        """Perform one DPM++-P2S integration step"""
-        position, t, dt = integrator_state
+        """Perform one DPM++-2S integration step"""
+        integrator_state = jax.lax.cond(
+            self.stochastic_churn_rate > 0,
+            self.apply_stochastic_churn,
+            lambda x: x,
+            integrator_state,
+        )
+        position, rng_key, t, dt = integrator_state
         t0 = self.sde.beta.t0
         current_t = t + dt
         mid_t = (t + current_t) / 2
@@ -93,5 +137,8 @@ class DPMpp2sIntegrator:
         )
 
         # Handle edge case when t = tf
-        next_position = jnp.where((self.sde.tf - current_t) < 1e-5, position, next_position)
-        return EulerState(next_position, current_t, dt)
+        next_position = jnp.where(
+            (self.sde.tf - current_t) < 1e-5, position, next_position
+        )
+        _, rng_key_next = jax.random.split(rng_key)
+        return EulerState(next_position, rng_key_next, current_t, dt)
