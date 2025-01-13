@@ -36,6 +36,38 @@ def generate_spiral_2D(N=1, num_samples=1000, k_max=1.0, FOV=1.0, angle_offset=0
     return kx, ky
 
 
+def generate_radial_2D(N=1, num_samples=1000, angle_offset: float = 0.0):
+    """Generate radial k-space sampling pattern."""
+    # Convert angle offset to radians
+    angle_offset_rad = jnp.deg2rad(angle_offset)
+
+    # Generate angles evenly spaced from 0 to π, excluding π
+    angles = jnp.linspace(0, jnp.pi, N + 1)[:-1] + angle_offset_rad
+
+    # Generate base radial points
+    r = jnp.linspace(
+        -jnp.sqrt(2), jnp.sqrt(2), num_samples
+    )  # Scale by √2 to ensure reaching corners
+
+    # Create meshgrid of r and angles
+    r_mesh, theta_mesh = jnp.meshgrid(r, angles)
+
+    # Convert to Cartesian coordinates for original angles
+    kx = (r_mesh * jnp.cos(theta_mesh)).ravel()
+    ky = (r_mesh * jnp.sin(theta_mesh)).ravel()
+
+    # Add perpendicular lines
+    theta_mesh_perp = theta_mesh + jnp.pi / 2
+    kx_perp = (r_mesh * jnp.cos(theta_mesh_perp)).ravel()
+    ky_perp = (r_mesh * jnp.sin(theta_mesh_perp)).ravel()
+
+    # Concatenate original and perpendicular lines
+    kx = jnp.concatenate([kx, kx_perp])
+    ky = jnp.concatenate([ky, ky_perp])
+
+    return kx, ky
+
+
 @partial(jax.vmap, in_axes=(0, 0, None, None, None))
 def gaussian_kernel(kx_i, ky_i, x, y, sigma=0.3):
     distances = ((x - kx_i) ** 2 + (y - ky_i) ** 2) / (2 * sigma**2)
@@ -59,22 +91,10 @@ def grid(kx, ky, size, sigma=0.3, sharpness=400.0):
     return grid
 
 
-@dataclass
-class maskSpiral:
+class baseMask:
     img_shape: tuple
-    num_spiral: int
     num_samples: int
     sigma: float
-
-    def make(self, xi: float):
-        fov = xi[0] ** 2
-        k_max = xi[1]
-        angle_offset = xi[2]
-
-        kx, ky = generate_spiral_2D(
-            self.num_spiral, self.num_samples, k_max, fov, angle_offset
-        )
-        return grid(kx, ky, self.img_shape, self.sigma)
 
     def measure_from_mask(self, hist_mask: Array, x: Array):
         fourier_x = hist_mask * slice_fourier(x[..., 0])
@@ -133,6 +153,38 @@ class maskSpiral:
         return log_complex_normal_pdf(y_flat, f_y_flat)
 
 
+@dataclass
+class maskSpiral(baseMask):
+    num_spiral: int
+    img_shape: tuple
+    num_samples: int
+    sigma: float
+
+    def make(self, xi: float):
+        fov = xi[0] ** 2
+        k_max = xi[1]
+        angle_offset = xi[2]
+
+        kx, ky = generate_spiral_2D(
+            self.num_spiral, self.num_samples, k_max, fov, angle_offset
+        )
+        return grid(kx, ky, self.img_shape, self.sigma)
+
+
+@dataclass
+class maskRadial(baseMask):
+    num_lines: int
+    img_shape: tuple
+    num_samples: int
+    sigma: float
+
+    def make(self, xi: float):
+        angle_offset = xi[0]
+
+        kx, ky = generate_radial_2D(self.num_lines, self.num_samples, angle_offset)
+        return grid(kx, ky, self.img_shape, self.sigma)
+
+
 @partial(jax.vmap, in_axes=(0, 0))
 def log_complex_normal_pdf(z: Array, mu: Array) -> Array:
     diff = z - mu
@@ -143,52 +195,3 @@ def log_complex_normal_pdf(z: Array, mu: Array) -> Array:
     log_exp_term = -(jnp.abs(diff) ** 2)
 
     return jnp.real(log_norm_const + log_exp_term)
-
-
-def plotter_line_measure(array):
-    total_frames = len(array)
-
-    # Define the fractions
-    fractions = [0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
-    n = len(fractions)
-    # Create a figure with subplots
-    fig, axs = plt.subplots(1, n, figsize=(n * 3, n))
-
-    for idx, fraction in enumerate(fractions):
-        # Calculate the frame index
-        frame_index = int(fraction * total_frames)
-
-        # Plot the image
-        axs[idx].imshow(array[frame_index][..., 0], cmap="gray")
-        axs[idx].set_title(f"Frame at {fraction*100}% of total")
-        axs[idx].axis("off")  # Turn off axis labels
-
-    plt.tight_layout()
-    plt.show()
-
-
-def plotter_line_obs(array):
-    total_frames = len(array)
-
-    # Define the fractions
-    fractions = [0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
-    n = len(fractions)
-    # Create a figure with subplots
-    fig, axs = plt.subplots(1, n, figsize=(n * 3, n))
-
-    for idx, fraction in enumerate(fractions):
-        # Calculate the frame index
-        frame_index = int(fraction * total_frames)
-
-        # Plot the image
-        y = np.real(np.abs(array[frame_index][..., 0]))
-        axs[idx].imshow(
-            y,
-            cmap="gray",
-            norm=matplotlib.colors.LogNorm(vmin=np.min(y), vmax=np.max(y)),
-        )
-        axs[idx].set_title(f"Frame at {fraction*100}% of total")
-        axs[idx].axis("off")  # Turn off axis labels
-
-    plt.tight_layout()
-    plt.show()
