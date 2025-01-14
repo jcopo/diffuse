@@ -144,6 +144,12 @@ def sigle_plot(array):
     plt.colorbar()
     plt.show()
 
+def sigle_plot_fourier(array):
+    plt.imshow(jnp.log10(array[..., 0] + 1j * array[..., 1]), cmap="gray")
+    plt.axis("off")
+    plt.colorbar()
+    plt.show()
+
 
 def plot_samples(thetas, cntrst_thetas, weights, weights_c, past_y, y_c):
     total_frames = len(thetas)
