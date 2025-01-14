@@ -4,7 +4,6 @@ save_path: "/lustre/fswork/projects/rech/hlp/uha64uw/sharingan/data/BRATS/models
 dataset: "brats"
 
 n_epochs: 4000
-begin_epoch: 326
 batch_size: 64
 num_workers: 0
 

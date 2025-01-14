@@ -168,3 +168,5 @@ runs/*
 .idea/
 rsync.batch
 outputs/
+examples/mri/sandbox_local.ipynb
+examples/mri/sandbox_mri.ipynb

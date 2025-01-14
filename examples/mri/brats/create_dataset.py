@@ -6,9 +6,6 @@ import torchio as tio
 import os
 
 
-# def numpy_collate(batch):
-#     collated_batch = data.default_collate(batch)
-#     return np.asarray(collated_batch["vol"]).squeeze(1)
 def numpy_collate(batch):
     collated_batch = data.default_collate(batch)
     vol = np.asarray(collated_batch["vol"]).squeeze(1)
