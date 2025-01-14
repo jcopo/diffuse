@@ -91,6 +91,48 @@ def evaluate_metrics(grande_truite, theta_infered, weights_infered):
     return psnr_score, ssim_score
 
 
+def plot_and_log_iteration(ground_truth, optimal_state, measurement_state, hist, n_meas,
+                          logger_metrics_fn=None, plotter_theta=None, plotter_contrastive=None):
+    """Handle plotting and logging for each iteration of the experiment."""
+    # Calculate metrics
+    psnr_score, ssim_score = evaluate_metrics(
+        ground_truth,
+        optimal_state.denoiser_state.integrator_state.position,
+        optimal_state.denoiser_state.weights
+    )
+
+    # Log metrics
+    if logger_metrics_fn:
+        jax.experimental.io_callback(
+            logger_metrics_fn, None, psnr_score, ssim_score, n_meas
+        )
+
+    # Plot theta samples
+    if plotter_theta:
+        jax.experimental.io_callback(
+            plotter_theta,
+            None,
+            hist,
+            ground_truth,
+            measurement_state.y,
+            optimal_state.denoiser_state.integrator_state.position,
+            optimal_state.denoiser_state.weights,
+            n_meas,
+        )
+
+    # Plot contrastive samples
+    if plotter_contrastive:
+        jax.experimental.io_callback(
+            plotter_contrastive,
+            None,
+            hist,
+            ground_truth,
+            measurement_state.y,
+            optimal_state.cntrst_denoiser_state.integrator_state.position,
+            optimal_state.cntrst_denoiser_state.weights,
+            n_meas,
+        )
+
 def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
          plotter_theta=None, plotter_contrastive=None, logger_metrics=None):
     # Initialize experiment forward model
@@ -128,45 +170,18 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
 
         sigle_plot(measurement_state.mask_history)
         sigle_plot(measurement_state.y)
+
         if plot:
-            # Calculate metrics
-            psnr_score, ssim_score = evaluate_metrics(
+            plot_and_log_iteration(
                 ground_truth,
-                optimal_state.denoiser_state.integrator_state.position,
-                optimal_state.denoiser_state.weights
+                optimal_state,
+                measurement_state,
+                hist,
+                n_meas,
+                logger_metrics,
+                plotter_theta,
+                plotter_contrastive
             )
-
-            # Log metrics
-            if logger_metrics:
-                jax.experimental.io_callback(
-                    logger_metrics, None, psnr_score, ssim_score, n_meas
-                )
-
-            # Plot theta samples
-            if plotter_theta:
-                jax.experimental.io_callback(
-                    plotter_theta,
-                    None,
-                    hist,
-                    ground_truth,
-                    measurement_state.y,
-                    optimal_state.denoiser_state.integrator_state.position,
-                    optimal_state.denoiser_state.weights,
-                    n_meas,
-                )
-
-            # Plot contrastive samples
-            if plotter_contrastive:
-                jax.experimental.io_callback(
-                    plotter_contrastive,
-                    None,
-                    hist,
-                    ground_truth,
-                    measurement_state.y,
-                    optimal_state.cntrst_denoiser_state.integrator_state.position,
-                    optimal_state.cntrst_denoiser_state.weights,
-                    n_meas,
-                )
 
         exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst, dt)
         key, _ = jax.random.split(key)

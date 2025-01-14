@@ -1,20 +1,23 @@
 from dataclasses import dataclass
-from typing import Callable, Tuple
+from typing import Callable, Tuple, NamedTuple
 
 import einops
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray
 
-from diffuse.denoisers.base import BaseCondDenoiser
 from diffuse.integrator.base import Integrator, IntegratorState
 from diffuse.diffusion.sde import SDE, SDEState
 from diffuse.base_forward_model import ForwardModel, MeasurementState
 
 
+class PnPDenoiserState(NamedTuple):
+    position: Array
+    log_weights: Array
+
 
 @dataclass
-class CondDenoiser(BaseCondDenoiser):
+class PnPDenoiser:
     """Conditional denoiser implementation"""
 
     # Required attributes from base class
@@ -26,23 +29,23 @@ class CondDenoiser(BaseCondDenoiser):
 
     def init(
         self, position: Array, rng_key: PRNGKeyArray, dt: float
-    ) -> CondDenoiserState:
+    ) -> PnPDenoiserState:
         """Initialize denoiser state"""
         pass
 
     def step(
-        self, state: CondDenoiserState, score: Callable[[Array, float], Array]
-    ) -> CondDenoiserState:
+        self, state: PnPDenoiserState, score: Callable[[Array, float], Array]
+    ) -> PnPDenoiserState:
         """Single step update"""
         pass
 
     def batch_step(
         self,
         rng_key: PRNGKeyArray,
-        state: CondDenoiserState,
+        state: PnPDenoiserState,
         score: Callable[[Array, float], Array],
         measurement_state: MeasurementState,
-    ) -> CondDenoiserState:
+    ) -> PnPDenoiserState:
         """Batch update step"""
         pass
 
