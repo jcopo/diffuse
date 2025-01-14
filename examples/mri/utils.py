@@ -13,11 +13,13 @@ import einops
 
 
 def slice_fourier(mri_slice):
-    return jnp.fft.fftshift(jnp.fft.fft2(mri_slice))
+    f = jnp.fft.fftshift(jnp.fft.fft2(mri_slice, norm="ortho"))
+    return jnp.stack([jnp.real(f), jnp.imag(f)], axis=-1)
 
 
 def slice_inverse_fourier(fourier_transform):
-    return jnp.real(jnp.fft.ifft2(jnp.fft.ifftshift(fourier_transform)))
+    fourier_transform = fourier_transform[..., 0] + 1j * fourier_transform[..., 1]
+    return jnp.real(jnp.fft.ifft2(jnp.fft.ifftshift(fourier_transform), norm="ortho"))
 
 
 def generate_spiral_2D(N=1, num_samples=1000, k_max=1.0, FOV=1.0, angle_offset=0.0):
@@ -97,10 +99,11 @@ class baseMask:
     sigma: float
 
     def measure_from_mask(self, hist_mask: Array, x: Array):
-        fourier_x = hist_mask * slice_fourier(x[..., 0])
-        zero_channel = jnp.zeros_like(fourier_x)
-        return jnp.stack([fourier_x, zero_channel], axis=-1)
-
+        fourier_x = jnp.einsum("ij,ijk->ijk", hist_mask, slice_fourier(x[..., 0]))
+        # fourier_x = hist_mask * slice_fourier(x[..., 0])
+        # zero_channel = jnp.zeros_like(fourier_x)
+        # return jnp.stack([fourier_x, zero_channel], axis=-1)
+        return fourier_x
     def measure(self, xi: float, x: Array):
         return self.measure_from_mask(self.make(xi), x)
 
@@ -112,10 +115,11 @@ class baseMask:
         fourier_x = slice_fourier(x[..., 0])
 
         # On masque les éléments observés
-        masked_inv_fourier_x = inv_mask * fourier_x
+        # masked_inv_fourier_x = inv_mask * fourier_x
+        masked_inv_fourier_x = jnp.einsum("ij,ijk->ijk", inv_mask, fourier_x)
 
         # On retrouve l'image originale
-        img = slice_inverse_fourier(masked_inv_fourier_x + measured[..., 0])
+        img = slice_inverse_fourier(masked_inv_fourier_x + measured)
 
         anomaly_map = jnp.real(x[..., 1])
 
