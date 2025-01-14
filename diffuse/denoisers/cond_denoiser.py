@@ -75,18 +75,24 @@ class CondDenoiser:
         )
         return CondDenoiserState(integrator_state, weights)
     
-    def generate(self, rng_key: PRNGKeyArray, forward_model: ForwardModel, measurement_state: MeasurementState, design: Array, n_steps: int):
-        rng_key, rng_key_start = jax.random.split(rng_key)
+    def generate(self, rng_key: PRNGKeyArray, forward_model: ForwardModel, measurement_state: MeasurementState, design: Array, n_steps: int, n_particles: int):
         dt = self.sde.tf / n_steps
-        state = self.init(measurement_state.y, rng_key_start, dt)
 
-        def body_fun(state: CondDenoiserState, _):
-            posterior = self.posterior_logpdf(rng_key, state.integrator_state.t, measurement_state.y, forward_model.make(design))
-            state_next = self.batch_step(rng_key, state, posterior, measurement_state)
-            return state_next, state_next.integrator_state.position
+        key, subkey = jax.random.split(rng_key)
+        cntrst_thetas = jax.random.normal(subkey, (n_particles, *measurement_state.y.shape))
 
-        return jax.lax.scan(body_fun, state, jnp.arange(n_steps))
+        key, subkey = jax.random.split(key)
+        state = self.init(cntrst_thetas, subkey, dt)
 
+        
+        def body_fun(state: CondDenoiserState, key: PRNGKeyArray):
+            posterior = self.posterior_logpdf(key, measurement_state.y, forward_model.make(design))
+            state_next = self.batch_step(key, state, posterior, measurement_state)
+            return _fix_time(state_next), state_next.integrator_state.position
+        
+        keys = jax.random.split(key, n_steps)
+        return jax.lax.scan(body_fun, state, keys)
+    
     def step(
         self, state: CondDenoiserState, score: Callable[[Array, float], Array]
     ) -> CondDenoiserState:
@@ -94,7 +100,6 @@ class CondDenoiser:
         sample p(\theta_t-1 | \theta_t, \y_t-1, \xi)
         """
         integrator_state, weights = state
-        import pdb; pdb.set_trace()
         integrator_state_next = self.integrator(integrator_state, score)
 
         return CondDenoiserState(integrator_state_next, weights)
@@ -221,3 +226,14 @@ class CondDenoiser:
             lambda x: (x, log_weights),
             position,
         )
+
+
+def _fix_time(denoiser_state: CondDenoiserState):
+    # Create new integrator states with fixed time
+    new_denoiser_integrator = denoiser_state.integrator_state._replace(
+        t=denoiser_state.integrator_state.t[0],
+        dt=denoiser_state.integrator_state.dt[0]
+    )
+
+    # Return new denoiser states with updated integrator states
+    return denoiser_state._replace(integrator_state=new_denoiser_integrator)
