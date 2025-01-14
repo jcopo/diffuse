@@ -145,7 +145,7 @@ def sigle_plot(array):
     plt.show()
 
 def sigle_plot_fourier(array):
-    plt.imshow(jnp.log10(array[..., 0] + 1j * array[..., 1]), cmap="gray")
+    plt.imshow(jnp.log10(jnp.abs(array[..., 0] + 1j * array[..., 1])), cmap="gray")
     plt.axis("off")
     plt.colorbar()
     plt.show()
