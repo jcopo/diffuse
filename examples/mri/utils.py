@@ -97,9 +97,11 @@ class baseMask:
     img_shape: tuple
     num_samples: int
     sigma: float
+    sigma_prob: float = 1.
 
     def measure_from_mask(self, hist_mask: Array, x: Array):
-        fourier_x = jnp.einsum("ij,ijk->ijk", hist_mask, slice_fourier(x[..., 0]))
+        # fourier_x = jnp.einsum("ij,ijk->ijk", hist_mask, slice_fourier(x[..., 0]))
+        fourier_x = hist_mask[..., None] * slice_fourier(x[..., 0])
         # fourier_x = hist_mask * slice_fourier(x[..., 0])
         # zero_channel = jnp.zeros_like(fourier_x)
         # return jnp.stack([fourier_x, zero_channel], axis=-1)
@@ -150,11 +152,16 @@ class baseMask:
 
     def logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
         f_y = self.measure(design, theta)
-
         f_y_flat = einops.rearrange(f_y, "... h w c -> ... (h w c)")
         y_flat = einops.rearrange(y, "... h w c -> ... (h w c)")
 
-        return log_complex_normal_pdf(y_flat, f_y_flat)
+        return jax.scipy.stats.multivariate_normal.logpdf(
+            y_flat, mean=f_y_flat, cov=self.sigma_prob**2
+        )
+    
+    def grad_logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
+        meas_x = self.measure_from_mask(design, theta)
+        return self.restore_from_mask(design, jnp.zeros_like(theta), (y - meas_x)) / self.sigma_prob
 
 
 @dataclass

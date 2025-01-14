@@ -74,6 +74,18 @@ class CondDenoiser:
             position, keys, jnp.array(0.0), jnp.array(dt)
         )
         return CondDenoiserState(integrator_state, weights)
+    
+    def generate(self, rng_key: PRNGKeyArray, forward_model: ForwardModel, measurement_state: MeasurementState, design: Array, n_steps: int):
+        rng_key, rng_key_start = jax.random.split(rng_key)
+        dt = self.sde.tf / n_steps
+        state = self.init(measurement_state.y, rng_key_start, dt)
+
+        def body_fun(state: CondDenoiserState, _):
+            posterior = self.posterior_logpdf(rng_key, state.integrator_state.t, measurement_state.y, forward_model.make(design))
+            state_next = self.batch_step(rng_key, state, posterior, measurement_state)
+            return state_next, state_next.integrator_state.position
+
+        return jax.lax.scan(body_fun, state, jnp.arange(n_steps))
 
     def step(
         self, state: CondDenoiserState, score: Callable[[Array, float], Array]
@@ -82,6 +94,7 @@ class CondDenoiser:
         sample p(\theta_t-1 | \theta_t, \y_t-1, \xi)
         """
         integrator_state, weights = state
+        import pdb; pdb.set_trace()
         integrator_state_next = self.integrator(integrator_state, score)
 
         return CondDenoiserState(integrator_state_next, weights)
@@ -136,6 +149,7 @@ class CondDenoiser:
             return guidance + self.score(x, t)
 
         return _posterior_logpdf
+
 
     def pooled_posterior_logpdf(
         self,
