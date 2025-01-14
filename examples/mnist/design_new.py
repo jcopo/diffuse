@@ -10,6 +10,7 @@ import csv
 from diffuse.neural_network.unet import UNet
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.integrator.stochastic import EulerMaruyama
+from diffuse.integrator.deterministic import DPMpp2sIntegrator
 from diffuse.denoisers.cond_denoiser import CondDenoiser
 from diffuse.bayesian_design import ExperimentOptimizer
 from examples.mnist.images import SquareMask
@@ -32,7 +33,7 @@ def initialize_experiment(key: PRNGKeyArray):
 
     # Initialize parameters
     tf = 2.0
-    n_t = 300
+    n_t = 30
     dt = tf / n_t
 
     # Define beta schedule and SDE
@@ -98,7 +99,8 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
     n_samples_cntrst = 150
 
      # Conditional Denoiser
-    integrator = EulerMaruyama(sde)
+    #integrator = EulerMaruyama(sde)
+    integrator = DPMpp2sIntegrator(sde)
     resample = True
     denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
 

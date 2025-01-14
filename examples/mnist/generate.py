@@ -2,6 +2,7 @@ import jax
 
 from diffuse.denoisers.denoiser import Denoiser
 from diffuse.integrator.stochastic import EulerMaruyama
+from diffuse.integrator.deterministic import DPMpp2sIntegrator
 from diffuse.utils.plotting import plot_lines
 import numpy as np
 import jax.numpy as jnp
@@ -42,7 +43,8 @@ def main(n_samples=150, n_t=300):
     key_init = jax.random.PRNGKey(0)
     sde, ground_truth, tf, n_t, nn_score = initialize_experiment(key_init, n_t)
 
-    integrator = EulerMaruyama(sde=sde)
+    #integrator = EulerMaruyama(sde=sde)
+    integrator = DPMpp2sIntegrator(sde)
     denoiser = Denoiser(
         integrator=integrator,
         sde=sde,
