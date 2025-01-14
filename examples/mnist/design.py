@@ -1,7 +1,7 @@
 import jax
-from jax import numpy as jnp
+import jax.numpy as jnp
 import dm_pix
-
+import pdb
 import optax
 import numpy as np
 import os
@@ -33,7 +33,7 @@ def initialize_experiment(key: PRNGKeyArray):
 
     # Initialize parameters
     tf = 2.0
-    n_t = 30
+    n_t = 300
     dt = tf / n_t
 
     # Define beta schedule and SDE
@@ -139,10 +139,11 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
     sde, mask, ground_truth, dt, n_t, nn_score = initialize_experiment(key)
     n_samples = 151
     n_samples_cntrst = 150
+    n_opt_steps = n_t
 
-     # Conditional Denoiser
-    #integrator = EulerMaruyama(sde)
-    integrator = DPMpp2sIntegrator(sde)
+    # Conditional Denoiser
+    integrator = EulerMaruyama(sde)
+    # integrator = DPMpp2sIntegrator(sde)
     resample = True
     denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
 
@@ -159,7 +160,7 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
 
     for n_meas in range(num_measurements):
         optimal_state, hist = experiment_optimizer.get_design(
-            exp_state, key, measurement_state, n_t
+            exp_state, key, measurement_state, n_steps=n_opt_steps
         )
 
         # make new measurement

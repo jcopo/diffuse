@@ -109,7 +109,7 @@ class CondDenoiser:
             y_noised = self.y_noiser(mask, rng_key, SDEState(y, 0), tf-t).position
             A_theta = self.forward_model.measure_from_mask(mask, position)
 
-            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t))
+            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, t))
             #jax.experimental.io_callback(sigle_plot, None, y_noised)
             logsprobs = jax.scipy.stats.norm.logpdf(y_noised, A_theta, alpha_t)
             logsprobs = self.forward_model.measure_from_mask(mask, logsprobs)
@@ -121,17 +121,15 @@ class CondDenoiser:
         return CondDenoiserState(integrator_state_next, weights)
 
     def posterior_logpdf(
-        self, rng_key: PRNGKeyArray, t: float, y_meas: Array, design_mask: Array
+        self, rng_key: PRNGKeyArray, y_meas: Array, design_mask: Array
     ):
-        tf = self.sde.tf
-        y_t = self.y_noiser(
-            design_mask, rng_key, SDEState(y_meas, 0), tf - t
-        ).position
-
         # will be called backward in time
         # with t = tf - t, t from 0 to tf
         def _posterior_logpdf(x, t):
             tf = self.sde.tf
+            y_t = self.y_noiser(
+                design_mask, rng_key, SDEState(y_meas, 0), t
+            ).position
             alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t))
             #guidance = jax.grad(self.forward_model.logprob_y)(x, y_t, design) #/ alpha_t
             guidance = self.forward_model.grad_logprob_y(x, y_t, design_mask) / alpha_t
@@ -142,7 +140,6 @@ class CondDenoiser:
     def pooled_posterior_logpdf(
         self,
         rng_key: PRNGKeyArray,
-        t: float,
         y_cntrst: Array,
         y_past: Array,
         design: Array,
@@ -154,20 +151,19 @@ class CondDenoiser:
         )
         mask = self.forward_model.make(design)
 
-        y_t = vec_noiser(
-            mask, rng_key1, SDEState(y_cntrst, 0), t
-        ).position
-
         # will be called backward in time
         # with t = tf - t, t from 0 to tf
         def _pooled_posterior_logpdf(x, t):
+            y_t = vec_noiser(
+                mask, rng_key1, SDEState(y_cntrst, 0), t
+            ).position
             tf = self.sde.tf
             alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t))
             guidance = jax.vmap(
                 #jax.grad(self.forward_model.logprob_y), in_axes=(None, 0, None)
                 self.forward_model.grad_logprob_y, in_axes=(None, 0, None)
             )(x, y_t, mask) / alpha_t
-            past_contribution = self.posterior_logpdf(rng_key2, t, y_past, mask_history)
+            past_contribution = self.posterior_logpdf(rng_key2, y_past, mask_history)
             # import pdb; pdb.set_trace()
             # jax.debug.print("guidance: {}", guidance)
             return guidance.mean(axis=0) + past_contribution(x, t)

@@ -82,9 +82,7 @@ class ExperimentOptimizer:
         rng_key, key_t, key_c, key_d = jax.random.split(rng_key, 4)
 
         # step theta
-        t = state.denoiser_state.integrator_state.t
-        dt = state.denoiser_state.integrator_state.dt
-        score_likelihood = self.denoiser.posterior_logpdf(rng_key, t , y, mask_history)
+        score_likelihood = self.denoiser.posterior_logpdf(rng_key, y, mask_history)
         denoiser_state = self.denoiser.batch_step(rng_key, denoiser_state, score_likelihood, measurement_state)
 
         # update design
@@ -97,7 +95,7 @@ class ExperimentOptimizer:
         # jax.experimental.io_callback( plot_lines, None, cntrst_thetas, t)
         # step cntrst_theta
         score_likelihood = self.denoiser.pooled_posterior_logpdf(
-            key_t, t + dt, y_cntrst, y, design, mask_history
+            key_t, y_cntrst, y, design, mask_history
         )
         cntrst_denoiser_state = self.denoiser.batch_step(rng_key, cntrst_denoiser_state, score_likelihood, measurement_state)
         denoiser_state, cntrst_denoiser_state = _fix_time(denoiser_state, cntrst_denoiser_state)
@@ -117,11 +115,27 @@ class ExperimentOptimizer:
         n_steps: int = 100,
     ):
         def step(state, rng_key):
+            tf = self.denoiser.sde.tf
+            t = state.denoiser_state.integrator_state.t
+            state = jax.lax.cond(t >= tf, lambda: restart_state(state, rng_key, self.denoiser), lambda: state)
             state = self.step(state, rng_key, measurement_state)
             return state, state.design
 
         keys = jax.random.split(rng_key, n_steps)
         return jax.lax.scan(step, state, keys)
+
+
+def restart_state(state, rng_key, denoiser):
+    n_thetas = state.denoiser_state.integrator_state.position.shape[0]
+    n_cntrst_thetas = state.cntrst_denoiser_state.integrator_state.position.shape[0]
+    base_shape = state.denoiser_state.integrator_state.position.shape[1:]
+    dt = state.denoiser_state.integrator_state.dt
+    rng_key, rng_key_t, rng_key_c = jax.random.split(rng_key, 3)
+    thetas, cntrst_thetas = _init_start_time(rng_key, n_thetas, n_cntrst_thetas, base_shape)
+    denoiser_state = denoiser.init(thetas, rng_key_t, dt)
+    cntrst_denoiser_state = denoiser.init(cntrst_thetas, rng_key_c, dt)
+    return BEDState(denoiser_state=denoiser_state, cntrst_denoiser_state=cntrst_denoiser_state, design=state.design, opt_state=state.opt_state)
+
 
 
 def _init_start_time(

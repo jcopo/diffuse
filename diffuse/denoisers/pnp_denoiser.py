@@ -13,6 +13,7 @@ from diffuse.base_forward_model import ForwardModel, MeasurementState
 
 class PnPDenoiserState(NamedTuple):
     position: Array
+    auxiliary: Array
     log_weights: Array
 
 
