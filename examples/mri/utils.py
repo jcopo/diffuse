@@ -1,6 +1,7 @@
-import pdb
 from dataclasses import dataclass
 from functools import partial
+
+from diffuse.base_forward_model import MeasurementState
 
 import jax
 import jax.numpy as jnp
@@ -8,6 +9,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 from jaxtyping import Array
+import einops
 
 
 def slice_fourier(mri_slice):
@@ -30,6 +32,38 @@ def generate_spiral_2D(N=1, num_samples=1000, k_max=1.0, FOV=1.0, angle_offset=0
     theta_shifted = theta[:, None] + (2 * jnp.pi * jnp.arange(N) / N) + angle_offset
     kx = (r[:, None] * jnp.cos(theta_shifted)).ravel()
     ky = (r[:, None] * jnp.sin(theta_shifted)).ravel()
+
+    return kx, ky
+
+
+def generate_radial_2D(N=1, num_samples=1000, angle_offset: float = 0.0):
+    """Generate radial k-space sampling pattern."""
+    # Convert angle offset to radians
+    angle_offset_rad = jnp.deg2rad(angle_offset)
+
+    # Generate angles evenly spaced from 0 to π, excluding π
+    angles = jnp.linspace(0, jnp.pi, N + 1)[:-1] + angle_offset_rad
+
+    # Generate base radial points
+    r = jnp.linspace(
+        -jnp.sqrt(2), jnp.sqrt(2), num_samples
+    )  # Scale by √2 to ensure reaching corners
+
+    # Create meshgrid of r and angles
+    r_mesh, theta_mesh = jnp.meshgrid(r, angles)
+
+    # Convert to Cartesian coordinates for original angles
+    kx = (r_mesh * jnp.cos(theta_mesh)).ravel()
+    ky = (r_mesh * jnp.sin(theta_mesh)).ravel()
+
+    # Add perpendicular lines
+    theta_mesh_perp = theta_mesh + jnp.pi / 2
+    kx_perp = (r_mesh * jnp.cos(theta_mesh_perp)).ravel()
+    ky_perp = (r_mesh * jnp.sin(theta_mesh_perp)).ravel()
+
+    # Concatenate original and perpendicular lines
+    kx = jnp.concatenate([kx, kx_perp])
+    ky = jnp.concatenate([ky, ky_perp])
 
     return kx, ky
 
@@ -57,22 +91,10 @@ def grid(kx, ky, size, sigma=0.3, sharpness=400.0):
     return grid
 
 
-@dataclass
-class maskSpiral:
+class baseMask:
     img_shape: tuple
-    num_spiral: int
     num_samples: int
     sigma: float
-
-    def make(self, xi: float):
-        fov = xi[0] ** 2
-        k_max = xi[1]
-        angle_offset = xi[2]
-
-        kx, ky = generate_spiral_2D(
-            self.num_spiral, self.num_samples, k_max, fov, angle_offset
-        )
-        return grid(kx, ky, self.img_shape, self.sigma)
 
     def measure_from_mask(self, hist_mask: Array, x: Array):
         fourier_x = hist_mask * slice_fourier(x[..., 0])
@@ -104,81 +126,72 @@ class maskSpiral:
     def restore(self, xi: float, x: Array, measured: Array):
         return self.restore_from_mask(self.make(xi), x, measured)
 
+    def init_measurement(self) -> MeasurementState:
+        y = jnp.zeros(self.img_shape)
+        mask_history = jnp.zeros_like(self.make(jnp.array([0.0, 0.0])))
+        return MeasurementState(y=y, mask_history=mask_history)
+
     def supp_mask(self, xi: float, hist_mask: Array, new_mask: Array):
         inv_mask = 1 - self.make(xi)
         return hist_mask * inv_mask + new_mask
 
-    def supp_measure(self, sq_fov: float, old_measure: Array, new_measure: Array):
-        inv_mask = 1 - self.make(sq_fov)
-        supp = old_measure[..., 0] * inv_mask + new_measure[..., 0]
-        return jnp.stack([supp, old_measure[..., 1]], axis=-1)
+    def update_measurement(
+        self, measurement_state: MeasurementState, new_measurement: Array, design: Array
+    ) -> MeasurementState:
+        joint_y = self.restore(design, measurement_state.y, new_measurement)
+        mask_history = self.supp_mask(
+            design, measurement_state.mask_history, self.make(design)
+        )
+        return MeasurementState(y=joint_y, mask_history=mask_history)
+
+    def logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
+        f_y = self.measure(design, theta)
+
+        f_y_flat = einops.rearrange(f_y, "... h w c -> ... (h w c)")
+        y_flat = einops.rearrange(y, "... h w c -> ... (h w c)")
+
+        return log_complex_normal_pdf(y_flat, f_y_flat)
 
 
 @dataclass
-class maskAno:
+class maskSpiral(baseMask):
+    num_spiral: int
     img_shape: tuple
+    num_samples: int
+    sigma: float
 
     def make(self, xi: float):
-        return jnp.stack([jnp.ones(self.img_shape), jnp.zeros(self.img_shape)], axis=-1)
+        fov = xi[0] ** 2
+        k_max = xi[1]
+        angle_offset = xi[2]
 
-    def measure_from_mask(self, hist_mask: Array, x: Array):
-        return x * hist_mask
-
-    def measure(self, xi: float, x: Array):
-        return self.measure_from_mask(self.make(xi), x)
-
-    def restore_from_mask(self, hist_mask: Array, x: Array, measured: Array):
-        return x * hist_mask + measured
-
-    def restore(self, xi: float, x: Array, measured: Array):
-        inv_mask = 1 - self.make(xi)
-        return self.restore_from_mask(inv_mask, x, measured)
-
-
-def plotter_line_measure(array):
-    total_frames = len(array)
-
-    # Define the fractions
-    fractions = [0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
-    n = len(fractions)
-    # Create a figure with subplots
-    fig, axs = plt.subplots(1, n, figsize=(n * 3, n))
-
-    for idx, fraction in enumerate(fractions):
-        # Calculate the frame index
-        frame_index = int(fraction * total_frames)
-
-        # Plot the image
-        axs[idx].imshow(array[frame_index][..., 0], cmap="gray")
-        axs[idx].set_title(f"Frame at {fraction*100}% of total")
-        axs[idx].axis("off")  # Turn off axis labels
-
-    plt.tight_layout()
-    plt.show()
-
-
-def plotter_line_obs(array):
-    total_frames = len(array)
-
-    # Define the fractions
-    fractions = [0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
-    n = len(fractions)
-    # Create a figure with subplots
-    fig, axs = plt.subplots(1, n, figsize=(n * 3, n))
-
-    for idx, fraction in enumerate(fractions):
-        # Calculate the frame index
-        frame_index = int(fraction * total_frames)
-
-        # Plot the image
-        y = np.real(np.abs(array[frame_index][..., 0]))
-        axs[idx].imshow(
-            y,
-            cmap="gray",
-            norm=matplotlib.colors.LogNorm(vmin=np.min(y), vmax=np.max(y)),
+        kx, ky = generate_spiral_2D(
+            self.num_spiral, self.num_samples, k_max, fov, angle_offset
         )
-        axs[idx].set_title(f"Frame at {fraction*100}% of total")
-        axs[idx].axis("off")  # Turn off axis labels
+        return grid(kx, ky, self.img_shape, self.sigma)
 
-    plt.tight_layout()
-    plt.show()
+
+@dataclass
+class maskRadial(baseMask):
+    num_lines: int
+    img_shape: tuple
+    num_samples: int
+    sigma: float
+
+    def make(self, xi: float):
+        angle_offset = xi[0]
+
+        kx, ky = generate_radial_2D(self.num_lines, self.num_samples, angle_offset)
+        return grid(kx, ky, self.img_shape, self.sigma)
+
+
+@partial(jax.vmap, in_axes=(0, 0))
+def log_complex_normal_pdf(z: Array, mu: Array) -> Array:
+    diff = z - mu
+
+    # Log PDF = -n*log(pi) - |z-mu|^2
+    n = jnp.size(z)
+    log_norm_const = -n * jnp.log(jnp.pi)
+    log_exp_term = -(jnp.abs(diff) ** 2)
+
+    return jnp.real(log_norm_const + log_exp_term)

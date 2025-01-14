@@ -6,11 +6,6 @@ from typing import Callable, NamedTuple
 import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray, PyTreeDef, Array
-from diffrax import Dopri5, ODETerm, PIDController, diffeqsolve
-
-solver = Dopri5()
-controller = PIDController(rtol=1e-3, atol=1e-6)
-ode_solver = partial(diffeqsolve, solver=solver, stepsize_controller=controller)
 
 
 class SDEState(NamedTuple):
@@ -77,23 +72,30 @@ class SDE:
     """
 
     beta: Schedule
+    tf: float
 
     def score(self, state: SDEState, state_0: SDEState) -> PyTreeDef:
         """
         Close form for the Gaussian thingy \nabla \log p(x_t | x_{t_0})
         """
-        x, t = state
-        x0, t0 = state_0
+        x, t = state.position, state.t
+        x0, t0 = state_0.position, state_0.t
         int_b = self.beta.integrate(t, t0).squeeze()
         alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
 
         return -(x - alpha * x0) / beta
+    
+    def tweedie(self, state: SDEState, score: Callable) -> SDEState:
+        x, t = state.position, state.t
+        int_b = self.beta.integrate(t, self.beta.t0).squeeze()
+        alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
+        return SDEState(x + beta * score(x, t) / alpha, self.beta.t0)
 
     def path(self, key: PRNGKeyArray, state: SDEState, ts: float) -> SDEState:
-        """
+        r"""
         Generate x_ts | x_t ~ N(.| exp(-0.5 \int_ts^t \beta(s) ds) x_0, 1 - exp(-\int_ts^t \beta(s) ds))
         """
-        x, t = state
+        x, t = state.position, state.t
 
         int_b = self.beta.integrate(ts, t)
         alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
@@ -103,74 +105,19 @@ class SDE:
         return SDEState(res, ts)
 
     def drift(self, state: SDEState) -> PyTreeDef:
-        x, t = state
+        x, t = state.position, state.t
         return -0.5 * self.beta(t) * x
 
     def diffusion(self, state: SDEState) -> PyTreeDef:
-        x, t = state
+        t = state.t
         return jnp.sqrt(self.beta(t))
 
-    def reverso(
-        self, key: PRNGKeyArray, state_tf: SDEState, score: Callable, dts: float
-    ) -> SDEState:
-        x_tf, tf = state_tf
-        state_tf_0 = SDEState(x_tf, jnp.array([0.0]))
+    def reverse_drift(self, state: SDEState, score: Callable) -> Array:
+        x, t = state.position, state.t
+        beta_t = self.beta(self.tf - t)
+        s = score(x, self.tf - t)
+        return 0.5 * beta_t * x + beta_t * s
 
-        def reverse_drift(state):
-            x, t = state
-            beta_t = self.beta(tf - t)
-            s = score(x, tf - t)
-            return 0.5 * beta_t * x + beta_t * s
-
-        def reverse_diffusion(state):
-            x, t = state
-            return jnp.sqrt(self.beta(tf - t))
-
-        step = partial(
-            euler_maryama_step, drift=reverse_drift, diffusion=reverse_diffusion
-        )
-
-        def body_fun(state, tup):
-            dt, key = tup
-            next_state = step(state, dt, key)
-            return next_state, next_state
-
-        n_dt = dts.shape[0]
-        keys = jax.random.split(key, n_dt)
-        state_f, history = jax.lax.scan(body_fun, state_tf_0, (dts, keys))
-        # stack initial state into history
-        history = jax.tree_map(
-            lambda arr, x: jnp.concatenate([arr[None], x]), state_tf_0, history
-        )
-        return state_f, history
-
-
-def euler_maryama_step(
-    state: SDEState, dt: float, key: PRNGKeyArray, drift: Callable, diffusion: Callable
-) -> SDEState:
-    dx = drift(state) * dt + diffusion(state) * jax.random.normal(
-        key, state.position.shape
-    ) * jnp.sqrt(dt)
-    return SDEState(state.position + dx, state.t + dt)
-
-
-def euler_maryama_step_array(
-    state: SDEState, dt: float, key: PRNGKeyArray, drift: Array, diffusion: Array
-) -> SDEState:
-    dx = drift * dt + diffusion * jax.random.normal(
-        key, state.position.shape
-    ) * jnp.sqrt(dt)
-    return SDEState(state.position + dx, state.t + dt)
-
-
-def ode_step_array(state: SDEState, dt: float, drift: Array) -> SDEState:
-    ode_fn = lambda t, x, _: drift.flatten()
-    term = ODETerm(ode_fn)
-    sol = ode_solver(
-        term,
-        t0=state.t,
-        t1=state.t + dt,
-        dt0=dt,
-        y0=state.position.flatten(),
-    )
-    return SDEState(sol.ys[-1].reshape(state.position.shape), state.t + dt)
+    def reverse_diffusion(self, state: SDEState) -> Array:
+        t = state.t
+        return jnp.sqrt(self.beta(self.tf - t))

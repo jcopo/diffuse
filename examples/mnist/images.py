@@ -3,16 +3,20 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import einops
 from dataclasses import dataclass
-from jaxtyping import Array
-
+from jaxtyping import Array, PRNGKeyArray
+from diffuse.base_forward_model import MeasurementState
+from diffuse.utils.plotting import sigle_plot
 
 @dataclass
 class SquareMask:
     size: int
     img_shape: tuple
+    sigma: float = 1.
 
     def make(self, xi: Array) -> Array:
         """Create a differentiable square mask."""
+        # assert xi is a 2D array
+        assert xi.shape[0] == 2
         height, width, *_ = self.img_shape
         y, x = jnp.mgrid[:height, :width]
 
@@ -42,6 +46,42 @@ class SquareMask:
     def restore(self, xi: Array, img: Array, measured: Array):
         inv_mask = 1 - self.make(xi)
         return self.restore_from_mask(inv_mask, img, measured)
+
+    def init_measurement(self) -> MeasurementState:
+        y = jnp.zeros(self.img_shape)
+        mask_history = jnp.zeros_like(self.make(jnp.array([0.0, 0.0])))
+        return MeasurementState(y=y, mask_history=mask_history)
+
+    def update_measurement(
+        self, measurement_state: MeasurementState, new_measurement: Array, design: Array
+    ) -> MeasurementState:
+        joint_y = self.restore(design, measurement_state.y, new_measurement)
+        mask_history = self.restore(
+            design, measurement_state.mask_history, self.make(design)
+        )
+
+        return MeasurementState(y=joint_y, mask_history=mask_history)
+
+    def logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
+        f_y = self.measure(design, theta)
+        # Preserve batch dimension while flattening spatial dimensions
+        # If input is (batch, 28, 28, 1), output will be (batch, 784)
+        f_y_flat = einops.rearrange(f_y, "... h w c -> ... (h w c)")
+        y_flat = einops.rearrange(y, "... h w c -> ... (h w c)")
+
+        #import pdb; pdb.set_trace()
+        return jax.scipy.stats.multivariate_normal.logpdf(
+            y_flat, mean=f_y_flat, cov=self.sigma**2
+        )  # returns shape (batch,)
+
+    def grad_logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
+        meas_x = self.measure_from_mask(design, theta)
+        #jax.experimental.io_callback(sigle_plot, None, y)
+        # jax.experimental.io_callback(sigle_plot, None, meas_x)
+        return self.restore_from_mask(design, jnp.zeros_like(theta), (y - meas_x)) / self.sigma
+
+    def init_design(self, rng_key: PRNGKeyArray) -> Array:
+        return jax.random.uniform(rng_key, (2,), minval=0, maxval=28)
 
 
 if __name__ == "__main__":
