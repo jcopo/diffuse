@@ -1,16 +1,16 @@
 from dataclasses import dataclass
 from functools import partial
 
-from diffuse.base_forward_model import MeasurementState
-
+import einops
 import jax
 import jax.numpy as jnp
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-from jaxtyping import Array
-import einops
+from jaxtyping import Array, PRNGKeyArray
 
+from diffuse.base_forward_model import MeasurementState
+from diffuse.utils.plotting import sigle_plot
 
 def slice_fourier(mri_slice):
     f = jnp.fft.fftshift(jnp.fft.fft2(mri_slice, norm="ortho"))
@@ -140,7 +140,8 @@ class baseMask:
     def update_measurement(
         self, measurement_state: MeasurementState, new_measurement: Array, design: Array
     ) -> MeasurementState:
-        joint_y = self.restore(design, measurement_state.y, new_measurement)
+        hist_mask, y = measurement_state.mask_history, measurement_state.y
+        joint_y = hist_mask[..., None] * y + new_measurement
         mask_history = self.supp_mask(
             design, measurement_state.mask_history, self.make(design)
         )
@@ -154,7 +155,7 @@ class baseMask:
         return jax.scipy.stats.multivariate_normal.logpdf(
             y_flat, mean=f_y_flat, cov=self.sigma_prob**2
         )
-    
+
     def grad_logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
         meas_x = self.measure_from_mask(design, theta)
         return self.restore_from_mask(design, jnp.zeros_like(theta), (y - meas_x)) / self.sigma_prob
@@ -166,6 +167,10 @@ class maskSpiral(baseMask):
     img_shape: tuple
     num_samples: int
     sigma: float
+
+    def init_design(self, key: PRNGKeyArray) -> Array:
+        return jnp.array([2, 1.0])
+        return jax.random.uniform(key, shape=(3,), minval=0.0, maxval=1.0)
 
     def make(self, xi: float):
         fov = xi[0] ** 2
