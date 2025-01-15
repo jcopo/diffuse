@@ -150,6 +150,11 @@ def sigle_plot_fourier(array):
     plt.colorbar()
     plt.show()
 
+def sigle_plot_mask(design, mask):
+    plt.imshow(mask.make(design), cmap="gray")
+    plt.axis("off")
+    plt.show()
+
 
 def plot_samples(thetas, cntrst_thetas, weights, weights_c, past_y, y_c):
     total_frames = len(thetas)
