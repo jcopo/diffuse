@@ -100,12 +100,8 @@ class baseMask:
     sigma_prob: float = 1.
 
     def measure_from_mask(self, hist_mask: Array, x: Array):
-        # fourier_x = jnp.einsum("ij,ijk->ijk", hist_mask, slice_fourier(x[..., 0]))
-        fourier_x = hist_mask[..., None] * slice_fourier(x[..., 0])
-        # fourier_x = hist_mask * slice_fourier(x[..., 0])
-        # zero_channel = jnp.zeros_like(fourier_x)
-        # return jnp.stack([fourier_x, zero_channel], axis=-1)
-        return fourier_x
+        return hist_mask[..., None] * slice_fourier(x[..., 0])
+    
     def measure(self, xi: float, x: Array):
         return self.measure_from_mask(self.make(xi), x)
 
