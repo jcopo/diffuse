@@ -164,23 +164,26 @@ class maskSpiral(baseMask):
         return grid(kx, ky, self.img_shape, self.sigma)
 
 
+@partial(jax.vmap, in_axes=(0, None))
+def generate_line(angle_rad, img_shape):
+    y, x = jnp.mgrid[: img_shape[0], : img_shape[1]]
+
+    center_x = img_shape[1] // 2
+    center_y = img_shape[0] // 2
+
+    x = x - center_x
+    y = y - center_y
+
+    distance = jnp.abs(x * jnp.cos(angle_rad) + y * jnp.sin(angle_rad))
+
+    sharpness = 300.0
+    line_image = jax.nn.sigmoid(-sharpness * (distance - 0.5))
+
+    return line_image
+
 @dataclass
 class maskRadial(baseMask):
     img_shape: tuple
-
     def make(self, xi: float):
-        angle_rad = xi[0] ** 2
-        y, x = jnp.mgrid[: self.img_shape[0], : self.img_shape[1]]
-
-        center_x = self.img_shape[1] // 2
-        center_y = self.img_shape[0] // 2
-
-        x = x - center_x
-        y = y - center_y
-
-        distance = jnp.abs(x * jnp.cos(angle_rad) + y * jnp.sin(angle_rad))
-
-        sharpness = 300.0
-        line_image = jax.nn.sigmoid(-sharpness * (distance - 0.5))
-
-        return line_image
+        angle_rad = xi ** 2
+        return generate_line(angle_rad, self.img_shape).sum(axis=0)
