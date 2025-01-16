@@ -186,4 +186,12 @@ class maskRadial(baseMask):
     img_shape: tuple
     def make(self, xi: float):
         angle_rad = xi ** 2
-        return generate_line(angle_rad, self.img_shape).sum(axis=0)
+
+        lines = generate_line(angle_rad, self.img_shape)
+
+        hist_lines = jnp.zeros(self.img_shape)
+        for line in lines:
+            inv_hist_lines = 1 - hist_lines
+            hist_lines = inv_hist_lines * line + hist_lines
+
+        return hist_lines
