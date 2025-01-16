@@ -170,3 +170,4 @@ rsync.batch
 outputs/
 examples/mri/sandbox_local.ipynb
 examples/mri/sandbox_mri.ipynb
+script_continuous_training.batch
