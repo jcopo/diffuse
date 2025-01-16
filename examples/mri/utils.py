@@ -12,6 +12,7 @@ from jaxtyping import Array, PRNGKeyArray
 from diffuse.base_forward_model import MeasurementState
 from diffuse.utils.plotting import sigle_plot
 
+
 def slice_fourier(mri_slice):
     f = jnp.fft.fftshift(jnp.fft.fft2(mri_slice, norm="ortho"))
     return jnp.stack([jnp.real(f), jnp.imag(f)], axis=-1)
@@ -22,9 +23,15 @@ def slice_inverse_fourier(fourier_transform):
     return jnp.real(jnp.fft.ifft2(jnp.fft.ifftshift(fourier_transform), norm="ortho"))
 
 
-def generate_spiral_2D(N=1, num_samples=1000, k_max=1.0, FOV=1.0, angle_offset=0.0):
+def generate_spiral_2D(
+    N=1, num_samples=1000, k_max=1.0, FOV=1.0, angle_offset=0.0, max_angle=None
+):
     theta_max = (2 * jnp.pi / N) * k_max * FOV
+    if max_angle is not None:
+        theta_max = min(theta_max, max_angle)
     theta = jnp.linspace(0, theta_max, num_samples)
+    # t = jnp.linspace(0, 1, num_samples) ** 0.5  # Square root for density compensation
+    # theta = t * theta_max
 
     r = (N * theta) / (2 * jnp.pi * FOV)
 
@@ -34,38 +41,6 @@ def generate_spiral_2D(N=1, num_samples=1000, k_max=1.0, FOV=1.0, angle_offset=0
     theta_shifted = theta[:, None] + (2 * jnp.pi * jnp.arange(N) / N) + angle_offset
     kx = (r[:, None] * jnp.cos(theta_shifted)).ravel()
     ky = (r[:, None] * jnp.sin(theta_shifted)).ravel()
-
-    return kx, ky
-
-
-def generate_radial_2D(N=1, num_samples=1000, angle_offset: float = 0.0):
-    """Generate radial k-space sampling pattern."""
-    # Convert angle offset to radians
-    angle_offset_rad = jnp.deg2rad(angle_offset)
-
-    # Generate angles evenly spaced from 0 to π, excluding π
-    angles = jnp.linspace(0, jnp.pi, N + 1)[:-1] + angle_offset_rad
-
-    # Generate base radial points
-    r = jnp.linspace(
-        -jnp.sqrt(2), jnp.sqrt(2), num_samples
-    )  # Scale by √2 to ensure reaching corners
-
-    # Create meshgrid of r and angles
-    r_mesh, theta_mesh = jnp.meshgrid(r, angles)
-
-    # Convert to Cartesian coordinates for original angles
-    kx = (r_mesh * jnp.cos(theta_mesh)).ravel()
-    ky = (r_mesh * jnp.sin(theta_mesh)).ravel()
-
-    # Add perpendicular lines
-    theta_mesh_perp = theta_mesh + jnp.pi / 2
-    kx_perp = (r_mesh * jnp.cos(theta_mesh_perp)).ravel()
-    ky_perp = (r_mesh * jnp.sin(theta_mesh_perp)).ravel()
-
-    # Concatenate original and perpendicular lines
-    kx = jnp.concatenate([kx, kx_perp])
-    ky = jnp.concatenate([ky, ky_perp])
 
     return kx, ky
 
@@ -95,8 +70,8 @@ def grid(kx, ky, size, sigma=0.3, sharpness=400.0):
 
 class baseMask:
     img_shape: tuple
-    num_samples: int
-    sigma: float
+    num_samples: int = 1000
+    sigma: float = 0.3
     sigma_prob: float = 1.0
 
     def measure_from_mask(self, hist_mask: Array, x: Array):
@@ -171,43 +146,41 @@ class maskSpiral(baseMask):
     img_shape: tuple
     num_samples: int
     sigma: float
+    max_angle: float = None
 
     def init_design(self, key: PRNGKeyArray) -> Array:
         #return jnp.array([2, 1.0])
         return jax.random.uniform(key, shape=(3,), minval=0.0, maxval=3.0)
 
     def make(self, xi: float):
-        fov = xi[0] ** 2
+        xi **= 2
+        fov = xi[0]
         k_max = xi[1]
         angle_offset = xi[2]
 
         kx, ky = generate_spiral_2D(
-            self.num_spiral, self.num_samples, k_max, fov, angle_offset
+            self.num_spiral, self.num_samples, k_max, fov, angle_offset, self.max_angle
         )
         return grid(kx, ky, self.img_shape, self.sigma)
 
 
 @dataclass
 class maskRadial(baseMask):
-    num_lines: int
     img_shape: tuple
-    num_samples: int
-    sigma: float
 
     def make(self, xi: float):
-        angle_offset = xi[0]
+        angle_rad = xi[0] ** 2
+        y, x = jnp.mgrid[: self.img_shape[0], : self.img_shape[1]]
 
-        kx, ky = generate_radial_2D(self.num_lines, self.num_samples, angle_offset)
-        return grid(kx, ky, self.img_shape, self.sigma)
+        center_x = self.img_shape[0] // 2
+        center_y = self.img_shape[1] // 2
 
+        x = x - center_x
+        y = y - center_y
 
-@partial(jax.vmap, in_axes=(0, 0))
-def log_complex_normal_pdf(z: Array, mu: Array) -> Array:
-    diff = z - mu
+        distance = jnp.abs(x * jnp.cos(angle_rad) + y * jnp.sin(angle_rad))
 
-    # Log PDF = -n*log(pi) - |z-mu|^2
-    n = jnp.size(z)
-    log_norm_const = -n * jnp.log(jnp.pi)
-    log_exp_term = -(jnp.abs(diff) ** 2)
+        sharpness = 300.0
+        line_image = jax.nn.sigmoid(-sharpness * (distance - 0.5))
 
-    return jnp.real(log_norm_const + log_exp_term)
+        return line_image

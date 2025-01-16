@@ -112,13 +112,18 @@ def train(config, train_loader, parallel=False, continue_training=False):
         opt_state = optimizer.init(params)
         ema_state = ema_kernel.init(params)
         iterator_epoch = range(config["n_epochs"])
-    
+
     if parallel:
         num_devices = len(jax.local_devices())
         devices = mesh_utils.create_device_mesh((num_devices,))
 
         mesh = Mesh(devices, axis_names=("batch",))
-        sharding = NamedSharding(mesh, P('batch',))
+        sharding = NamedSharding(
+            mesh,
+            P(
+                "batch",
+            ),
+        )
         replicated_sharding = NamedSharding(mesh, P())
 
         params = jax.device_put(params, replicated_sharding)
