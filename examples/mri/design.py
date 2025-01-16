@@ -1,60 +1,181 @@
+import csv
+import os
+import pdb
+from functools import partial
+
+import dm_pix
 import jax
 import jax.numpy as jnp
-import dm_pix
-import pdb
-import optax
-import numpy as np
-import os
-import csv
-
-from diffuse.neural_network.unet import UNet
-from diffuse.diffusion.sde import SDE, LinearSchedule
-from diffuse.integrator.stochastic import EulerMaruyama
-from diffuse.integrator.deterministic import DPMpp2sIntegrator
-from diffuse.denoisers.cond_denoiser import CondDenoiser
-from diffuse.bayesian_design import ExperimentOptimizer
-from examples.mnist.images import SquareMask
-from diffuse.utils.plotting import plot_lines, sigle_plot
 import matplotlib.pyplot as plt
-from functools import partial
-from diffuse.utils.plotting import log_samples, plot_comparison, plotter_random
-
+import numpy as np
+import optax
 from jaxtyping import PRNGKeyArray
+from torchio.utils import get_first_item
 
+
+from diffuse.bayesian_design import ExperimentOptimizer
+from diffuse.denoisers.cond_denoiser import CondDenoiser
+from diffuse.diffusion.sde import SDE, LinearSchedule
+from diffuse.integrator.deterministic import DPMpp2sIntegrator
+from diffuse.integrator.stochastic import EulerMaruyama
+from diffuse.neural_network.unet import UNet
+from examples.mri.utils import maskSpiral
+from diffuse.utils.plotting import (
+    log_samples,
+    plot_comparison,
+    plot_lines,
+    plotter_random,
+    sigle_plot,
+)
+from examples.mnist.images import SquareMask
+from examples.mri.brats.create_dataset import (
+    get_train_dataloader as get_brats_train_dataloader,
+)
+from examples.mri.wmh.create_dataset import (
+    get_train_dataloader as get_wmh_train_dataloader,
+)
 
 SIZE = 7
 
 
-def initialize_experiment(key: PRNGKeyArray):
-    # Load MNIST dataset
-    data = np.load("dataset/mnist.npz")
-    xs = jnp.array(data["X"])
-    xs = xs.reshape(xs.shape[0], xs.shape[1], xs.shape[2], 1)  # Add channel dimension
+config_brats = {
+    "path_dataset": "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/BRATS/ASNR-MICCAI-BraTS2023-Local-Synthesis-Challenge-Training",
+    "save_path": "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/BRATS/models/",
+    "batch_size": 32,
+    "num_workers": 0,
+}
 
-    # Initialize parameters
-    tf = 2.0
-    n_t = 50
+USER = "upd68za"
+
+config_wmh = {
+    "modality": "FLAIR",
+    "slice_size_template": 49,
+    "begin_slice": 26,
+    "path_dataset": f"/lustre/fswork/projects/rech/ijy/{USER}/diffuse/data/WMH",
+    "save_path": f"/lustre/fswork/projects/rech/ijy/{USER}/diffuse/data",
+    "batch_size": 32,
+    "num_workers": 0,
+}
+
+
+
+def plot_measurement(measurement_state):
+    mask_history, y = measurement_state.mask_history, measurement_state.y
+    fig, ax = plt.subplots(1, 2, figsize=(6, 3))
+    ax[0].imshow(mask_history, cmap="gray")
+    ax[0].set_title("Mask")
+    ax[0].axis('off')
+    ax[1].imshow(jnp.log10(jnp.abs(y[..., 0] + 1j * y[..., 1]) + 1e-10), cmap="gray")
+    ax[1].set_title("y")
+    ax[1].axis('off')
+    plt.show()
+
+def show_samples_plot(
+    measurement_state, ground_truth, thetas, weights, n_meas, size=7, mask=None
+):
+    for i in [0, 1]:
+        mask_history, joint_y = measurement_state.mask_history, measurement_state.y
+        thetas_i = thetas[..., i]
+        #joint_y = joint_y[..., 0]
+        n = 20
+        best_idx = jnp.argsort(weights)[-n:][::-1]
+        worst_idx = jnp.argsort(weights)[:n]
+
+        # Create a figure with subplots
+        fig = plt.figure(figsize=(40, 10))
+        fig.suptitle(
+            "High weight (top) and low weight (bottom) Samples", fontsize=18, y=0.67, x=0.6
+        )
+
+        # Create grid spec for layout with reduced vertical spacing
+        gs = fig.add_gridspec(6, n, hspace=0.0001)
+
+        # Add the larger subplot for the first 4 squares
+        ax_large = fig.add_subplot(gs[:2, :2])
+        ax_large.imshow(ground_truth[..., i], cmap="gray")
+        ax_large.text(
+            -2.3,
+            9.0,
+            f"Measurement {n_meas}",
+            ha="center",
+            va="center",
+            fontsize=14,
+            fontweight="bold",
+            rotation="vertical",
+        )
+
+        ax_large.axis("off")
+        ax_large.set_title("Ground Truth", fontsize=12)
+
+        # Add another large subplot
+        ax_large = fig.add_subplot(gs[:2, 2:4])
+        ax_large.imshow(jnp.log10(jnp.abs(joint_y[..., 0] + 1j * joint_y[..., 1]) + 1e-10), cmap="gray")
+        ax_large.axis("off")
+        ax_large.set_title("Measure $y$", fontsize=12)
+
+        # Add another large subplot
+        ax_large = fig.add_subplot(gs[:2, 4:6])
+        restored_theta = mask.restore_from_mask(mask_history, jnp.zeros_like(ground_truth), joint_y)
+        #ax_large.imshow(jnp.abs(restored_theta[..., 0] + 1j * restored_theta[..., 1]) , cmap="gray")
+        ax_large.imshow(restored_theta[..., 0], cmap="gray")
+        ax_large.axis("off")
+        ax_large.set_title("Fourier($y$)", fontsize=12)
+        # ax_large.scatter(opt_hist[-1, 0], opt_hist[-1, 1], marker="o", c="red")
+        # add a square above the image. Around the design and 5 pixels from it
+
+
+        # Add the remaining subplots
+        for idx in range(n - 6):
+            ax1 = fig.add_subplot(gs[0, idx + 6])
+            ax2 = fig.add_subplot(gs[1, idx + 6])
+
+            ax1.imshow(thetas_i[best_idx[idx]], cmap="gray")
+            ax2.imshow(thetas_i[worst_idx[idx]], cmap="gray")
+
+            ax1.axis("off")
+            ax2.axis("off")
+
+        #plt.tight_layout(rect=[0, 0, 1, 0.96])
+        plt.show()
+        plt.close()
+
+
+def initialize_experiment(key: PRNGKeyArray, n_t: int):
+    data_model = "wmh" # "wmh"
+
+    if data_model == "brats":
+        unet = "ann_480.npz"
+        config = config_brats
+        dataloader = get_brats_train_dataloader
+    elif data_model == "wmh":
+        unet = "wmh_diff.npz"
+        config = config_wmh
+        dataloader = get_wmh_train_dataloader
+    else:
+        raise ValueError(f"Invalid data model: {data_model}")
+
+    xs = get_first_item(dataloader(config))
+
+    key, subkey = jax.random.split(key)
+    ground_truth = jax.random.choice(key, xs)
+
+    n_samples, tf = 150, 2.0
     dt = tf / n_t
 
-    # Define beta schedule and SDE
     beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
 
-    # Initialize ScoreNetwork
-    dt_embedding = tf / 256
+    dt_embedding = tf / 32
     score_net = UNet(dt_embedding, 64, upsampling="pixel_shuffle")
-    nn_trained = jnp.load("weights/ann_2999.npz", allow_pickle=True)
+    nn_trained = jnp.load( os.path.join(config["save_path"], unet), allow_pickle=True)
     params = nn_trained["params"].item()
 
-    # Define neural network score function
     def nn_score(x, t):
         return score_net.apply(params, x, t)
 
-    # Set up mask and measurement
-    ground_truth = jax.random.choice(key, xs)
-    mask = SquareMask(SIZE, ground_truth.shape)
-
-    # SDE
     sde = SDE(beta=beta, tf=tf)
+    shape = ground_truth.shape
+    mask = maskSpiral(img_shape=shape, num_spiral=1, num_samples=100000, sigma=.2)
+
 
     return sde, mask, ground_truth, dt, n_t, nn_score
 
@@ -92,7 +213,7 @@ def evaluate_metrics(grande_truite, theta_infered, weights_infered):
     return psnr_score, ssim_score
 
 
-def plot_and_log_iteration(ground_truth, optimal_state, measurement_state, hist, n_meas,
+def plot_and_log_iteration(mask, ground_truth, optimal_state, measurement_state, hist, n_meas,
                           logger_metrics_fn=None, plotter_theta=None, plotter_contrastive=None):
     """Handle plotting and logging for each iteration of the experiment."""
     # Calculate metrics
@@ -101,7 +222,6 @@ def plot_and_log_iteration(ground_truth, optimal_state, measurement_state, hist,
         optimal_state.denoiser_state.integrator_state.position,
         optimal_state.denoiser_state.weights
     )
-
     # Log metrics
     if logger_metrics_fn:
         jax.experimental.io_callback(
@@ -110,12 +230,12 @@ def plot_and_log_iteration(ground_truth, optimal_state, measurement_state, hist,
 
     # Plot theta samples
     if plotter_theta:
+        plotter_theta = partial(plotter_theta, mask=mask)
         jax.experimental.io_callback(
             plotter_theta,
             None,
-            hist,
+            measurement_state,
             ground_truth,
-            measurement_state.y,
             optimal_state.denoiser_state.integrator_state.position,
             optimal_state.denoiser_state.weights,
             n_meas,
@@ -137,14 +257,15 @@ def plot_and_log_iteration(ground_truth, optimal_state, measurement_state, hist,
 def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
          plotter_theta=None, plotter_contrastive=None, logger_metrics=None):
     # Initialize experiment forward model
-    sde, mask, ground_truth, dt, n_t, nn_score = initialize_experiment(key)
+    n_t = 30
+    sde, mask, ground_truth, dt, n_t, nn_score = initialize_experiment(key, n_t)
     n_samples = 151
     n_samples_cntrst = 150
-    n_loop_opt = 100
+    n_loop_opt = 3
     n_opt_steps = n_t * n_loop_opt + (n_loop_opt - 1)
 
     # Conditional Denoiser
-    # integrator = EulerMaruyama(sde)
+    #integrator = EulerMaruyama(sde)
     integrator = DPMpp2sIntegrator(sde, stochastic_churn_rate=0.5, churn_min=0.05, churn_max=1.95, noise_inflation_factor=1.0)
     resample = True
     denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
@@ -163,6 +284,7 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
     for n_meas in range(num_measurements):
         key, _ = jax.random.split(key)
         print(f"design start: {exp_state.design}")
+        plot_measurement(measurement_state)
         optimal_state, hist = experiment_optimizer.get_design(
             exp_state, key, measurement_state, n_steps=n_opt_steps
         )
@@ -173,11 +295,9 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
             measurement_state, new_measurement, optimal_state.design
         )
 
-        sigle_plot(measurement_state.mask_history)
-        sigle_plot(measurement_state.y)
-
         if plot:
             plot_and_log_iteration(
+                mask,
                 ground_truth,
                 optimal_state,
                 measurement_state,

@@ -112,7 +112,7 @@ class ExperimentOptimizer:
         state: BEDState,
         rng_key: PRNGKeyArray,
         measurement_state: MeasurementState,
-        n_steps: int = 100,
+        n_steps: int,
     ):
         def step(state, rng_key):
             tf = self.denoiser.sde.tf
@@ -164,8 +164,8 @@ def calculate_and_apply_gradient(
     grad_xi_score = jax.grad(information_gain, argnums=2, has_aux=True)
     grad_xi, ys = grad_xi_score(thetas, cntrst_thetas, design, mask)
     updates, new_opt_state = optx_opt.update(grad_xi, opt_state, design)
-    # new_design = optax.apply_updates(design, updates)
-    new_design = design
+    new_design = optax.apply_updates(design, updates)
+    # new_design = design
     #has_nans_des(new_design)
     return new_design, new_opt_state, ys
 

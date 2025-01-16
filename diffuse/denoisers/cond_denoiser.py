@@ -74,7 +74,7 @@ class CondDenoiser:
             position, keys, jnp.array(0.0), jnp.array(dt)
         )
         return CondDenoiserState(integrator_state, weights)
-    
+
     def generate(self, rng_key: PRNGKeyArray, forward_model: ForwardModel, measurement_state: MeasurementState, design: Array, n_steps: int, n_particles: int):
         dt = self.sde.tf / n_steps
 
@@ -84,15 +84,15 @@ class CondDenoiser:
         key, subkey = jax.random.split(key)
         state = self.init(cntrst_thetas, subkey, dt)
 
-        
+
         def body_fun(state: CondDenoiserState, key: PRNGKeyArray):
             posterior = self.posterior_logpdf(key, measurement_state.y, forward_model.make(design))
             state_next = self.batch_step(key, state, posterior, measurement_state)
             return _fix_time(state_next), state_next.integrator_state.position
-        
+
         keys = jax.random.split(key, n_steps)
         return jax.lax.scan(body_fun, state, keys)
-    
+
     def step(
         self, state: CondDenoiserState, score: Callable[[Array, float], Array]
     ) -> CondDenoiserState:
@@ -221,7 +221,7 @@ class CondDenoiser:
 
         # jax.debug.print("ess_val: {}", ess_val/n_particles)
         return jax.lax.cond(
-            (ess_val < 0.6 * n_particles) & (ess_val > 0.2 * n_particles),
+            (ess_val < 0.9 * n_particles) & (ess_val > 0.1 * n_particles),
             lambda x: (x[idx], log_weights[idx]),
             lambda x: (x, log_weights),
             position,

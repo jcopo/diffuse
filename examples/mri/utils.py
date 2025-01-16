@@ -141,7 +141,8 @@ class baseMask:
         self, measurement_state: MeasurementState, new_measurement: Array, design: Array
     ) -> MeasurementState:
         hist_mask, y = measurement_state.mask_history, measurement_state.y
-        joint_y = hist_mask[..., None] * y + new_measurement
+        inv_mask = 1 - self.make(design)
+        joint_y = inv_mask[..., None] * y + new_measurement
         mask_history = self.supp_mask(
             design, measurement_state.mask_history, self.make(design)
         )
@@ -172,8 +173,8 @@ class maskSpiral(baseMask):
     sigma: float
 
     def init_design(self, key: PRNGKeyArray) -> Array:
-        return jnp.array([2, 1.0])
-        return jax.random.uniform(key, shape=(3,), minval=0.0, maxval=1.0)
+        #return jnp.array([2, 1.0])
+        return jax.random.uniform(key, shape=(3,), minval=0.0, maxval=3.0)
 
     def make(self, xi: float):
         fov = xi[0] ** 2
