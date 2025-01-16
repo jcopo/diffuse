@@ -72,8 +72,16 @@ class DPMpp2sIntegrator:
         position, rng_key, noise_level, dt = integrator_state
         noise_level = self.sde.tf - noise_level
         next_noise_level = self.next_churn_noise_level(integrator_state)
+        current_int_b, next_int_b = (
+            self.sde.beta.integrate(noise_level, self.sde.beta.t0),
+            self.sde.beta.integrate(next_noise_level, self.sde.beta.t0),
+        )
+        current_beta, next_beta = (
+            jnp.sqrt(1 - jnp.exp(-current_int_b)),
+            jnp.sqrt(1 - jnp.exp(-next_int_b)),
+        )
         extra_noise_stddev = (
-            jnp.sqrt(next_noise_level**2 - noise_level**2) * self.noise_inflation_factor
+            jnp.sqrt(next_beta**2 - current_beta**2) * self.noise_inflation_factor
         )
         new_position = (
             position + jax.random.normal(rng_key, position.shape) * extra_noise_stddev
@@ -136,9 +144,23 @@ class DPMpp2sIntegrator:
             - current_alpha * (jnp.exp(-h) - 1) * D
         )
 
-        # Handle edge case when t = tf
-        next_position = jnp.where(
-            (self.sde.tf - current_t) < 1e-5, position, next_position
-        )
         _, rng_key_next = jax.random.split(rng_key)
-        return EulerState(next_position, rng_key_next, current_t, dt)
+        next_state = EulerState(next_position, rng_key_next, current_t, dt)
+
+        next_state = jax.lax.cond(
+            (self.sde.tf - current_t) < 1e-5,
+            lambda x, y: self.euler_step(x, rng_key_next, score),
+            lambda x, y: y,
+            integrator_state,
+            next_state,
+        )
+        return next_state
+
+    def euler_step(
+        self, integrator_state: EulerState, rng_key_next: PRNGKeyArray, score: Callable
+    ) -> EulerState:
+        """Perform one Euler integration step: dx = drift*dt"""
+        position, _, t, dt = integrator_state
+        drift = self.sde.reverse_drift(integrator_state, score)
+        dx = drift * dt
+        return EulerState(position + dx, rng_key_next, t + dt, dt)

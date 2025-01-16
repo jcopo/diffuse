@@ -1,0 +1,16 @@
+path_dataset: "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/fastMRI/singlecoil_train"
+save_path: "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/fastMRI/models"
+
+dataset: "fastMRI"
+
+min_slice: 13
+max_slice: 29
+image_size: 320
+
+n_epochs: 4000
+batch_size: 16
+num_workers: 0
+
+n_t: 64
+tf: 2.0
+lr: 2.0e-4

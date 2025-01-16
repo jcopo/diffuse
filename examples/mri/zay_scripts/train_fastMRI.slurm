@@ -6,9 +6,10 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=16
 #SBATCH --hint=nomultithread
-#SBATCH --time=20:00:00
-#SBATCH --output=training.out
-#SBATCH --error=training.err
+#SBATCH --time=00:15:00
+#SBATCH --output=training_fastmri.out
+#SBATCH --error=training_fastmri.err
+#SBATCH --qos=qos_gpu_a100-dev
 #SBATCH -C a100
 #SBATCH -A hlp@a100
 
@@ -22,5 +23,5 @@ conda init
 source ~/.bash_profile
 conda activate aoas
 
-cd /lustre/fswork/projects/rech/hlp/uha64uw/sharingan/
-python -m examples.mri.training --config examples/mri/configs/config_brats.yaml --continue_training True
+cd /lustre/fswork/projects/rech/hlp/uha64uw/diffuse/
+python -m examples.mri.training --config examples/mri/configs/config_fastMRI.yaml

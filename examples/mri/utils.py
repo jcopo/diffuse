@@ -97,11 +97,11 @@ class baseMask:
     img_shape: tuple
     num_samples: int
     sigma: float
-    sigma_prob: float = 1.
+    sigma_prob: float = 1.0
 
     def measure_from_mask(self, hist_mask: Array, x: Array):
         return hist_mask[..., None] * slice_fourier(x[..., 0])
-    
+
     def measure(self, xi: float, x: Array):
         return self.measure_from_mask(self.make(xi), x)
 
@@ -158,7 +158,10 @@ class baseMask:
 
     def grad_logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
         meas_x = self.measure_from_mask(design, theta)
-        return self.restore_from_mask(design, jnp.zeros_like(theta), (y - meas_x)) / self.sigma_prob
+        return (
+            self.restore_from_mask(design, jnp.zeros_like(theta), (y - meas_x))
+            / self.sigma_prob
+        )
 
 
 @dataclass

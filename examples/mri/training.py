@@ -19,6 +19,9 @@ from diffuse.neural_network.unet import UNet
 from examples.mri.brats.create_dataset import (
     get_train_dataloader as get_brats_train_dataloader,
 )
+from examples.mri.fastMRI.create_dataset import (
+    get_train_dataloader as get_fastmri_train_dataloader,
+)
 from examples.mri.wmh.create_dataset import (
     get_train_dataloader as get_wmh_train_dataloader,
 )
@@ -35,11 +38,18 @@ def train(config, train_loader, continue_training=False):
     nn_unet = UNet(config["tf"] / config["n_t"], 64, upsampling="pixel_shuffle")
 
     key, subkey = jax.random.split(key)
-    init_params = nn_unet.init(
-        subkey,
-        jnp.ones((config["batch_size"], *get_first_item(train_loader).shape[1:])),
-        jnp.ones((config["batch_size"],)),
-    )
+    if config["dataset"] == "fastMRI":
+        init_params = nn_unet.init(
+            subkey,
+            jnp.ones(next(iter(train_loader)).shape),
+            jnp.ones((config["batch_size"],)),
+        )
+    else:
+        init_params = nn_unet.init(
+            subkey,
+            jnp.ones((config["batch_size"], *get_first_item(train_loader).shape[1:])),
+            jnp.ones((config["batch_size"],)),
+        )
 
     def weight_fun(t):
         int_b = sde.beta.integrate(t, 0).squeeze()
@@ -148,6 +158,9 @@ if __name__ == "__main__":
 
     elif config["dataset"] == "brats":
         train_loader = get_brats_train_dataloader(config)
+
+    elif config["dataset"] == "fastMRI":
+        train_loader = get_fastmri_train_dataloader(config)
 
     if args.continue_training:
         begin_epoch = max(

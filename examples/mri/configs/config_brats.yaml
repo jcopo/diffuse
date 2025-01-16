@@ -1,5 +1,5 @@
-path_dataset: "/lustre/fswork/projects/rech/hlp/uha64uw/sharingan/data/BRATS/ASNR-MICCAI-BraTS2023-Local-Synthesis-Challenge-Training"
-save_path: "/lustre/fswork/projects/rech/hlp/uha64uw/sharingan/data/BRATS/models/"
+path_dataset: "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/BRATS/ASNR-MICCAI-BraTS2023-Local-Synthesis-Challenge-Training"
+save_path: "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/BRATS/models/"
 
 dataset: "brats"
 
