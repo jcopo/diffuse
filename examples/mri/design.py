@@ -157,7 +157,8 @@ def initialize_experiment(key: PRNGKeyArray, n_t: int):
     xs = get_first_item(dataloader(config))
 
     key, subkey = jax.random.split(key)
-    ground_truth = jax.random.choice(key, xs)
+    ground_truth = xs[1]
+    #ground_truth = jax.random.choice(key, xs)
 
     n_samples, tf = 150, 2.0
     dt = tf / n_t
@@ -257,16 +258,16 @@ def plot_and_log_iteration(mask, ground_truth, optimal_state, measurement_state,
 def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
          plotter_theta=None, plotter_contrastive=None, logger_metrics=None):
     # Initialize experiment forward model
-    n_t = 30
+    n_t = 50
     sde, mask, ground_truth, dt, n_t, nn_score = initialize_experiment(key, n_t)
-    n_samples = 151
-    n_samples_cntrst = 150
-    n_loop_opt = 3
+    n_samples = 50
+    n_samples_cntrst = 51
+    n_loop_opt = 1
     n_opt_steps = n_t * n_loop_opt + (n_loop_opt - 1)
 
     # Conditional Denoiser
-    #integrator = EulerMaruyama(sde)
-    integrator = DPMpp2sIntegrator(sde, stochastic_churn_rate=0.5, churn_min=0.05, churn_max=1.95, noise_inflation_factor=1.0)
+    integrator = EulerMaruyama(sde)
+    #integrator = DPMpp2sIntegrator(sde, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
     resample = True
     denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
 
@@ -281,14 +282,18 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
 
     exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst, dt)
 
-    for n_meas in range(num_measurements):
-        key, _ = jax.random.split(key)
-        print(f"design start: {exp_state.design}")
-        plot_measurement(measurement_state)
+    def scan_step(carry, n_meas):
+        exp_state, measurement_state, key = carry
+
+        key, subkey = jax.random.split(key)
+        jax.debug.print("design start: {}", exp_state.design)
+        jax.experimental.io_callback(plot_measurement, None, measurement_state)
+
         optimal_state, hist = experiment_optimizer.get_design(
-            exp_state, key, measurement_state, n_steps=n_opt_steps
+            exp_state, subkey, measurement_state, n_steps=n_opt_steps
         )
-        print(f"design optimal: {optimal_state.design}")
+        jax.debug.print("design optimal: {}", optimal_state.design)
+
         # make new measurement
         new_measurement = mask.measure(optimal_state.design, ground_truth)
         measurement_state = mask.update_measurement(
@@ -308,9 +313,17 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
                 plotter_contrastive
             )
 
-        exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst, dt)
+        exp_state = experiment_optimizer.init(subkey, n_samples, n_samples_cntrst, dt)
+        return (exp_state, measurement_state, key), optimal_state
 
-    return ground_truth, optimal_state, measurement_state.y
+    init_carry = (exp_state, measurement_state, key)
+    (exp_state, measurement_state, key), optimal_states = jax.lax.scan(
+        scan_step,
+        init_carry,
+        jnp.arange(num_measurements)
+    )
+
+    return ground_truth, optimal_states[-1], measurement_state.y
 
 
 if __name__ == "__main__":
