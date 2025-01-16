@@ -131,3 +131,8 @@ def get_train_dataloader(cfg):
     wmh = WMH(cfg)
     wmh.setup()
     return wmh.get_train_dataloader()
+
+def get_test_dataloader(cfg):
+    wmh = WMH(cfg)
+    wmh.setup()
+    return wmh.get_test_dataloader()
