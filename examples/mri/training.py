@@ -4,7 +4,11 @@ import sys
 from functools import partial
 
 import jax
+from jax.experimental import mesh_utils
 import jax.numpy as jnp
+from jax.sharding import Mesh, NamedSharding
+from jax.sharding import PartitionSpec as P
+
 import optax
 from optax import EmaState, EmptyState, ScaleByAdamState, ScaleByScheduleState
 
@@ -29,7 +33,7 @@ from examples.mri.wmh.create_dataset import (
 jax.config.update("jax_enable_x64", False)
 
 
-def train(config, train_loader, continue_training=False):
+def train(config, train_loader, parallel=False, continue_training=False):
     key = jax.random.PRNGKey(0)
 
     beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
@@ -108,6 +112,18 @@ def train(config, train_loader, continue_training=False):
         opt_state = optimizer.init(params)
         ema_state = ema_kernel.init(params)
         iterator_epoch = range(config["n_epochs"])
+    
+    if parallel:
+        num_devices = len(jax.local_devices())
+        devices = mesh_utils.create_device_mesh((num_devices,))
+
+        mesh = Mesh(devices, axis_names=("batch",))
+        sharding = NamedSharding(mesh, P('batch',))
+        replicated_sharding = NamedSharding(mesh, P())
+
+        params = jax.device_put(params, replicated_sharding)
+        opt_state = jax.device_put(opt_state, replicated_sharding)
+        ema_state = jax.device_put(ema_state, replicated_sharding)
 
     for epoch in iterator_epoch:
         list_loss = []
@@ -116,6 +132,7 @@ def train(config, train_loader, continue_training=False):
         for batch in iterator:
             key, subkey = jax.random.split(key)
 
+            batch = jax.device_put(batch, sharding)
             params, opt_state, ema_state, val_loss, ema_params = batch_update(
                 subkey, params, opt_state, ema_state, batch
             )
@@ -146,6 +163,9 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--parallel", type=bool, default=False, help="Parallel training"
+    )
+    parser.add_argument(
         "--continue_training", type=bool, default=False, help="Continue training"
     )
     args = parser.parse_args()
@@ -172,6 +192,6 @@ if __name__ == "__main__":
         )
 
         config["begin_epoch"] = begin_epoch
-        train(config, train_loader, continue_training=True)
+        train(config, train_loader, parallel=args.parallel, continue_training=True)
     else:
-        train(config, train_loader)
+        train(config, train_loader, parallel=args.parallel)
