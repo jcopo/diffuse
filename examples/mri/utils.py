@@ -172,8 +172,8 @@ class maskRadial(baseMask):
         angle_rad = xi[0] ** 2
         y, x = jnp.mgrid[: self.img_shape[0], : self.img_shape[1]]
 
-        center_x = self.img_shape[0] // 2
-        center_y = self.img_shape[1] // 2
+        center_x = self.img_shape[1] // 2
+        center_y = self.img_shape[0] // 2
 
         x = x - center_x
         y = y - center_y
