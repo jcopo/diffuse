@@ -27,7 +27,6 @@ from diffuse.utils.plotting import (
     plotter_random,
     sigle_plot,
 )
-from examples.mnist.images import SquareMask
 from examples.mri.brats.create_dataset import (
     get_train_dataloader as get_brats_train_dataloader,
 )
@@ -262,9 +261,9 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
     # Initialize experiment forward model
     n_t = 150
     sde, mask, ground_truth, dt, n_t, nn_score = initialize_experiment(key, n_t)
-    n_samples = 50
+    n_samples = 70
     n_samples_cntrst = 51
-    n_loop_opt = 1
+    n_loop_opt = 3
     n_opt_steps = n_t * n_loop_opt + (n_loop_opt - 1)
 
     # Conditional Denoiser
