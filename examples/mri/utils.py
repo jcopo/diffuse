@@ -189,6 +189,9 @@ class maskRadial(baseMask):
     def init_design(self, key: PRNGKeyArray) -> Array:
         return jax.random.uniform(key, shape=(self.num_lines,), minval=0.0, maxval=np.sqrt(2 * np.pi))
 
+    def init_design(self, key: PRNGKeyArray) -> Array:
+        return jax.random.uniform(key, shape=(1,), minval=0.0, maxval=3.0)
+
     def make(self, xi: float):
         angle_rad = xi ** 2
 
