@@ -19,7 +19,7 @@ from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.integrator.deterministic import DPMpp2sIntegrator
 from diffuse.integrator.stochastic import EulerMaruyama
 from diffuse.neural_network.unet import UNet
-from examples.mri.utils import maskSpiral
+from examples.mri.utils import maskSpiral, maskRadial
 from diffuse.utils.plotting import (
     log_samples,
     plot_comparison,
@@ -45,14 +45,14 @@ config_brats = {
     "num_workers": 0,
 }
 
-USER = "upd68za"
+USER = "uha64uw"
 
 config_wmh = {
     "modality": "FLAIR",
     "slice_size_template": 49,
     "begin_slice": 26,
-    "path_dataset": f"/lustre/fswork/projects/rech/ijy/{USER}/diffuse/data/WMH",
-    "save_path": f"/lustre/fswork/projects/rech/ijy/{USER}/diffuse/data",
+    "path_dataset": f"/lustre/fswork/projects/rech/hlp/{USER}/diffuse/data/WMH",
+    "save_path": f"/lustre/fswork/projects/rech/hlp/{USER}/diffuse/data/WMH/models/",
     "batch_size": 32,
     "num_workers": 0,
 }
@@ -148,7 +148,7 @@ def initialize_experiment(key: PRNGKeyArray, n_t: int):
         config = config_brats
         dataloader = get_brats_train_dataloader
     elif data_model == "wmh":
-        unet = "wmh_diff.npz"
+        unet = "ann_3955.npz"
         config = config_wmh
         dataloader = get_wmh_train_dataloader
     else:
@@ -175,7 +175,9 @@ def initialize_experiment(key: PRNGKeyArray, n_t: int):
 
     sde = SDE(beta=beta, tf=tf)
     shape = ground_truth.shape
-    mask = maskSpiral(img_shape=shape, num_spiral=1, num_samples=100000, sigma=.2)
+
+    # mask = maskSpiral(img_shape=shape, num_spiral=1, num_samples=100000, sigma=.2)
+    mask = maskRadial(img_shape=shape, num_lines=5)
 
 
     return sde, mask, ground_truth, dt, n_t, nn_score
@@ -258,7 +260,7 @@ def plot_and_log_iteration(mask, ground_truth, optimal_state, measurement_state,
 def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
          plotter_theta=None, plotter_contrastive=None, logger_metrics=None):
     # Initialize experiment forward model
-    n_t = 50
+    n_t = 150
     sde, mask, ground_truth, dt, n_t, nn_score = initialize_experiment(key, n_t)
     n_samples = 50
     n_samples_cntrst = 51
@@ -266,13 +268,15 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
     n_opt_steps = n_t * n_loop_opt + (n_loop_opt - 1)
 
     # Conditional Denoiser
-    integrator = EulerMaruyama(sde)
-    #integrator = DPMpp2sIntegrator(sde, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
+    # integrator = EulerMaruyama(sde)
+    integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
     resample = True
     denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
 
     # init design
-    measurement_state = mask.init_measurement()
+    # measurement_state = mask.init_measurement()
+    # measurement_state = mask.init_measurement(jnp.array([0.0, 0.0])) # For Spiral
+    measurement_state = mask.init_measurement(jnp.array([0., .1, .2, .3, .4, .5])) # For Radial
 
     # ExperimentOptimizer
     optimizer = optax.chain(optax.adam(learning_rate=0.1), optax.scale(-1))

@@ -103,9 +103,9 @@ class baseMask:
     def restore(self, xi: float, x: Array, measured: Array):
         return self.restore_from_mask(self.make(xi), x, measured)
 
-    def init_measurement(self) -> MeasurementState:
+    def init_measurement(self, xi_init: Array) -> MeasurementState:
         y = jnp.zeros(self.img_shape)
-        mask_history = jnp.zeros_like(self.make(jnp.array([0.0, 0.0])))
+        mask_history = jnp.zeros_like(self.make(xi_init))
         return MeasurementState(y=y, mask_history=mask_history)
 
     def supp_mask(self, xi: float, hist_mask: Array, new_mask: Array):
@@ -184,12 +184,17 @@ def generate_line(angle_rad, img_shape):
 @dataclass
 class maskRadial(baseMask):
     img_shape: tuple
+    num_lines: int
+
+    def init_design(self, key: PRNGKeyArray) -> Array:
+        return jax.random.uniform(key, shape=(self.num_lines,), minval=0.0, maxval=np.sqrt(2 * np.pi))
+
     def make(self, xi: float):
         angle_rad = xi ** 2
 
-        lines = generate_line(angle_rad, self.img_shape)
+        lines = generate_line(angle_rad, self.img_shape[:-1])
 
-        hist_lines = jnp.zeros(self.img_shape)
+        hist_lines = jnp.zeros(self.img_shape[:-1])
         for line in lines:
             inv_hist_lines = 1 - hist_lines
             hist_lines = inv_hist_lines * line + hist_lines

@@ -149,16 +149,16 @@ def train(config, train_loader, parallel=False, continue_training=False):
             f"Epoch {epoch}, loss {val_loss}, mean_loss {sum(list_loss) / len(list_loss)}"
         )
 
-        if epoch % 5 == 0:
-            np.savez(
-                os.path.join(config["save_path"], f"ann_{epoch}.npz"),
-                params=params,
-                ema_params=ema_params,
-                ema_state=ema_state,
-                opt_state_1=opt_state[0],
-                opt_state_2=opt_state[1][0],
-                opt_state_3=opt_state[1][1],
-            )
+        # if epoch % 5 == 0:
+        np.savez(
+            os.path.join(config["save_path"], f"ann_{epoch}.npz"),
+            params=params,
+            ema_params=ema_params,
+            ema_state=ema_state,
+            opt_state_1=opt_state[0],
+            opt_state_2=opt_state[1][0],
+            opt_state_3=opt_state[1][1],
+        )
 
 
 if __name__ == "__main__":
@@ -194,7 +194,7 @@ if __name__ == "__main__":
                 for e in os.listdir(config["save_path"])
                 if e.endswith(".npz") and e[0] == "a"
             ]
-        )
+        ) - 1
 
         config["begin_epoch"] = begin_epoch
         train(config, train_loader, parallel=args.parallel, continue_training=True)

@@ -3,7 +3,7 @@
 #BATCH --job-name=wmh_diffuse
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:4
+#SBATCH --gres=gpu:2
 #SBATCH --cpus-per-task=16
 #SBATCH --hint=nomultithread
 #SBATCH --time=02:00:00
