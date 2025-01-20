@@ -103,7 +103,8 @@ class baseMask:
     def restore(self, xi: float, x: Array, measured: Array):
         return self.restore_from_mask(self.make(xi), x, measured)
 
-    def init_measurement(self, xi_init: Array) -> MeasurementState:
+    def init_measurement(self, key: PRNGKeyArray) -> MeasurementState:
+        xi_init = self.init_design(key)
         y = jnp.zeros(self.img_shape)
         mask_history = jnp.zeros_like(self.make(xi_init))
         return MeasurementState(y=y, mask_history=mask_history)
@@ -182,7 +183,6 @@ def generate_line(angle_rad, size_line, img_shape):
     y_circle, x_circle = jnp.ogrid[-center_y:img_shape[0]-center_y, -center_x:img_shape[1]-center_x]
     circle_mask = jax.nn.sigmoid(-sharpness * ((x_circle*x_circle + y_circle*y_circle) - size_line ** 2))
     circle_image = circle_mask.astype(jnp.float32)
-    
     # Combine line and circle
     line_image = line_image * circle_image
     return line_image

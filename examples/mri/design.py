@@ -306,13 +306,7 @@ def main(
     denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
 
     # init design
-    # measurement_state = mask.init_measurement()
-    # measurement_state = mask.init_measurement(jnp.array([0.0, 0.0])) # For Spiral
-    xi = mask.init_design(key)
-    measurement_state = mask.init_measurement(xi)
-    # measurement_state = mask.init_measurement(
-    #     jnp.array([[0.0,], 0.1, 0.2, 0.3, 0.4, 0.5])
-    # )  # For Radial
+    measurement_state = mask.init_measurement(key)
 
     # ExperimentOptimizer
     optimizer = optax.chain(optax.adam(learning_rate=0.1), optax.scale(-1))
