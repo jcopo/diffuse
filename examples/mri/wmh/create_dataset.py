@@ -10,7 +10,7 @@ from torch.utils import data
 from torch.utils.data import Dataset, DataLoader
 
 import torchio as tio
-
+import sigpy as sp
 
 def numpy_collate(batch):
     return np.asarray(data.default_collate(batch))
@@ -70,6 +70,8 @@ class WMHDataset(Dataset):
         with h5py.File(self.file_list[file_idx], "r") as f:
             vol = f["volume"][..., self.min_slice:self.max_slice][..., slice_idx]
             mask = f["mask"][..., self.min_slice:self.max_slice ][..., slice_idx]
+        vol = sp.resize(vol, (92, 112))
+        mask = sp.resize(mask, (92, 112))
         vol_ksp = np.fft.fft2(vol, norm="ortho", axes=[-2, -1])
         vol_xsp = np.fft.ifft2(vol_ksp, norm="ortho", axes=[-2, -1])
         vol_xsp_scale_factor = np.percentile(np.abs(vol_xsp), 99)
