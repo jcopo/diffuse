@@ -6,7 +6,7 @@
 #SBATCH --gres=gpu:8
 #SBATCH --cpus-per-task=16
 #SBATCH --hint=nomultithread
-#SBATCH --time=01:00:00
+#SBATCH --time=00:20:00
 #SBATCH --output=training_wmh.out
 #SBATCH --error=training_wmh.err
 #SBATCH -C a100
