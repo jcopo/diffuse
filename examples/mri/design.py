@@ -37,25 +37,27 @@ from examples.mri.wmh.create_dataset import (
 SIZE = 7
 
 
+# get user from environment variable
+USER = os.getenv("USER")
+WORKDIR = os.getenv("WORK")
+
 config_brats = {
-    "path_dataset": "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/BRATS/ASNR-MICCAI-BraTS2023-Local-Synthesis-Challenge-Training",
-    "save_path": "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/BRATS/models/",
+    "path_dataset": f"{WORKDIR}/diffuse/data/BRATS/ASNR-MICCAI-BraTS2023-Local-Synthesis-Challenge-Training",
+    "save_path": f"{WORKDIR}/diffuse/data/BRATS/models/",
     "batch_size": 32,
     "num_workers": 0,
 }
 
-USER = "uha64uw"
 
 config_wmh = {
     "modality": "FLAIR",
     "slice_size_template": 49,
     "begin_slice": 26,
-    "path_dataset": f"/lustre/fswork/projects/rech/hlp/{USER}/diffuse/data/WMH",
-    "save_path": f"/lustre/fswork/projects/rech/hlp/{USER}/diffuse/data/WMH/models/",
+    "path_dataset": f"{WORKDIR}/diffuse/data/WMH",
+    "save_path": f"{WORKDIR}/diffuse/data/WMH/models/",
     "batch_size": 32,
     "num_workers": 0,
 }
-
 
 
 def plot_measurement(measurement_state):
@@ -63,19 +65,27 @@ def plot_measurement(measurement_state):
     fig, ax = plt.subplots(1, 2, figsize=(6, 3))
     ax[0].imshow(mask_history, cmap="gray")
     ax[0].set_title("Mask")
-    ax[0].axis('off')
+    ax[0].axis("off")
     ax[1].imshow(jnp.log10(jnp.abs(y[..., 0] + 1j * y[..., 1]) + 1e-10), cmap="gray")
     ax[1].set_title("y")
-    ax[1].axis('off')
+    ax[1].axis("off")
     plt.show()
 
+
 def show_samples_plot(
-    measurement_state, ground_truth, thetas, weights, n_meas, size=7, mask=None
+    measurement_state,
+    ground_truth,
+    thetas,
+    weights,
+    n_meas,
+    mask=None,
+    logging_path=None,
+    size=7,
 ):
     for i in [0, 1]:
         mask_history, joint_y = measurement_state.mask_history, measurement_state.y
         thetas_i = thetas[..., i]
-        #joint_y = joint_y[..., 0]
+        # joint_y = joint_y[..., 0]
         n = 20
         best_idx = jnp.argsort(weights)[-n:][::-1]
         worst_idx = jnp.argsort(weights)[:n]
@@ -83,7 +93,10 @@ def show_samples_plot(
         # Create a figure with subplots
         fig = plt.figure(figsize=(40, 10))
         fig.suptitle(
-            "High weight (top) and low weight (bottom) Samples", fontsize=18, y=0.67, x=0.6
+            "High weight (top) and low weight (bottom) Samples",
+            fontsize=18,
+            y=0.67,
+            x=0.6,
         )
 
         # Create grid spec for layout with reduced vertical spacing
@@ -108,20 +121,24 @@ def show_samples_plot(
 
         # Add another large subplot
         ax_large = fig.add_subplot(gs[:2, 2:4])
-        ax_large.imshow(jnp.log10(jnp.abs(joint_y[..., 0] + 1j * joint_y[..., 1]) + 1e-10), cmap="gray")
+        ax_large.imshow(
+            jnp.log10(jnp.abs(joint_y[..., 0] + 1j * joint_y[..., 1]) + 1e-10),
+            cmap="gray",
+        )
         ax_large.axis("off")
         ax_large.set_title("Measure $y$", fontsize=12)
 
         # Add another large subplot
         ax_large = fig.add_subplot(gs[:2, 4:6])
-        restored_theta = mask.restore_from_mask(mask_history, jnp.zeros_like(ground_truth), joint_y)
-        #ax_large.imshow(jnp.abs(restored_theta[..., 0] + 1j * restored_theta[..., 1]) , cmap="gray")
+        restored_theta = mask.restore_from_mask(
+            mask_history, jnp.zeros_like(ground_truth), joint_y
+        )
+        # ax_large.imshow(jnp.abs(restored_theta[..., 0] + 1j * restored_theta[..., 1]) , cmap="gray")
         ax_large.imshow(restored_theta[..., 0], cmap="gray")
         ax_large.axis("off")
         ax_large.set_title("Fourier($y$)", fontsize=12)
         # ax_large.scatter(opt_hist[-1, 0], opt_hist[-1, 1], marker="o", c="red")
         # add a square above the image. Around the design and 5 pixels from it
-
 
         # Add the remaining subplots
         for idx in range(n - 6):
@@ -134,13 +151,14 @@ def show_samples_plot(
             ax1.axis("off")
             ax2.axis("off")
 
-        #plt.tight_layout(rect=[0, 0, 1, 0.96])
+        # plt.tight_layout(rect=[0, 0, 1, 0.96])
+        plt.savefig(f"{logging_path}/samples_{n_meas}.png", bbox_inches="tight")
         plt.show()
         plt.close()
 
 
 def initialize_experiment(key: PRNGKeyArray, n_t: int):
-    data_model = "wmh" # "wmh"
+    data_model = "wmh"  # "wmh"
 
     if data_model == "brats":
         unet = "ann_480.npz"
@@ -157,7 +175,7 @@ def initialize_experiment(key: PRNGKeyArray, n_t: int):
 
     key, subkey = jax.random.split(key)
     ground_truth = xs[1]
-    #ground_truth = jax.random.choice(key, xs)
+    # ground_truth = jax.random.choice(key, xs)
 
     n_samples, tf = 150, 2.0
     dt = tf / n_t
@@ -166,7 +184,7 @@ def initialize_experiment(key: PRNGKeyArray, n_t: int):
 
     dt_embedding = tf / 32
     score_net = UNet(dt_embedding, 64, upsampling="pixel_shuffle")
-    nn_trained = jnp.load( os.path.join(config["save_path"], unet), allow_pickle=True)
+    nn_trained = jnp.load(os.path.join(config["save_path"], unet), allow_pickle=True)
     params = nn_trained["params"].item()
 
     def nn_score(x, t):
@@ -177,7 +195,6 @@ def initialize_experiment(key: PRNGKeyArray, n_t: int):
 
     # mask = maskSpiral(img_shape=shape, num_spiral=1, num_samples=100000, sigma=.2)
     mask = maskRadial(img_shape=shape, num_lines=5)
-
 
     return sde, mask, ground_truth, dt, n_t, nn_score
 
@@ -215,14 +232,23 @@ def evaluate_metrics(grande_truite, theta_infered, weights_infered):
     return psnr_score, ssim_score
 
 
-def plot_and_log_iteration(mask, ground_truth, optimal_state, measurement_state, hist, n_meas,
-                          logger_metrics_fn=None, plotter_theta=None, plotter_contrastive=None):
+def plot_and_log_iteration(
+    mask,
+    ground_truth,
+    optimal_state,
+    measurement_state,
+    hist,
+    n_meas,
+    logger_metrics_fn=None,
+    plotter_theta=None,
+    plotter_contrastive=None,
+):
     """Handle plotting and logging for each iteration of the experiment."""
     # Calculate metrics
     psnr_score, ssim_score = evaluate_metrics(
         ground_truth,
         optimal_state.denoiser_state.integrator_state.position,
-        optimal_state.denoiser_state.weights
+        optimal_state.denoiser_state.weights,
     )
     # Log metrics
     if logger_metrics_fn:
@@ -245,21 +271,28 @@ def plot_and_log_iteration(mask, ground_truth, optimal_state, measurement_state,
 
     # Plot contrastive samples
     if plotter_contrastive:
+        plotter_contrastive = partial(plotter_contrastive, mask=mask)
         jax.experimental.io_callback(
             plotter_contrastive,
             None,
-            hist,
+            measurement_state,
             ground_truth,
-            measurement_state.y,
             optimal_state.cntrst_denoiser_state.integrator_state.position,
             optimal_state.cntrst_denoiser_state.weights,
             n_meas,
         )
 
-def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
-         plotter_theta=None, plotter_contrastive=None, logger_metrics=None):
+
+def main(
+    num_measurements: int,
+    key: PRNGKeyArray,
+    plot: bool = False,
+    plotter_theta=None,
+    plotter_contrastive=None,
+    logger_metrics=None,
+):
     # Initialize experiment forward model
-    n_t = 150
+    n_t = 80
     sde, mask, ground_truth, dt, n_t, nn_score = initialize_experiment(key, n_t)
     n_samples = 70
     n_samples_cntrst = 51
@@ -267,15 +300,17 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
     n_opt_steps = n_t * n_loop_opt + (n_loop_opt - 1)
 
     # Conditional Denoiser
-    # integrator = EulerMaruyama(sde)
-    integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
+    integrator = EulerMaruyama(sde)
+    #integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
     resample = True
     denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
 
     # init design
     # measurement_state = mask.init_measurement()
     # measurement_state = mask.init_measurement(jnp.array([0.0, 0.0])) # For Spiral
-    measurement_state = mask.init_measurement(jnp.array([0., .1, .2, .3, .4, .5])) # For Radial
+    measurement_state = mask.init_measurement(
+        jnp.array([0.0, 0.1, 0.2, 0.3, 0.4, 0.5])
+    )  # For Radial
 
     # ExperimentOptimizer
     optimizer = optax.chain(optax.adam(learning_rate=0.1), optax.scale(-1))
@@ -313,7 +348,7 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
                 n_meas,
                 logger_metrics,
                 plotter_theta,
-                plotter_contrastive
+                plotter_contrastive,
             )
 
         exp_state = experiment_optimizer.init(subkey, n_samples, n_samples_cntrst, dt)
@@ -321,9 +356,7 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
 
     init_carry = (exp_state, measurement_state, key)
     (exp_state, measurement_state, key), optimal_states = jax.lax.scan(
-        scan_step,
-        init_carry,
-        jnp.arange(num_measurements)
+        scan_step, init_carry, jnp.arange(num_measurements)
     )
 
     return ground_truth, optimal_states[-1], measurement_state.y
@@ -355,8 +388,12 @@ if __name__ == "__main__":
     os.makedirs(logging_path_contrastive, exist_ok=True)
 
     # Setup plotting functions
-    plotter_theta = partial(log_samples, logging_path=logging_path_theta, size=SIZE)
-    plotter_contrastive = partial(log_samples, logging_path=logging_path_contrastive, size=SIZE)
+    plotter_theta = partial(
+        show_samples_plot, logging_path=logging_path_theta, size=SIZE
+    )
+    plotter_contrastive = partial(
+        show_samples_plot, logging_path=logging_path_contrastive, size=SIZE
+    )
     logger_metrics_fn = partial(logger_metrics, dir_path=dir_path)
 
     ground_truth, optimal_state, final_measurement = main(
@@ -365,12 +402,16 @@ if __name__ == "__main__":
         plot=plot,
         plotter_theta=plotter_theta,
         plotter_contrastive=plotter_contrastive,
-        logger_metrics=logger_metrics_fn
+        logger_metrics=logger_metrics_fn,
     )
 
     # Calculate final metrics
-    final_samples = optimal_state.denoiser_state.integrator_state.position[-1, :optimal_state.weights.shape[0]]
-    psnr_score, ssim_score = evaluate_metrics(ground_truth, final_samples, optimal_state.weights)
+    final_samples = optimal_state.denoiser_state.integrator_state.position[
+        -1, : optimal_state.weights.shape[0]
+    ]
+    psnr_score, ssim_score = evaluate_metrics(
+        ground_truth, final_samples, optimal_state.weights
+    )
     print(f"PSNR: {psnr_score} SSIM: {ssim_score}")
 
     # Save final scores
