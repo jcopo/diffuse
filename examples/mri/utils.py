@@ -149,7 +149,6 @@ class maskSpiral(baseMask):
     max_angle: float = None
 
     def init_design(self, key: PRNGKeyArray) -> Array:
-        #return jnp.array([2, 1.0])
         return jax.random.uniform(key, shape=(3,), minval=0.0, maxval=3.0)
 
     def make(self, xi: float):
@@ -190,8 +189,8 @@ def generate_line(angle_rad, size_line, img_shape):
 
 @dataclass
 class maskRadial(baseMask):
-    img_shape: tuple
     num_lines: int
+    img_shape: tuple
 
     def init_design(self, key: PRNGKeyArray) -> Array:
         angles = jax.random.uniform(key, shape=(self.num_lines,), minval=0.0, maxval=2*jnp.pi)
