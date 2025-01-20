@@ -11,32 +11,12 @@ from diffuse.base_forward_model import ForwardModel, MeasurementState
 from diffuse.integrator.base import IntegratorState
 from diffuse.utils.plotting import plot_lines
 
-def has_nans_des(position: Array):
-    has_nans = jnp.any(jnp.isnan(position))
-    jax.debug.print("Design has NaNs: {}", has_nans)
-
-def has_nans_theta(position: Array):
-    has_nans = jnp.any(jnp.isnan(position))
-    jax.debug.print("Theta has NaNs: {}", has_nans)
-
 
 class BEDState(NamedTuple):
     denoiser_state: CondDenoiserState
     cntrst_denoiser_state: CondDenoiserState
     design: Array
     opt_state: optax.OptState
-
-
-def _vmapper(fn, type):
-    def _set_axes(path, value):
-        # Vectorize only particles and rng_key fields
-        if any(field in str(path) for field in ["position", "rng_key", "weights"]):
-            return 0
-        return None
-
-    # Create tree with selective vectorization
-    in_axes = jax.tree_util.tree_map_with_path(_set_axes, type)
-    return jax.vmap(fn, in_axes=(in_axes, None))
 
 
 @dataclass
@@ -165,8 +145,6 @@ def calculate_and_apply_gradient(
     grad_xi, ys = grad_xi_score(thetas, cntrst_thetas, design, mask)
     updates, new_opt_state = optx_opt.update(grad_xi, opt_state, design)
     new_design = optax.apply_updates(design, updates)
-    # new_design = design
-    #has_nans_des(new_design)
     return new_design, new_opt_state, ys
 
 
