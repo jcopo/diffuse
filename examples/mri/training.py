@@ -14,30 +14,31 @@ from optax import EmaState, EmptyState, ScaleByAdamState, ScaleByScheduleState
 
 import numpy as np
 import yaml
-from torchio.utils import get_first_item
 from tqdm import tqdm
 
 from diffuse.diffusion.score_matching import score_match_loss
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.neural_network.unet import UNet
 from examples.mri.brats.create_dataset import (
-    get_train_dataloader as get_brats_train_dataloader,
+    get_dataloader as get_brats_dataloader,
 )
 from examples.mri.fastMRI.create_dataset import (
     get_train_dataloader as get_fastmri_train_dataloader,
 )
 from examples.mri.wmh.create_dataset import (
-    get_train_dataloader as get_wmh_train_dataloader,
+    get_dataloader as get_wmh_dataloader,
 )
 
 jax.config.update("jax_enable_x64", False)
 
 dataloader_zoo = {
-    "wmh": get_wmh_train_dataloader,
-    "brats": get_brats_train_dataloader,
+    "wmh": lambda cfg: get_wmh_dataloader(cfg, train=True),
+    "brats": lambda cfg: get_brats_dataloader(cfg, train=True),
     "fastMRI": get_fastmri_train_dataloader,
 }
 
+def get_first_item(dataloader):
+    return next(iter(dataloader))
 
 def train(config, train_loader, parallel=False, continue_training=False):
     key = jax.random.PRNGKey(0)

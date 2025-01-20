@@ -1,41 +1,27 @@
 import numpy as np
 from torch.utils import data
-
+from torch.utils.data import Dataset, DataLoader
+import glob
+import h5py
 import torchio as tio
+from tqdm import tqdm
 
 import os
 
-
 def numpy_collate(batch):
-    collated_batch = data.default_collate(batch)
-    vol = np.asarray(collated_batch["vol"]).squeeze(1)
-    mask = np.asarray(collated_batch["mask"]).squeeze(1)
-    return np.concatenate([vol, mask], axis=-1)
+    return np.asarray(data.default_collate(batch))
 
-
-def get_transform():
-    transform = tio.Compose(
-        [
-            tio.CropOrPad((160, 240, 155)),
-            tio.RandomFlip(axes=1),
-            tio.RandomElasticDeformation(),
-            tio.RandomGamma(),
-            tio.RescaleIntensity((0, 1), percentiles=(1, 99)),
-        ]
-    )
-    return transform
-
-
-def create_dataset(cfg):
+def create_h5(cfg):
     path_dataset = cfg["path_dataset"]
     path_subjects = [e for e in os.listdir(path_dataset) if "BraTS-GLI" in e]
-
-    subjects = []
-    for id_subject in path_subjects:
+    save_path_h5 = cfg["save_path_h5"]
+    transform = tio.CropOrPad((160, 240, 155))
+    for id_subject in tqdm(path_subjects):
         path_img = os.path.join(path_dataset, id_subject, f"{id_subject}-t1n.nii.gz")
         path_mask = os.path.join(
             path_dataset, id_subject, f"{id_subject}-mask-unhealthy.nii.gz"
         )
+
         subject_dict = {
             "vol": tio.ScalarImage(path_img),
             "mask": tio.LabelMap(path_mask),
@@ -44,26 +30,59 @@ def create_dataset(cfg):
         }
 
         subject = tio.Subject(subject_dict)
-        subjects.append(subject)
+        subject = transform(subject)
 
-    return tio.SubjectsDataset(subjects, transform=get_transform())
+        with h5py.File(os.path.join(save_path_h5, f'{id_subject}.h5'), 'w') as f:
+            f.create_dataset('volume', data=subject.vol.numpy().squeeze(0)) 
+            f.create_dataset('mask', data=subject.mask.numpy().squeeze(0))
 
+class BratsDataset(Dataset):
+    def __init__(
+            self,
+            data_path: str,
+            min_slice: int = 46,
+            max_slice: int = 130,
+            ):
+        self.data_path = data_path
+        self.min_slice = min_slice
+        self.max_slice = max_slice
+        self.file_list = glob.glob(os.path.join(data_path, "*.h5"))
+        self.num_slices = []
+        for file in self.file_list:
+            with h5py.File(file, "r") as f:
+                self.num_slices.append(
+                    f["volume"][..., self.min_slice:self.max_slice].shape[-1]
+                )
+        self.slice_mapper = np.cumsum(self.num_slices) - 1
 
-def get_train_dataloader(cfg):
-    dataset = create_dataset(cfg)
-    sampler = tio.UniformSampler((160, 240, 1))
-    queue = tio.Queue(
+    def __len__(self):
+        return sum(self.num_slices)
+
+    def __getitem__(self, idx):
+        file_idx = np.searchsorted(self.slice_mapper, idx)
+        slice_idx = idx - self.slice_mapper[file_idx] + self.num_slices[file_idx] - 1
+        with h5py.File(self.file_list[file_idx], "r") as f:
+            vol = f["volume"][..., self.min_slice:self.max_slice][..., slice_idx]
+            mask = f["mask"][..., self.min_slice:self.max_slice][..., slice_idx]
+        vol_ksp = np.fft.fft2(vol, norm="ortho", axes=[-2, -1])
+        vol_xsp = np.fft.ifft2(vol_ksp, norm="ortho", axes=[-2, -1])
+        vol_xsp_scale_factor = np.percentile(np.abs(vol_xsp), 99)
+        vol_xsp /= vol_xsp_scale_factor
+        vol_xsp = np.stack([np.real(vol_xsp), np.imag(vol_xsp), mask], axis=-1)
+        return vol_xsp
+
+def get_dataloader(cfg, train: bool = True):
+    folder = "train_data" if train else "val_data"
+    path_dataset = os.path.join(cfg["path_dataset"], folder)
+    dataset = BratsDataset(
+        path_dataset,
+    )
+    return DataLoader(
         dataset,
-        max_length=100,
-        samples_per_volume=5,
-        sampler=sampler,
-        num_workers=cfg["num_workers"],
-    )
-    patches_loader = tio.SubjectsLoader(
-        queue,
         batch_size=cfg["batch_size"],
-        num_workers=0,
-        collate_fn=numpy_collate,
+        shuffle=True,
+        num_workers=cfg["num_workers"],
+        pin_memory=True,
         drop_last=True,
+        collate_fn=numpy_collate,
     )
-    return patches_loader

@@ -9,9 +9,9 @@ save_path: "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/WMH/models/"
 dataset: "wmh"
 
 n_epochs: 4000
-batch_size: 32
+batch_size: 64
 num_workers: 0
 
-n_t: 32
+n_t: 64
 tf: 2.0
 lr: 2.0e-4

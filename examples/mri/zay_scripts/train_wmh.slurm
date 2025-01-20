@@ -1,14 +1,14 @@
 #!/bin/bash
 
-#BATCH --job-name=brats_diffuse
+#BATCH --job-name=wmh_diffuse
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:8
 #SBATCH --cpus-per-task=16
 #SBATCH --hint=nomultithread
 #SBATCH --time=01:00:00
-#SBATCH --output=training_brats.out
-#SBATCH --error=training_brats.err
+#SBATCH --output=training_wmh.out
+#SBATCH --error=training_wmh.err
 #SBATCH -C a100
 #SBATCH --qos=qos_gpu_a100-dev
 #SBATCH -A hlp@a100
@@ -24,4 +24,4 @@ source ~/.bash_profile
 conda activate aoas
 
 cd /lustre/fswork/projects/rech/hlp/uha64uw/diffuse/
-python -m examples.mri.training --config examples/mri/configs/config_brats.yaml --parallel True
+python -m examples.mri.training --config examples/mri/configs/config_wmh.yaml --parallel True
