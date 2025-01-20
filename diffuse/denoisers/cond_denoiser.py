@@ -221,7 +221,7 @@ class CondDenoiser:
 
         # jax.debug.print("ess_val: {}", ess_val/n_particles)
         return jax.lax.cond(
-            (ess_val < 0.9 * n_particles) & (ess_val > 0.1 * n_particles),
+            (ess_val < 0.2 * n_particles),# & (ess_val > 0.1 * n_particles),
             lambda x: (x[idx], log_weights[idx]),
             lambda x: (x, log_weights),
             position,

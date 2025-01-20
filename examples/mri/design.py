@@ -82,6 +82,7 @@ def show_samples_plot(
     logging_path=None,
     size=7,
 ):
+    weights = jnp.exp(weights)
     for i in [0, 1]:
         mask_history, joint_y = measurement_state.mask_history, measurement_state.y
         thetas_i = thetas[..., i]
@@ -152,7 +153,8 @@ def show_samples_plot(
             ax2.axis("off")
 
         # plt.tight_layout(rect=[0, 0, 1, 0.96])
-        plt.savefig(f"{logging_path}/samples_{n_meas}.png", bbox_inches="tight")
+        if logging_path:
+            plt.savefig(f"{logging_path}/samples_{n_meas}.png", bbox_inches="tight")
         plt.show()
         plt.close()
 
@@ -225,6 +227,7 @@ def logger_metrics(psnr_score: float, ssim_score: float, n_meas: int, dir_path: 
 
 @jax.jit
 def evaluate_metrics(grande_truite, theta_infered, weights_infered):
+    weights_infered = jnp.exp(weights_infered)
     psnr_array = jax.vmap(dm_pix.psnr, in_axes=(None, 0))(grande_truite, theta_infered)
     psnr_score = jnp.sum(psnr_array * weights_infered)
     ssim_array = jax.vmap(dm_pix.ssim, in_axes=(None, 0))(grande_truite, theta_infered)
@@ -250,6 +253,8 @@ def plot_and_log_iteration(
         optimal_state.denoiser_state.integrator_state.position,
         optimal_state.denoiser_state.weights,
     )
+    jax.debug.print("PSNR: {}", psnr_score)
+    jax.debug.print("SSIM: {}", ssim_score)
     # Log metrics
     if logger_metrics_fn:
         jax.experimental.io_callback(
@@ -294,8 +299,8 @@ def main(
     # Initialize experiment forward model
     n_t = 80
     sde, mask, ground_truth, dt, n_t, nn_score = initialize_experiment(key, n_t)
-    n_samples = 70
-    n_samples_cntrst = 51
+    n_samples = 150
+    n_samples_cntrst = 151
     n_loop_opt = 3
     n_opt_steps = n_t * n_loop_opt + (n_loop_opt - 1)
 
