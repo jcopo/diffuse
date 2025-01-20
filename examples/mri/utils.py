@@ -181,7 +181,7 @@ def generate_line(angle_rad, size_line, img_shape):
 
     # Generate circle mask
     y_circle, x_circle = jnp.ogrid[-center_y:img_shape[0]-center_y, -center_x:img_shape[1]-center_x]
-    circle_mask = jax.nn.sigmoid(-sharpness * ((x_circle*x_circle + y_circle*y_circle) - size_line))
+    circle_mask = jax.nn.sigmoid(-sharpness * ((x_circle*x_circle + y_circle*y_circle) - size_line ** 2))
     circle_image = circle_mask.astype(jnp.float32)
     
     # Combine line and circle
