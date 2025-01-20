@@ -52,6 +52,7 @@ def train(config, train_loader, parallel=False, continue_training=False):
         num_devices = jax.device_count()
 
         dummy_data = jnp.ones((num_devices, *get_first_item(train_loader).shape[1:]))
+        print(dummy_data.shape)
         dummy_labels = jnp.ones((num_devices,))
 
         keys = jax.random.split(key, num_devices)
