@@ -194,7 +194,7 @@ def initialize_experiment(key: PRNGKeyArray, n_t: int):
     shape = ground_truth.shape
 
     # mask = maskSpiral(img_shape=shape, num_spiral=1, num_samples=100000, sigma=.2)
-    mask = maskRadial(img_shape=shape, num_lines=5)
+    mask = maskRadial(num_lines=5, img_shape=shape, task="anomaly")
 
     return sde, mask, ground_truth, dt, n_t, nn_score
 
@@ -305,8 +305,9 @@ def main(
     resample = True
     denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
 
-    # init design
-    measurement_state = mask.init_measurement(key)
+    # init design and measurement
+    xi = mask.init_design(key)
+    measurement_state = mask.init_measurement(xi)
 
     # ExperimentOptimizer
     optimizer = optax.chain(optax.adam(learning_rate=0.1), optax.scale(-1))

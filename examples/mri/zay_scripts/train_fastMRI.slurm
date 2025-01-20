@@ -6,7 +6,7 @@
 #SBATCH --gres=gpu:8
 #SBATCH --cpus-per-task=16
 #SBATCH --hint=nomultithread
-#SBATCH --time=02:00:00
+#SBATCH --time=01:00:00
 #SBATCH --output=training_fastmri.out
 #SBATCH --error=training_fastmri.err
 #SBATCH -C a100
@@ -24,4 +24,4 @@ source ~/.bash_profile
 conda activate aoas
 
 cd /lustre/fswork/projects/rech/hlp/uha64uw/diffuse/
-python -m examples.mri.training --config examples/mri/configs/config_fastMRI.yaml --parallel True
+python -m examples.mri.training --config examples/mri/configs/config_fastMRI.yaml --parallel True --continue_training True
