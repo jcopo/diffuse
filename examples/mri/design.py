@@ -13,7 +13,7 @@ from jaxtyping import PRNGKeyArray
 from torchio.utils import get_first_item
 
 
-from diffuse.bayesian_design import ExperimentOptimizer
+from diffuse.bayesian_design import ExperimentOptimizer, ExperimentRandom
 from diffuse.denoisers.cond_denoiser import CondDenoiser
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.integrator.deterministic import DPMpp2sIntegrator
@@ -243,7 +243,6 @@ def plot_and_log_iteration(
     ground_truth,
     optimal_state,
     measurement_state,
-    hist,
     n_meas,
     logger_metrics_fn=None,
     plotter_theta=None,
@@ -322,6 +321,7 @@ def main(
     experiment_optimizer = ExperimentOptimizer(
         denoiser, mask, optimizer, ground_truth.shape
     )
+    experiment_optimizer = ExperimentRandom(denoiser, mask, ground_truth.shape)
 
     exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst, dt)
 
@@ -332,7 +332,7 @@ def main(
         jax.debug.print("design start: {}", exp_state.design)
         jax.experimental.io_callback(plot_measurement, None, measurement_state)
 
-        optimal_state, hist = experiment_optimizer.get_design(
+        optimal_state, _ = experiment_optimizer.get_design(
             exp_state, subkey, measurement_state, n_steps=n_opt_steps
         )
         jax.debug.print("design optimal: {}", optimal_state.design)
@@ -349,7 +349,6 @@ def main(
                 ground_truth,
                 optimal_state,
                 measurement_state,
-                hist,
                 n_meas,
                 logger_metrics,
                 plotter_theta,
