@@ -17,13 +17,13 @@ def slice_fourier(mri_slice, task):
     else:
         mri_slice = mri_slice[..., 0]
 
-    f = jnp.fft.fftshift(jnp.fft.fft2(mri_slice, norm="ortho"))
+    f = jnp.fft.fftshift(jnp.fft.fft2(mri_slice, norm="ortho", axes=[-2, -1]), axes=[-2, -1])
     return jnp.stack([jnp.real(f), jnp.imag(f)], axis=-1)
 
 
 def slice_inverse_fourier(fourier_transform, task):
     fourier_transform_complex = fourier_transform[..., 0] + 1j * fourier_transform[..., 1]
-    inv_fourier_slice = jnp.fft.ifft2(jnp.fft.ifftshift(fourier_transform_complex), norm="ortho")
+    inv_fourier_slice = jnp.fft.ifft2(jnp.fft.ifftshift(fourier_transform_complex, axes=[-2, -1]), norm="ortho", axes=[-2, -1])
     if task == "quality":
         return jnp.stack([jnp.real(inv_fourier_slice), jnp.imag(inv_fourier_slice)], axis=-1)
     elif task == "anomaly":
