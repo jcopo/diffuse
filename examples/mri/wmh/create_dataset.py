@@ -1,13 +1,11 @@
 import os
 
-from jax.tree_util import tree_map
 
 import numpy as np
 
 import pandas as pd
-
-import torch
-import torch.nn.functional as F
+import h5py
+import glob
 from torch.utils import data
 from torch.utils.data import Dataset, DataLoader
 
@@ -15,125 +13,74 @@ import torchio as tio
 
 
 def numpy_collate(batch):
-    return tree_map(np.asarray, data.default_collate(batch))
+    return np.asarray(data.default_collate(batch))
 
 
-def get_transform(cfg):
-    transform = tio.Compose(
-        [
-            tio.RescaleIntensity(
-                (0, 1), percentiles=(cfg.get("perc_low", 1), cfg.get("perc_high", 99))
-            ),
-        ]
-    )
-    return transform
 
-
-def load_nifti(cfg, type="Training"):
+def create_h5(cfg):
     path_dataset = cfg["path_dataset"]
-
+    save_path_h5 = cfg["save_path_h5"]
     csv = pd.read_csv(os.path.join(path_dataset, "data.csv"), sep=";")
-
-    subjects = []
     for _, sub in csv.iterrows():
-        if sub.Type == type:
-            path_img = os.path.join(
-                path_dataset, sub.Path, str(sub.ID), f"pre/mni_{cfg['modality']}.nii.gz"
-            )
-            path_mask = os.path.join(
-                path_dataset, sub.Path, str(sub.ID), "mni_wmh.nii.gz"
-            )
+        path_img = os.path.join(
+            path_dataset, sub.Path, str(sub.ID), f"pre/mni_FLAIR.nii.gz"
+        )
+        path_mask = os.path.join(
+            path_dataset, sub.Path, str(sub.ID), "mni_wmh.nii.gz"
+        )
 
-            subject_dict = {
-                "vol": tio.ScalarImage(path_img),
-                "mask": tio.LabelMap(path_mask),
-                "center": sub.Center,
-                "ID": sub.ID,
-                "path": sub.Path,
-            }
+        subject_dict = {
+            "vol": tio.ScalarImage(path_img),
+            "mask": tio.LabelMap(path_mask),
+            "ID": sub.ID,
+        }
 
-            subject = tio.Subject(subject_dict)
-            subjects.append(subject)
+        subject = tio.Subject(subject_dict)
 
-    return tio.SubjectsDataset(subjects, transform=get_transform(cfg))
+        with h5py.File(os.path.join(save_path_h5, f'{sub.ID}.h5'), 'w') as f:
+            f.create_dataset('volume', data=subject.vol.numpy().squeeze(0)) 
+            f.create_dataset('mask', data=subject.mask.numpy().squeeze(0))
 
 
-class vol2slice(Dataset):
-    def __init__(self, cfg, ds, type):
-        self.ds = ds
-        self.cfg = cfg
-        self.type = type
+class WMHDataset(Dataset):
+    def __init__(
+            self,
+            data_path: str,
+            min_slice: int = 26,
+            max_slice: int = 72,
+            ):
+        self.data_path = data_path
+        self.min_slice = min_slice
+        self.max_slice = max_slice
+        self.file_list = glob.glob(os.path.join(data_path, "*.h5"))
+        self.num_slices = []
+        for file in self.file_list:
+            with h5py.File(file, "r") as f:
+                self.num_slices.append(
+                    f["volume"][..., self.min_slice:self.max_slice].shape[-1]
+                )
+        self.slice_mapper = np.cumsum(self.num_slices) - 1
 
     def __len__(self):
-        return len(self.ds) * self.cfg["slice_size_template"]
-
+        return sum(self.num_slices)
+    
     def __getitem__(self, idx):
-        idx_subject = idx // self.cfg["slice_size_template"]
-        idx_slice = idx % self.cfg["slice_size_template"] + self.cfg["begin_slice"]
+        file_idx = np.searchsorted(self.slice_mapper, idx)
+        slice_idx = idx - self.slice_mapper[file_idx] + self.num_slices[file_idx] - 1
+        with h5py.File(self.file_list[file_idx], "r") as f:
+            vol = f["volume"][..., self.min_slice:self.max_slice][..., slice_idx]
+            mask = f["mask"][..., self.min_slice:self.max_slice ][..., slice_idx]
+        vol_ksp = np.fft.fft2(vol, norm="ortho", axes=[-2, -1])
+        vol_xsp = np.fft.ifft2(vol_ksp, norm="ortho", axes=[-2, -1])
+        vol_xsp_scale_factor = np.percentile(np.abs(vol_xsp), 99)
+        vol_xsp /= vol_xsp_scale_factor
+        vol_xsp = np.stack([np.real(vol_xsp), np.imag(vol_xsp), mask], axis=-1)
+        return vol_xsp
 
-        subject = self.ds.__getitem__(idx_subject)
-
-        subject["vol"][tio.DATA] = subject["vol"][tio.DATA][0, ..., idx_slice]
-
-        subject["mask"][tio.DATA] = subject["mask"][tio.DATA][0, ..., idx_slice]
-
-        data_masked = torch.concatenate(
-            [
-                subject["vol"][tio.DATA][..., None],
-                subject["mask"][tio.DATA][..., None].type(torch.float32),
-            ],
-            dim=-1,
-        )
-
-        padding = (0, 0, 0, 3, 0, 1)
-        padded_tensor = F.pad(data_masked, padding, "constant", 0)
-
-        return padded_tensor
-
-
-def create_dataset(cfg, type="Training"):
-    ds = load_nifti(cfg, type)
-    ds = vol2slice(cfg, ds, type)
-    return ds
-
-
-class WMH:
-    def __init__(self, cfg):
-        self.cfg = cfg
-
-    def setup(self):
-        self.train_dataset = create_dataset(self.cfg, type="Training")
-        self.test_dataset = create_dataset(self.cfg, type="Test")
-
-    def get_train_dataloader(self):
-        return DataLoader(
-            self.train_dataset,
-            batch_size=self.cfg["batch_size"],
-            shuffle=True,
-            num_workers=self.cfg["num_workers"],
-            pin_memory=True,
-            drop_last=True,
-            collate_fn=numpy_collate,
-        )
-
-    def get_test_dataloader(self):
-        return DataLoader(
-            self.test_dataset,
-            batch_size=self.cfg["batch_size"],
-            shuffle=False,
-            num_workers=self.cfg["num_workers"],
-            pin_memory=True,
-            collate_fn=numpy_collate,
-        )
-
-
-def get_train_dataloader(cfg):
-    wmh = WMH(cfg)
-    wmh.setup()
-    return wmh.get_train_dataloader()
-
-
-def get_test_dataloader(cfg):
-    wmh = WMH(cfg)
-    wmh.setup()
-    return wmh.get_test_dataloader()
+def get_dataloader(cfg, train: bool = True):
+    folder = "train_data" if train else "val_data"
+    path_dataset = os.path.join(cfg["path_dataset"], folder)
+    dataset = WMHDataset(
+        path_dataset,
+    )
+    return DataLoader(dataset, batch_size=cfg["batch_size"], shuffle=train, collate_fn=numpy_collate)
