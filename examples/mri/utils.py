@@ -164,8 +164,8 @@ class maskSpiral(baseMask):
         return grid(kx, ky, self.img_shape, self.sigma)
 
 
-@partial(jax.vmap, in_axes=(0, None))
-def generate_line(angle_rad, img_shape):
+@partial(jax.vmap, in_axes=(0, 0, None))
+def generate_line(angle_rad, size_line, img_shape):
     y, x = jnp.mgrid[: img_shape[0], : img_shape[1]]
 
     center_x = img_shape[1] // 2
@@ -179,6 +179,13 @@ def generate_line(angle_rad, img_shape):
     sharpness = 300.0
     line_image = jax.nn.sigmoid(-sharpness * (distance - 0.5))
 
+    # Generate circle mask
+    y_circle, x_circle = jnp.ogrid[-center_y:img_shape[0]-center_y, -center_x:img_shape[1]-center_x]
+    circle_mask = jax.nn.sigmoid(-sharpness * ((x_circle*x_circle + y_circle*y_circle) - size_line))
+    circle_image = circle_mask.astype(jnp.float32)
+    
+    # Combine line and circle
+    line_image = line_image * circle_image
     return line_image
 
 @dataclass
@@ -190,12 +197,12 @@ class maskRadial(baseMask):
         return jax.random.uniform(key, shape=(self.num_lines,), minval=0.0, maxval=np.sqrt(2 * np.pi))
 
     def init_design(self, key: PRNGKeyArray) -> Array:
-        return jax.random.uniform(key, shape=(1,), minval=0.0, maxval=3.0)
+        return jax.random.uniform(key, shape=(self.num_lines, 2), minval=0.0, maxval=3.0)
 
     def make(self, xi: float):
-        angle_rad = xi ** 2
-
-        lines = generate_line(angle_rad, self.img_shape[:-1])
+        angle_rad = xi[:, 0] ** 2
+        size_line = xi[:, 1] ** 2
+        lines = generate_line(angle_rad, size_line, self.img_shape[:-1])
 
         hist_lines = jnp.zeros(self.img_shape[:-1])
         for line in lines:
