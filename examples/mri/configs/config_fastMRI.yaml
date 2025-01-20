@@ -8,9 +8,9 @@ max_slice: 29
 image_size: 320
 
 n_epochs: 4000
-batch_size: 16
+batch_size: 64
 num_workers: 0
 
-n_t: 16
+n_t: 64
 tf: 2.0
 lr: 2.0e-4

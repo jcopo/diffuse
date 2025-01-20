@@ -50,6 +50,8 @@ class FastMRIDataset(Dataset):
             ),
             axes=[-2, -1],
         )
+        gt_xsp_scale_factor = np.percentile(np.abs(gt_xsp), 99)
+        gt_xsp /= gt_xsp_scale_factor
         gt_xsp = np.stack([np.real(gt_xsp), np.imag(gt_xsp)], axis=-1)
         return gt_xsp
 

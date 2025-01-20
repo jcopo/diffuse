@@ -32,6 +32,12 @@ from examples.mri.wmh.create_dataset import (
 
 jax.config.update("jax_enable_x64", False)
 
+dataloader_zoo = {
+    "wmh": get_wmh_train_dataloader,
+    "brats": get_brats_train_dataloader,
+    "fastMRI": get_fastmri_train_dataloader,
+}
+
 
 def train(config, train_loader, parallel=False, continue_training=False):
     key = jax.random.PRNGKey(0)
@@ -41,17 +47,26 @@ def train(config, train_loader, parallel=False, continue_training=False):
 
     nn_unet = UNet(config["tf"] / config["n_t"], 64, upsampling="pixel_shuffle")
 
-    key, subkey = jax.random.split(key)
-    if config["dataset"] == "fastMRI":
-        init_params = nn_unet.init(
-            subkey,
-            jnp.ones(next(iter(train_loader)).shape),
-            jnp.ones((config["batch_size"],)),
+    if parallel:
+        num_devices = jax.device_count()
+
+        dummy_data = jnp.ones((num_devices, *get_first_item(train_loader).shape[1:]))
+        dummy_labels = jnp.ones((num_devices,))
+
+        keys = jax.random.split(key, num_devices)
+
+        init_to_device = lambda key, dummy_data, dummy_labels: nn_unet.init(
+            key, dummy_data, dummy_labels
         )
+
+        init_params = jax.pmap(init_to_device)(keys, dummy_data, dummy_labels)
+        init_params = jax.tree.map(lambda x: x[0], init_params)
+
     else:
+        key, subkey = jax.random.split(key)
         init_params = nn_unet.init(
             subkey,
-            jnp.ones((config["batch_size"], *get_first_item(train_loader).shape[1:])),
+            jnp.ones(get_first_item(train_loader).shape),
             jnp.ones((config["batch_size"],)),
         )
 
@@ -114,7 +129,7 @@ def train(config, train_loader, parallel=False, continue_training=False):
         iterator_epoch = range(config["n_epochs"])
 
     if parallel:
-        num_devices = len(jax.local_devices())
+        num_devices = jax.device_count()
         devices = mesh_utils.create_device_mesh((num_devices,))
 
         mesh = Mesh(devices, axis_names=("batch",))
@@ -178,23 +193,19 @@ if __name__ == "__main__":
     with open(args.config, "r") as f:
         config = yaml.safe_load(f)
 
-    if config["dataset"] == "wmh":
-        train_loader = get_wmh_train_dataloader(config)
-
-    elif config["dataset"] == "brats":
-        train_loader = get_brats_train_dataloader(config)
-
-    elif config["dataset"] == "fastMRI":
-        train_loader = get_fastmri_train_dataloader(config)
+    train_loader = dataloader_zoo[config["dataset"]](config)
 
     if args.continue_training:
-        begin_epoch = max(
-            [
-                int(e.split(".")[0][4:])
-                for e in os.listdir(config["save_path"])
-                if e.endswith(".npz") and e[0] == "a"
-            ]
-        ) - 1
+        begin_epoch = (
+            max(
+                [
+                    int(e.split(".")[0][4:])
+                    for e in os.listdir(config["save_path"])
+                    if e.endswith(".npz") and e[0] == "a"
+                ]
+            )
+            - 1
+        )
 
         config["begin_epoch"] = begin_epoch
         train(config, train_loader, parallel=args.parallel, continue_training=True)
