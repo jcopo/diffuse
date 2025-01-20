@@ -29,16 +29,6 @@ def slice_inverse_fourier(fourier_transform, task):
     elif task == "anomaly":
         return jnp.real(inv_fourier_slice)
 
-def slice_fourier(mri_slice, task):
-    f = jnp.fft.fftshift(jnp.fft.fft2(mri_slice, norm="ortho"))
-    return jnp.stack([jnp.real(f), jnp.imag(f)], axis=-1)
-
-
-def slice_inverse_fourier(fourier_transform, task):
-    fourier_transform = fourier_transform[..., 0] + 1j * fourier_transform[..., 1]
-    return jnp.real(jnp.fft.ifft2(jnp.fft.ifftshift(fourier_transform), norm="ortho"))
-
-
 def generate_spiral_2D(
     N=1, num_samples=1000, k_max=1.0, FOV=1.0, angle_offset=0.0, max_angle=None
 ):
@@ -114,21 +104,12 @@ class baseMask:
         pass
 
     def measure_from_mask(self, hist_mask: Array, x: Array) -> Array:
-        return jnp.einsum("ij,ijk->ijk", hist_mask, slice_fourier(x, self.task))
+        return einops.einsum(hist_mask, slice_fourier(x, self.task), "h w, ... h w c -> ... h w c")
 
     def measure(self, xi: float, x: Array):
         return self.measure_from_mask(self.make(xi), x)
 
     def restore_from_mask(self, hist_mask: Array, x: Array, measured: Array):
-        # On crée le masque inverse
-        # inv_mask = 1 - hist_mask
-
-        # On calcule la transformée de Fourier de l'image
-        # fourier_x = slice_fourier(x, self.task) # TODO: remove self.task when re-training of WMH
-
-        # On masque les éléments observés
-        # masked_inv_fourier_x = jnp.einsum("ij,ijk->ijk", inv_mask, fourier_x)
-
         masked_inv_fourier_x = self.measure_from_mask(1 - hist_mask, x)
 
         # On retrouve l'image originale
@@ -144,8 +125,7 @@ class baseMask:
     def restore(self, xi: Array, x: Array, measured: Array) -> Array:
         return self.restore_from_mask(self.make(xi), x, measured)
 
-    def init_measurement(self, key: PRNGKeyArray) -> MeasurementState:
-        xi_init = self.init_design(key)
+    def init_measurement(self, xi_init: Array) -> MeasurementState:
         y = jnp.zeros(self.img_shape)
         mask_history = jnp.zeros_like(self.make(xi_init))
         return MeasurementState(y=y, mask_history=mask_history)
@@ -160,7 +140,6 @@ class baseMask:
         y = measurement_state.y
         inv_mask = 1 - self.make(design)
         # joint_y = inv_mask[..., None] * y + new_measurement
-        import pdb; pdb.set_trace()
         joint_y = jnp.einsum("ij,ijk->ijk", inv_mask, y) + new_measurement
         mask_history = self.supp_mask(
             design, measurement_state.mask_history, self.make(design)
