@@ -40,19 +40,24 @@ class BratsDataset(Dataset):
     def __init__(
             self,
             data_path: str,
-            min_slice: int = 46,
-            max_slice: int = 130,
+            min_slice: int = 50, # 46,
+            max_slice: int = 120, # 130,
             ):
         self.data_path = data_path
         self.min_slice = min_slice
         self.max_slice = max_slice
         self.file_list = glob.glob(os.path.join(data_path, "*.h5"))
         self.num_slices = []
-        for file in self.file_list:
+
+        self.cached_data = {}
+        for file in tqdm(self.file_list):
             with h5py.File(file, "r") as f:
-                self.num_slices.append(
-                    f["volume"][..., self.min_slice:self.max_slice].shape[-1]
-                )
+                self.cached_data[file] = {
+                    'volume': f['volume'][..., min_slice:max_slice],
+                    'mask': f['mask'][..., min_slice:max_slice]
+                }
+        
+        self.num_slices = [v['volume'].shape[-1] for v in self.cached_data.values()]
         self.slice_mapper = np.cumsum(self.num_slices) - 1
 
     def __len__(self):
@@ -61,9 +66,11 @@ class BratsDataset(Dataset):
     def __getitem__(self, idx):
         file_idx = np.searchsorted(self.slice_mapper, idx)
         slice_idx = idx - self.slice_mapper[file_idx] + self.num_slices[file_idx] - 1
-        with h5py.File(self.file_list[file_idx], "r") as f:
-            vol = f["volume"][..., self.min_slice:self.max_slice][..., slice_idx]
-            mask = f["mask"][..., self.min_slice:self.max_slice][..., slice_idx]
+
+        data = self.cached_data[self.file_list[file_idx]]
+        vol = data['volume'][..., slice_idx]
+        mask = data['mask'][..., slice_idx]
+
         vol_ksp = np.fft.fft2(vol, norm="ortho", axes=[-2, -1])
         vol_xsp = np.fft.ifft2(vol_ksp, norm="ortho", axes=[-2, -1])
         vol_xsp_scale_factor = np.percentile(np.abs(vol_xsp), 99)

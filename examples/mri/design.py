@@ -65,15 +65,29 @@ def show_samples_plot(
     size=7,
 ):
     weights = jnp.exp(weights)
+    
+    thetas = jnp.stack([jnp.abs(thetas[..., 0] + 1j * thetas[..., 1]), thetas[..., -1]], axis=-1)
+    ground_truth = jnp.stack([jnp.abs(ground_truth[..., 0] + 1j * ground_truth[..., 1]), ground_truth[..., -1]], axis=-1)
     for i in [0, 1]:
         mask_history, joint_y = measurement_state.mask_history, measurement_state.y
         thetas_i = thetas[..., i]
-        # joint_y = joint_y[..., 0]
         n = 20
         best_idx = jnp.argsort(weights)[-n:][::-1]
         worst_idx = jnp.argsort(weights)[:n]
 
-        # Create a figure with subplots
+        # Calculate global min and max for consistent scaling
+        restored_theta = mask.restore_from_mask(
+            mask_history, jnp.zeros_like(ground_truth), joint_y
+        )
+        all_images = [
+            ground_truth[..., i],
+            thetas_i[best_idx],
+            thetas_i[worst_idx]
+        ]
+        vmin = 0
+        vmax = max(img.max() for img in all_images)
+
+        # Create figure
         fig = plt.figure(figsize=(40, 10))
         fig.suptitle(
             "High weight (top) and low weight (bottom) Samples",
@@ -82,12 +96,11 @@ def show_samples_plot(
             x=0.6,
         )
 
-        # Create grid spec for layout with reduced vertical spacing
         gs = fig.add_gridspec(6, n, hspace=0.0001)
 
-        # Add the larger subplot for the first 4 squares
+        # Ground truth subplot
         ax_large = fig.add_subplot(gs[:2, :2])
-        ax_large.imshow(ground_truth[..., i], cmap="gray")
+        ax_large.imshow(ground_truth[..., i], cmap="gray", vmin=vmin, vmax=vmax)
         ax_large.text(
             -2.3,
             9.0,
@@ -98,11 +111,10 @@ def show_samples_plot(
             fontweight="bold",
             rotation="vertical",
         )
-
         ax_large.axis("off")
         ax_large.set_title("Ground Truth", fontsize=12)
 
-        # Add another large subplot
+        # Measurement subplot
         ax_large = fig.add_subplot(gs[:2, 2:4])
         ax_large.imshow(
             jnp.log10(jnp.abs(joint_y[..., 0] + 1j * joint_y[..., 1]) + 1e-10),
@@ -111,34 +123,28 @@ def show_samples_plot(
         ax_large.axis("off")
         ax_large.set_title("Measure $y$", fontsize=12)
 
-        # Add another large subplot
+        # Fourier subplot
         ax_large = fig.add_subplot(gs[:2, 4:6])
-        restored_theta = mask.restore_from_mask(
-            mask_history, jnp.zeros_like(ground_truth), joint_y
-        )
-        # ax_large.imshow(jnp.abs(restored_theta[..., 0] + 1j * restored_theta[..., 1]) , cmap="gray")
         ax_large.imshow(restored_theta[..., 0], cmap="gray")
         ax_large.axis("off")
         ax_large.set_title("Fourier($y$)", fontsize=12)
-        # ax_large.scatter(opt_hist[-1, 0], opt_hist[-1, 1], marker="o", c="red")
-        # add a square above the image. Around the design and 5 pixels from it
 
-        # Add the remaining subplots
+        # Remaining sample subplots
         for idx in range(n - 6):
             ax1 = fig.add_subplot(gs[0, idx + 6])
             ax2 = fig.add_subplot(gs[1, idx + 6])
 
-            ax1.imshow(thetas_i[best_idx[idx]], cmap="gray")
-            ax2.imshow(thetas_i[worst_idx[idx]], cmap="gray")
+            ax1.imshow(thetas_i[best_idx[idx]], cmap="gray", vmin=vmin, vmax=vmax)
+            ax2.imshow(thetas_i[worst_idx[idx]], cmap="gray", vmin=vmin, vmax=vmax)
 
             ax1.axis("off")
             ax2.axis("off")
 
-        # plt.tight_layout(rect=[0, 0, 1, 0.96])
         if logging_path:
-            plt.savefig(f"{logging_path}/samples_{n_meas}.png", bbox_inches="tight")
+            plt.savefig(f"{logging_path}/{i}_samples_{n_meas}.png", bbox_inches="tight")
         plt.show()
         plt.close()
+
 
 
 def initialize_experiment(key: PRNGKeyArray, n_t: int):
@@ -167,7 +173,7 @@ def initialize_experiment(key: PRNGKeyArray, n_t: int):
 
     beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
 
-    dt_embedding = tf / 32
+    dt_embedding = tf / 64
     score_net = UNet(dt_embedding, 64, upsampling="pixel_shuffle")
     nn_trained = jnp.load(os.path.join(config["save_path"], unet), allow_pickle=True)
     params = nn_trained["params"].item()
@@ -288,8 +294,8 @@ def main(
     n_opt_steps = n_t * n_loop_opt + (n_loop_opt - 1)
 
     # Conditional Denoiser
-    integrator = EulerMaruyama(sde)
-    #integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
+    # integrator = EulerMaruyama(sde)
+    integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
     resample = True
     denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
 

@@ -6,7 +6,7 @@
 #SBATCH --gres=gpu:8
 #SBATCH --cpus-per-task=16
 #SBATCH --hint=nomultithread
-#SBATCH --time=01:00:00
+#SBATCH --time=02:00:00
 #SBATCH --output=training_wmh.out
 #SBATCH --error=training_wmh.err
 #SBATCH -C a100
@@ -23,5 +23,5 @@ conda init
 source ~/.bash_profile
 conda activate aoas
 
-cd /lustre/fswork/projects/rech/hlp/uha64uw/training_new/diffuse/
+cd /lustre/fswork/projects/rech/hlp/uha64uw/diffuse/
 python -m examples.mri.training --config examples/mri/configs/config_wmh.yaml --parallel True
