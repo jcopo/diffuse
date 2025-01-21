@@ -9,4 +9,4 @@ num_workers: 0
 
 n_t: 64
 tf: 2.0
-lr: 2.0e-3
+lr: 2.0e-4
