@@ -109,7 +109,8 @@ class WMH:
         return DataLoader(
             self.train_dataset,
             batch_size=self.cfg["batch_size"],
-            shuffle=True,
+            #shuffle=True,
+            shuffle=False,
             num_workers=self.cfg["num_workers"],
             pin_memory=True,
             drop_last=True,

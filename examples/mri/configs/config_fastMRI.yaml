@@ -1,5 +1,5 @@
-path_dataset: "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/fastMRI/singlecoil_train"
-save_path: "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/fastMRI/models"
+path_dataset: "${WORK}/diffuse/data/fastMRI/singlecoil_train"
+save_path: "${WORK}/diffuse/data/fastMRI/models"
 
 dataset: "fastMRI"
 
