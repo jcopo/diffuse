@@ -85,4 +85,4 @@ def get_dataloader(cfg, train: bool = True):
     dataset = WMHDataset(
         path_dataset,
     )
-    return DataLoader(dataset, batch_size=cfg["batch_size"], shuffle=train, collate_fn=numpy_collate)
+    return DataLoader(dataset, batch_size=cfg["batch_size"], shuffle=train, collate_fn=numpy_collate, drop_last=True)
