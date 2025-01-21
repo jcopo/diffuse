@@ -151,7 +151,7 @@ def initialize_experiment(key: PRNGKeyArray, n_t: int):
         unet = "ann_480.npz"
         dataloader = get_brats_dataloader
     elif data_model == "wmh":
-        unet = "ann_3955.npz"
+        unet = "ann_382.npz"
         dataloader = get_wmh_dataloader
     else:
         raise ValueError(f"Invalid data model: {data_model}")

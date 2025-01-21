@@ -28,7 +28,12 @@ class baseMask:
         pass
 
     def measure_from_mask(self, hist_mask: Array, x: Array) -> Array:
-        return einops.einsum(hist_mask, slice_fourier(x, self.task), "h w, ... h w c -> ... h w c")
+        if self.task == "anomaly":
+            f = slice_fourier(x)
+            f = jnp.concatenate([f[..., :2], jnp.zeros_like(f[..., :1])], axis=-1)
+        else:
+            f = slice_fourier(x)
+        return einops.einsum(hist_mask, f, "h w, ... h w c -> ... h w c")
 
     def measure(self, xi: float, x: Array):
         return self.measure_from_mask(self.make(xi), x)
@@ -36,10 +41,10 @@ class baseMask:
     def restore_from_mask(self, hist_mask: Array, x: Array, measured: Array):
         masked_inv_fourier_x = self.measure_from_mask(1 - hist_mask, x)
 
-        img = slice_inverse_fourier(masked_inv_fourier_x + measured, self.task)
+        img = slice_inverse_fourier(masked_inv_fourier_x + measured)
         if self.task == "anomaly":
-            anomaly_map = jnp.real(x[..., -1])
-            final = jnp.stack([img, anomaly_map], axis=-1)
+            anomaly_map = jnp.real(x[..., [-1]])
+            final = jnp.concatenate([img, anomaly_map], axis=-1)
         else:
             final = img
 
