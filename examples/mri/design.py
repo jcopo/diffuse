@@ -19,7 +19,7 @@ from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.integrator.deterministic import DPMpp2sIntegrator
 from diffuse.integrator.stochastic import EulerMaruyama
 from diffuse.neural_network.unet import UNet
-from examples.mri.utils import maskSpiral, maskRadial
+from examples.mri.forward_models import maskRadial, maskSpiral
 from diffuse.utils.plotting import (
     log_samples,
     plot_comparison,
@@ -27,12 +27,12 @@ from diffuse.utils.plotting import (
     plotter_random,
     sigle_plot,
 )
-from examples.mri.brats.create_dataset import (
-    get_train_dataloader as get_brats_train_dataloader,
-)
-from examples.mri.wmh.create_dataset import (
-    get_train_dataloader as get_wmh_train_dataloader,
-)
+
+from examples.mri.brats.create_dataset import get_dataloader as get_brats_dataloader
+from examples.mri.fastMRI.create_dataset import get_dataloader as get_fastmri_dataloader
+from examples.mri.wmh.create_dataset import get_dataloader as get_wmh_dataloader
+
+import yaml
 
 SIZE = 7
 
@@ -40,24 +40,6 @@ SIZE = 7
 # get user from environment variable
 USER = os.getenv("USER")
 WORKDIR = os.getenv("WORK")
-
-config_brats = {
-    "path_dataset": f"{WORKDIR}/diffuse/data/BRATS/ASNR-MICCAI-BraTS2023-Local-Synthesis-Challenge-Training",
-    "save_path": f"{WORKDIR}/diffuse/data/BRATS/models/",
-    "batch_size": 32,
-    "num_workers": 0,
-}
-
-
-config_wmh = {
-    "modality": "FLAIR",
-    "slice_size_template": 49,
-    "begin_slice": 26,
-    "path_dataset": f"{WORKDIR}/diffuse/data/WMH",
-    "save_path": f"{WORKDIR}/diffuse/data/WMH/models/",
-    "batch_size": 32,
-    "num_workers": 0,
-}
 
 
 def plot_measurement(measurement_state):
@@ -160,16 +142,17 @@ def show_samples_plot(
 
 
 def initialize_experiment(key: PRNGKeyArray, n_t: int):
-    data_model = "wmh"  # "wmh"
+    data_model = "wmh"
+    path_config = f"{WORKDIR}/diffuse/examples/mri/configs/config_{data_model}.yaml"
+    with open(path_config, "r") as f:
+        config = yaml.safe_load(f)
 
     if data_model == "brats":
         unet = "ann_480.npz"
-        config = config_brats
-        dataloader = get_brats_train_dataloader
+        dataloader = get_brats_dataloader
     elif data_model == "wmh":
         unet = "ann_3955.npz"
-        config = config_wmh
-        dataloader = get_wmh_train_dataloader
+        dataloader = get_wmh_dataloader
     else:
         raise ValueError(f"Invalid data model: {data_model}")
 

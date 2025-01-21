@@ -56,7 +56,7 @@ class FastMRIDataset(Dataset):
         return gt_xsp
 
 
-def get_train_dataloader(cfg):
+def get_dataloader(cfg, train: bool = True):
     dataset = FastMRIDataset(
         cfg["path_dataset"],
         cfg.get("min_slice", 13),

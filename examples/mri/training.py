@@ -23,22 +23,21 @@ from examples.mri.brats.create_dataset import (
     get_dataloader as get_brats_dataloader,
 )
 from examples.mri.fastMRI.create_dataset import (
-    get_train_dataloader as get_fastmri_train_dataloader,
+    get_dataloader as get_fastmri_dataloader,
 )
 from examples.mri.wmh.create_dataset import (
     get_dataloader as get_wmh_dataloader,
 )
+
+from examples.mri.utils import get_first_item
 
 jax.config.update("jax_enable_x64", False)
 
 dataloader_zoo = {
     "wmh": lambda cfg: get_wmh_dataloader(cfg, train=True),
     "brats": lambda cfg: get_brats_dataloader(cfg, train=True),
-    "fastMRI": get_fastmri_train_dataloader,
+    "fastMRI": lambda cfg: get_fastmri_dataloader(cfg, train=True),
 }
-
-def get_first_item(dataloader):
-    return next(iter(dataloader))
 
 def train(config, train_loader, parallel=False, continue_training=False):
     key = jax.random.PRNGKey(0)
