@@ -157,7 +157,7 @@ def show_samples_plot(
             ax2.axis("off")
 
         if logging_path:
-            plt.savefig(f"{logging_path}/samples_{n_meas}.png", bbox_inches="tight")
+            plt.savefig(f"{logging_path}/{i}_samples_{n_meas}.png", bbox_inches="tight")
         plt.show()
         plt.close()
 
@@ -179,8 +179,8 @@ def initialize_experiment(key: PRNGKeyArray, n_t: int):
     xs = get_first_item(dataloader(config))
 
     key, subkey = jax.random.split(key)
-    ground_truth = xs[1]
-    # ground_truth = jax.random.choice(key, xs)
+    #ground_truth = xs[1]
+    ground_truth = jax.random.choice(key, xs)
 
     n_samples, tf = 150, 2.0
     dt = tf / n_t
@@ -297,6 +297,7 @@ def main(
     plotter_theta=None,
     plotter_contrastive=None,
     logger_metrics=None,
+    random: bool = False,
 ):
     # Initialize experiment forward model
     n_t = 50
@@ -321,7 +322,8 @@ def main(
     experiment_optimizer = ExperimentOptimizer(
         denoiser, mask, optimizer, ground_truth.shape
     )
-    experiment_optimizer = ExperimentRandom(denoiser, mask, ground_truth.shape)
+    if random:
+        experiment_optimizer = ExperimentRandom(denoiser, mask, ground_truth.shape)
 
     exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst, dt)
 
@@ -424,3 +426,17 @@ if __name__ == "__main__":
         writer = csv.writer(f)
         writer.writerow(["Method", "PSNR", "SSIM"])
         writer.writerow(["Optimized", float(psnr_score), float(ssim_score)])
+
+    # random experiment
+    dir_path_random = f"{dir_path}/random"
+    os.makedirs(dir_path_random, exist_ok=True)
+    plotter_random = partial(show_samples_plot, logging_path=dir_path_random, size=SIZE)
+    logger_metrics_fn_random = partial(logger_metrics, dir_path=dir_path_random)
+    ground_truth_random, optimal_state_random, final_measurement_random = main(
+        num_meas,
+        rng_key,
+        plot=plot,
+        plotter_theta=plotter_random,
+        logger_metrics=logger_metrics_fn_random,
+        random=True
+    )
