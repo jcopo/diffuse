@@ -58,10 +58,7 @@ class FastMRIDataset(Dataset):
 
 def get_dataloader(cfg, train: bool = True):
     dataset = FastMRIDataset(
-        cfg["path_dataset"],
-        cfg.get("min_slice", 13),
-        cfg.get("max_slice", 29),
-        cfg.get("image_size", 320),
+        cfg["path_dataset"]
     )
     return DataLoader(
         dataset,

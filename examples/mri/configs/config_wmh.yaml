@@ -1,5 +1,5 @@
-path_dataset: "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/WMH_"
-save_path: "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/WMH_/models/"
+path_dataset: "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/WMH"
+save_path: "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/WMH/models/"
 
 dataset: "wmh"
 

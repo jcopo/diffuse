@@ -24,4 +24,4 @@ source ~/.bash_profile
 conda activate aoas
 
 cd /lustre/fswork/projects/rech/hlp/uha64uw/diffuse/
-python -m examples.mri.training --config examples/mri/configs/config_fastMRI.yaml --parallel True --continue_training True
+python -m examples.mri.training --config examples/mri/configs/config_fastMRI.yaml --parallel True

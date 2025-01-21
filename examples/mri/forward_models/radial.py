@@ -1,4 +1,4 @@
-from base import baseMask
+from examples.mri.forward_models.base import baseMask
 from dataclasses import dataclass
 from functools import partial
 

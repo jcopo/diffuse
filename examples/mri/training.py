@@ -164,7 +164,6 @@ def train(config, train_loader, parallel=False, continue_training=False):
             f"Epoch {epoch}, loss {val_loss}, mean_loss {sum(list_loss) / len(list_loss)}"
         )
 
-        # if epoch % 5 == 0:
         np.savez(
             os.path.join(config["save_path"], f"ann_{epoch}.npz"),
             params=params,
@@ -185,9 +184,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--parallel", type=bool, default=False, help="Parallel training"
     )
-    parser.add_argument(
-        "--continue_training", type=bool, default=False, help="Continue training"
-    )
     args = parser.parse_args()
 
     with open(args.config, "r") as f:
@@ -195,7 +191,7 @@ if __name__ == "__main__":
 
     train_loader = dataloader_zoo[config["dataset"]](config)
 
-    if args.continue_training:
+    try:
         begin_epoch = (
             max(
                 [
@@ -209,5 +205,5 @@ if __name__ == "__main__":
 
         config["begin_epoch"] = begin_epoch
         train(config, train_loader, parallel=args.parallel, continue_training=True)
-    else:
+    except:
         train(config, train_loader, parallel=args.parallel)
