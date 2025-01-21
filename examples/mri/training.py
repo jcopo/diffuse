@@ -195,19 +195,18 @@ if __name__ == "__main__":
 
     train_loader = dataloader_zoo[config["dataset"]](config)
 
-    if args.continue_training:
+    try:
         begin_epoch = (
-            max(
-                [
-                    int(e.split(".")[0][4:])
-                    for e in os.listdir(config["save_path"])
-                    if e.endswith(".npz") and e[0] == "a"
-                ]
-            )
-            - 1
+        max(
+            [
+                int(e.split(".")[0][4:])
+                for e in os.listdir(config["save_path"])
+                if e.endswith(".npz") and e[0] == "a"
+            ]
         )
-
+        - 1
+    )
         config["begin_epoch"] = begin_epoch
         train(config, train_loader, parallel=args.parallel, continue_training=True)
-    else:
+    except:
         train(config, train_loader, parallel=args.parallel)
