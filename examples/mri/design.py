@@ -358,14 +358,14 @@ def main(
             )
 
         exp_state = experiment_optimizer.init(subkey, n_samples, n_samples_cntrst, dt)
-        return (exp_state, measurement_state, key), optimal_state
+        return (exp_state, measurement_state, key), optimal_state.denoiser_state
 
     init_carry = (exp_state, measurement_state, key)
     (exp_state, measurement_state, key), optimal_states = jax.lax.scan(
         scan_step, init_carry, jnp.arange(num_measurements)
     )
 
-    return ground_truth, optimal_states[-1], measurement_state.y
+    return ground_truth, optimal_states, measurement_state.y
 
 
 if __name__ == "__main__":
@@ -412,11 +412,10 @@ if __name__ == "__main__":
     )
 
     # Calculate final metrics
-    final_samples = optimal_state.denoiser_state.integrator_state.position[
-        -1, : optimal_state.weights.shape[0]
-    ]
+    final_samples = optimal_state.integrator_state.position[-1]
+    weights = optimal_state.weights[-1]
     psnr_score, ssim_score = evaluate_metrics(
-        ground_truth, final_samples, optimal_state.weights
+        ground_truth, final_samples, weights
     )
     print(f"PSNR: {psnr_score} SSIM: {ssim_score}")
 
