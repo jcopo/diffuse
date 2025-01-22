@@ -28,7 +28,7 @@ def l2norm(t, axis=1, eps=1e-12):
 
 
 class SinusoidalPosEmb(nn.Module):
-    """Build sinusoidal embeddings 
+    """Build sinusoidal embeddings
 
     Attributes:
       dim: dimension of the embeddings to generate
@@ -61,7 +61,7 @@ class Downsample(nn.Module):
   @nn.compact
   def __call__(self,x):
     B, H, W, C = x.shape
-    dim = self.dim if self.dim is not None else C 
+    dim = self.dim if self.dim is not None else C
     x = nn.Conv(dim, kernel_size = (4,4), strides= (2,2), padding = 1, dtype=self.dtype)(x)
     assert x.shape == (B, H // 2, W // 2, dim)
     return(x)
@@ -74,7 +74,7 @@ class Upsample(nn.Module):
   @nn.compact
   def __call__(self,x):
     B, H, W, C = x.shape
-    dim = self.dim if self.dim is not None else C 
+    dim = self.dim if self.dim is not None else C
     x = jax.image.resize(x, (B, H * 2, W * 2, C), 'nearest')
     x = nn.Conv(dim, kernel_size=(3,3), padding=1,dtype=self.dtype)(x)
     assert x.shape == (B, H * 2, W * 2, dim)
@@ -85,7 +85,7 @@ class Upsample(nn.Module):
 class WeightStandardizedConv(nn.Module):
     """
     apply weight standardization  https://arxiv.org/abs/1903.10520
-    """ 
+    """
     features: int
     kernel_size: Sequence[int] = 3
     strides: Union[None, int, Sequence[int]] = 1
@@ -106,19 +106,19 @@ class WeightStandardizedConv(nn.Module):
           The convolved data.
         """
         x = x.astype(self.dtype)
-        
+
         conv = nn.Conv(
-            features=self.features, 
-            kernel_size=self.kernel_size, 
+            features=self.features,
+            kernel_size=self.kernel_size,
             strides = self.strides,
-            padding=self.padding, 
-            dtype=self.dtype, 
+            padding=self.padding,
+            dtype=self.dtype,
             param_dtype = self.param_dtype,
             parent=None)
-        
+
         kernel_init = lambda  rng, x: conv.init(rng,x)['params']['kernel']
         bias_init = lambda  rng, x: conv.init(rng,x)['params']['bias']
-        
+
         # standardize kernel
         kernel = self.param('kernel', kernel_init, x)
         eps = 1e-5 if self.dtype == jnp.float32 else 1e-3
@@ -131,7 +131,7 @@ class WeightStandardizedConv(nn.Module):
         bias = self.param('bias',bias_init, x)
 
         return(conv.apply({'params': {'kernel': standardized_kernel, 'bias': bias}},x))
-    
+
 
 class ResnetBlock(nn.Module):
     """Convolutional residual block."""
@@ -171,7 +171,7 @@ class ResnetBlock(nn.Module):
 
         if C != self.dim:
             x = nn.Conv(
-              features=self.dim, 
+              features=self.dim,
               kernel_size= (1,1),
               dtype=self.dtype,
               name='res_conv_0')(x)
@@ -273,10 +273,10 @@ class AttnBlock(nn.Module):
       return(out + x)
 
 
-class Unet(nn.Module):
+class UNet(nn.Module):
     dim: int
     init_dim: Optional[int] = None # if None, same as dim
-    out_dim: Optional[int] = None 
+    out_dim: Optional[int] = None
     dim_mults: Tuple[int, int, int, int] = (1, 2, 4, 8)
     resnet_block_groups: int = 8
     learned_variance: bool = False
@@ -301,7 +301,7 @@ class Unet(nn.Module):
         time_emb = SinusoidalPosEmb(self.dim, dtype=self.dtype)(time)  # [B. dim]
         time_emb = nn.Dense(features=self.dim * 4, dtype=self.dtype, name='time_mlp.dense_0')(time_emb)
         time_emb = nn.Dense(features=self.dim * 4, dtype=self.dtype, name='time_mlp.dense_1')(nn.gelu(time_emb))  # [B, 4*dim]
-        
+
         # downsampling
         num_resolutions = len(self.dim_mults)
         for ind in range(num_resolutions):
@@ -316,7 +316,7 @@ class Unet(nn.Module):
 
           if ind < num_resolutions -1:
             h = Downsample(dim=self.dim * self.dim_mults[ind], dtype=self.dtype, name=f'down_{ind}.downsample_0')(h)
-        
+
         mid_dim = self.dim * self.dim_mults[-1]
         h = nn.Conv(features = mid_dim, kernel_size = (3,3), padding=1, dtype=self.dtype, name=f'down_{num_resolutions-1}.conv_0')(h)
 
@@ -326,12 +326,12 @@ class Unet(nn.Module):
         h = AttnBlock(use_linear_attention=False, dtype=self.dtype, name = 'mid.attenblock_0')(h)
         h = ResnetBlock(dim= mid_dim, groups= self.resnet_block_groups, dtype=self.dtype, name = 'mid.resblock_1')(h, time_emb)
 
-        # upsampling 
+        # upsampling
         for ind in reversed(range(num_resolutions)):
 
            dim_in = self.dim * self.dim_mults[ind]
            dim_out = self.dim * self.dim_mults[ind-1] if ind >0 else init_dim
-           
+
            assert h.shape[-1] == dim_in
            h = jnp.concatenate([h, hs.pop()], axis=-1)
            assert h.shape[-1] == dim_in + dim_out
@@ -345,18 +345,18 @@ class Unet(nn.Module):
            assert h.shape[-1] == dim_in
            if ind > 0:
              h = Upsample(dim = dim_out, dtype=self.dtype, name = f'up_{ind}.upsample_0')(h)
-        
+
         h = nn.Conv(features = init_dim, kernel_size=(3,3), padding=1, dtype=self.dtype, name=f'up_0.conv_0')(h)
-        
-        # final 
+
+        # final
         h = jnp.concatenate([h, hs.pop()], axis=-1)
         assert h.shape[-1] == init_dim * 2
-    
+
         out = ResnetBlock(dim=self.dim,groups=self.resnet_block_groups, dtype=self.dtype, name = 'final.resblock_0' )(h, time_emb)
-        
+
         default_out_dim = C * (1 if not self.learned_variance else 2)
         out_dim = default_out_dim if self.out_dim is None else self.out_dim
-        
+
         return(nn.Conv(out_dim, kernel_size=(1,1), dtype=self.dtype, name= 'final.conv_0')(out))
 
 
@@ -364,4 +364,4 @@ class Unet(nn.Module):
 
 
 
-    
+

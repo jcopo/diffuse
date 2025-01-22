@@ -18,7 +18,8 @@ from tqdm import tqdm
 
 from diffuse.diffusion.score_matching import score_match_loss
 from diffuse.diffusion.sde import SDE, LinearSchedule
-from diffuse.neural_network.unet import UNet
+from diffuse.neural_network.unett import UNet
+#from diffuse.neural_network.unet import UNet
 from examples.mri.brats.create_dataset import (
     get_dataloader as get_brats_dataloader,
 )
@@ -45,7 +46,8 @@ def train(config, train_loader, parallel=False, continue_training=False):
     beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
     sde = SDE(beta, tf=2.0)
 
-    nn_unet = UNet(config["tf"] / config["n_t"], 64, upsampling="pixel_shuffle")
+    #nn_unet = UNet(config["tf"] / config["n_t"], 65, upsampling="pixel_shuffle")
+    nn_unet = UNet(65, upsampling="pixel_shuffle")
 
     if parallel:
         num_devices = jax.device_count()

@@ -38,7 +38,7 @@ def create_h5(cfg):
         subject = tio.Subject(subject_dict)
 
         with h5py.File(os.path.join(save_path_h5, f'{sub.ID}.h5'), 'w') as f:
-            f.create_dataset('volume', data=subject.vol.numpy().squeeze(0)) 
+            f.create_dataset('volume', data=subject.vol.numpy().squeeze(0))
             f.create_dataset('mask', data=subject.mask.numpy().squeeze(0))
 
 
@@ -61,21 +61,21 @@ class WMHDataset(Dataset):
                     'volume': f['volume'][..., self.min_slice:self.max_slice],
                     'mask': f['mask'][..., self.min_slice:self.max_slice]
                 }
-        
+
         self.num_slices = [v['volume'].shape[-1] for v in self.cached_data.values()]
         self.slice_mapper = np.cumsum(self.num_slices) - 1
 
     def __len__(self):
         return sum(self.num_slices)
-    
+
     def __getitem__(self, idx):
         file_idx = np.searchsorted(self.slice_mapper, idx)
         slice_idx = idx - self.slice_mapper[file_idx] + self.num_slices[file_idx] - 1
-        
+
         data = self.cached_data[self.file_list[file_idx]]
         vol = data['volume'][..., slice_idx]
         mask = data['mask'][..., slice_idx]
-        
+
         vol = sp.resize(vol, (92, 112))
         mask = sp.resize(mask, (92, 112))
         vol_ksp = np.fft.fft2(vol, norm="ortho", axes=[-2, -1])
