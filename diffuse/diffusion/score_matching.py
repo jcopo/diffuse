@@ -51,7 +51,7 @@ def score_match_loss(
 
     # reduce squared diff over all axis except batch
     sq_diff = einops.reduce(
-        (nn_eval - score_eval) ** 2, "t ... -> t ", "mean"
+        (nn_eval - score_eval) ** 2, "t ... -> t ", "sum"
     )  # (n_ts)
 
     return jnp.mean(lmbda(ts) * sq_diff, axis=0)
