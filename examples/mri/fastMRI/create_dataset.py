@@ -25,15 +25,15 @@ class FastMRIDataset(Dataset):
         self.image_size = image_size
         self.file_list = glob.glob(os.path.join(data_path, "*.h5"))
         self.num_slices = []
-       
+
         self.cached_data = {}
         for file in self.file_list:
             with h5py.File(file, "r") as f:
                 self.cached_data[file] = {
-                    'kspace': f["kspace"][self.min_slice:self.max_slice]
+                    "kspace": f["kspace"][self.min_slice : self.max_slice]
                 }
-        
-        self.num_slices = [v['kspace'].shape[0] for v in self.cached_data.values()]
+
+        self.num_slices = [v["kspace"].shape[0] for v in self.cached_data.values()]
         self.slice_mapper = np.cumsum(self.num_slices) - 1
 
     def __len__(self):
@@ -42,10 +42,10 @@ class FastMRIDataset(Dataset):
     def __getitem__(self, idx):
         file_idx = np.searchsorted(self.slice_mapper, idx)
         slice_idx = idx - self.slice_mapper[file_idx] + self.num_slices[file_idx] - 1
-        
+
         data = self.cached_data[self.file_list[file_idx]]
-        gt_ksp = data['kspace'][slice_idx]
-        
+        gt_ksp = data["kspace"][slice_idx]
+
         gt_ksp = sp.resize(gt_ksp, (gt_ksp.shape[0], self.image_size))
         gt_ksp = sp.ifft(gt_ksp, axes=(-2,))
         gt_ksp = sp.resize(gt_ksp, (self.image_size, gt_ksp.shape[1]))
@@ -63,14 +63,12 @@ class FastMRIDataset(Dataset):
 
 
 def get_dataloader(cfg, train: bool = True):
-    dataset = FastMRIDataset(
-        cfg["path_dataset"]
-    )
+    dataset = FastMRIDataset(cfg["path_dataset"])
     return DataLoader(
         dataset,
-        batch_size=cfg["batch_size"],
+        batch_size=cfg["training"]["batch_size"],
         shuffle=True,
-        num_workers=cfg["num_workers"],
+        num_workers=cfg["training"]["num_workers"],
         pin_memory=True,
         drop_last=True,
         collate_fn=numpy_collate,

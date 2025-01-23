@@ -176,7 +176,3 @@ script_continuous_training.batch
 examples/mri/zay_scripts/train_wmh.slurm
 examples/mri/zay_scripts/train_fastMRI.slurm
 examples/mri/zay_scripts/train_brats.slurm
-
-examples/mri/configs/config_wmh.yaml
-examples/mri/configs/config_fastMRI.yaml
-examples/mri/configs/config_brats.yaml

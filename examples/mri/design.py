@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import optax
 from jaxtyping import PRNGKeyArray
-from torchio.utils import get_first_item
 
+from examples.mri.utils import get_first_item, get_latest_model
 
 from diffuse.bayesian_design import ExperimentOptimizer, ExperimentRandom
 from diffuse.denoisers.cond_denoiser import CondDenoiser
@@ -19,6 +19,7 @@ from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.integrator.deterministic import DPMpp2sIntegrator
 from diffuse.integrator.stochastic import EulerMaruyama
 from diffuse.neural_network.unet import UNet
+from diffuse.neural_network.unett import UNet as Unet # New unet
 from examples.mri.forward_models import maskRadial, maskSpiral
 from diffuse.utils.plotting import (
     log_samples,
@@ -32,7 +33,7 @@ from examples.mri.brats.create_dataset import get_dataloader as get_brats_datalo
 from examples.mri.fastMRI.create_dataset import get_dataloader as get_fastmri_dataloader
 from examples.mri.wmh.create_dataset import get_dataloader as get_wmh_dataloader
 
-import yaml
+from envyaml import EnvYAML
 
 SIZE = 7
 
@@ -41,6 +42,11 @@ SIZE = 7
 USER = os.getenv("USER")
 WORKDIR = os.getenv("WORK")
 
+dataloader_zoo = {
+    "WMH": lambda cfg: get_wmh_dataloader(cfg, train=True),
+    "BRATS": lambda cfg: get_brats_dataloader(cfg, train=True),
+    "fastMRI": lambda cfg: get_fastmri_dataloader(cfg, train=True),
+}
 
 def plot_measurement(measurement_state):
     mask_history, y = measurement_state.mask_history, measurement_state.y
@@ -171,43 +177,35 @@ def show_samples_plot(
 
 def initialize_experiment(key: PRNGKeyArray, config: dict):
     data_model = config['dataset']
-    path_config = f"{WORKDIR}/diffuse/examples/mri/configs/config_{data_model}.yaml"
-    with open(path_config, "r") as f:
-        data_config = yaml.safe_load(f)
+    path_dataset = config['path_dataset']
+    model_dir = config['model_dir']
 
-    if data_model == "brats":
-        dataloader = get_brats_dataloader
-    elif data_model == "wmh":
-        unet = "ann_568.npz"
-        dataloader = get_wmh_dataloader
-    elif data_model == "fastMRI":
-        dataloader = get_fastmri_dataloader
-    else:
-        raise ValueError(f"Invalid data model: {data_model}")
+    dataloader = dataloader_zoo[data_model](config)
 
-    xs = get_first_item(dataloader(data_config))
+    xs = get_first_item(dataloader)
 
     key, subkey = jax.random.split(key)
     ground_truth = jax.random.choice(key, xs)
 
-    n_t = config['n_t']
-    tf = config['tf']
+    n_t = config['inference']['n_t']
+    tf = config['sde']['tf']
     dt = tf / n_t
 
     beta = LinearSchedule(
-        b_min=config['beta_min'],
-        b_max=config['beta_max'],
-        t0=config['t0'],
+        b_min=config['sde']['beta_min'],
+        b_max=config['sde']['beta_max'],
+        t0=config['sde']['t0'],
         T=tf
     )
 
-    dt_embedding = config['dt_embedding']
-    score_net = UNet(
-        dt_embedding,
-        config['embedding_dim'],
-        upsampling=config['upsampling']
-    )
-    nn_trained = jnp.load(os.path.join(data_config["save_path"], config['model_name']), allow_pickle=True)
+    # dt_embedding = config['unet']['dt_embedding']
+    # score_net = UNet(
+    #     dt_embedding,
+    #     config['unet']['embedding_dim'],
+    #     upsampling=config['unet']['upsampling']
+    # )
+    score_net = Unet(dim=config['unet']['embedding_dim'])
+    nn_trained = jnp.load(os.path.join(model_dir, f"ann_{get_latest_model(config)}.npz"), allow_pickle=True)
     params = nn_trained["params"].item()
 
     def nn_score(x, t):
@@ -216,11 +214,11 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
     sde = SDE(beta=beta, tf=tf)
     shape = ground_truth.shape
 
-    if config['mask_type'] == 'spiral':
+    if config['mask']['mask_type'] == 'spiral':
         mask = maskSpiral(img_shape=shape, task=config['task'], num_spiral=1, num_samples=100000, sigma=.2)
     else:  # radial
         mask = maskRadial(
-            num_lines=config['num_lines'],
+            num_lines=config['mask']['num_lines'],
             img_shape=shape,
             task=config['task']
         )
@@ -328,9 +326,9 @@ def main(
 ):
     # Initialize experiment forward model
     sde, mask, ground_truth, dt, n_t, nn_score = initialize_experiment(key, config)
-    n_samples = config['n_samples']
-    n_samples_cntrst = config['n_samples_cntrst']
-    n_loop_opt = config['n_loop_opt']
+    n_samples = config['inference']['n_samples']
+    n_samples_cntrst = config['inference']['n_samples_cntrst']
+    n_loop_opt = config['inference']['n_loop_opt']
     n_opt_steps = n_t * n_loop_opt + (n_loop_opt - 1)
 
     # Conditional Denoiser
@@ -345,7 +343,7 @@ def main(
 
     # ExperimentOptimizer
     optimizer = optax.chain(
-        optax.adam(learning_rate=config['learning_rate']),
+        optax.adam(learning_rate=config['inference']['lr']),
         optax.scale(-1)
     )
     experiment_optimizer = ExperimentOptimizer(
@@ -412,8 +410,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Load configuration
-    with open(args.config, 'r') as f:
-        config = yaml.safe_load(f)
+    config = EnvYAML(args.config)
 
     key_int = args.rng_key
     plot = args.plot

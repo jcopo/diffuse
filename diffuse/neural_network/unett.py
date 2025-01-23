@@ -367,10 +367,3 @@ class UNet(nn.Module):
             return out[0]
         else:
             return out
-
-
-
-
-
-
-

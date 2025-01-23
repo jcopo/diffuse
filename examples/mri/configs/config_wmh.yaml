@@ -1,12 +1,36 @@
-path_dataset: "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/WMH"
-save_path: "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/WMH/models/"
+dataset: "WMH"
 
-dataset: "wmh"
+path_dataset: "${WORK}/diffuse/data/WMH"
 
-n_epochs: 4000
-batch_size: 32
-num_workers: 0
+# Model paths
+model_dir: "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/WMH/models/"
 
-n_t: 32
-tf: 2.0
-lr: 2.0e-4
+training:
+    n_epochs: 4000
+    batch_size: 32
+    num_workers: 0
+    lr: 2.0e-4
+
+inference:
+    n_t: 50  # Number of time steps
+    n_samples: 150  # Number of samples for denoiser
+    n_samples_cntrst: 151  # Number of contrastive samples
+    n_loop_opt: 3  # Number of optimization loops
+    lr: 0.1
+    
+sde:
+    beta_min: 0.02
+    beta_max: 5.0
+    t0: 0.0
+    tf: 2.0
+
+unet:
+    embedding_dim: 64
+    upsampling: "pixel_shuffle"
+    
+
+mask:
+    mask_type: "radial"  # or "spiral"
+    num_lines: 5
+
+task: "anomaly"
