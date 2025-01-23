@@ -14,8 +14,7 @@ from tqdm import tqdm
 
 from diffuse.diffusion.score_matching import score_match_loss, weight_zoo
 from diffuse.diffusion.sde import SDE, LinearSchedule
-from diffuse.neural_network.unet import UNet
-from diffuse.neural_network.unett import UNet as Unet
+from diffuse.neural_network import model_zoo
 from examples.mri.brats.create_dataset import (
     get_dataloader as get_brats_dataloader,
 )
@@ -57,13 +56,13 @@ def train(config, train_loader, parallel=False):
 
     # Configuring the UNet
     if config["score_model"] == "UNet":
-        score_net = UNet(
+        score_net = model_zoo[config["score_model"]](
             config["unet"]["dt_embedding"],
             config["unet"]["embedding_dim"],
             upsampling=config["unet"]["upsampling"],
         )
     elif config["score_model"] == "UNett":
-        score_net = Unet(dim=config["unet"]["embedding_dim"])
+        score_net = model_zoo[config["score_model"]](dim=config["unet"]["embedding_dim"])
     else:
         raise ValueError(f"Score model {config['score_model']} not found")
 
