@@ -21,7 +21,7 @@ def get_latest_model(config):
         ]
         if not model_files:
             return -1
-        return max(model_files)
+        return max(model_files) - 1
 
     except:
         return -1
