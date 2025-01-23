@@ -57,9 +57,10 @@ def train(config, train_loader, parallel=False):
     # Configuring the UNet
     if config["score_model"] == "UNet":
         score_net = model_zoo[config["score_model"]](
-            config["unet"]["dt_embedding"],
-            config["unet"]["embedding_dim"],
+            dt=config["unet"]["dt_embedding"],
+            dim=config["unet"]["embedding_dim"],
             upsampling=config["unet"]["upsampling"],
+            dim_mults=config["unet"]["dim_mults"],
         )
     elif config["score_model"] == "UNett":
         score_net = model_zoo[config["score_model"]](dim=config["unet"]["embedding_dim"])
@@ -75,14 +76,14 @@ def train(config, train_loader, parallel=False):
     )
 
     # Configuring the loss function
-    if config["loss_weight"] == "None":
+    if config["training"]["loss_weight"] == "None":
         lmbda = None
 
-    elif config["loss_weight"] == "weight_fun":
+    elif config["training"]["loss_weight"] == "weight_fun":
         lmbda = jax.vmap(partial(weight_zoo["weight_fun"], sde=sde))
 
     else:
-        raise ValueError(f"Loss weight {config['loss_weight']} not found")
+        raise ValueError(f"Loss weight {config['training']['loss_weight']} not found")
 
     loss = partial(score_match_loss, network=score_net, lmbda=lmbda)
 
@@ -119,14 +120,6 @@ def train(config, train_loader, parallel=False):
 
     # Initializing the parameters and optimizer states if continue_training is False
     else:
-        # Save config to model directory
-        os.makedirs(config["model_dir"], exist_ok=True)
-        config_path = os.path.join(
-            config["model_dir"], f"config_{config['dataset']}.yaml"
-        )
-        with open(config_path, "w") as f:
-            yaml.dump(dict(config), f)
-
         # Initialize parameters and optimizer states
         params, opt_state, ema_state = (
             init_params,
@@ -137,7 +130,7 @@ def train(config, train_loader, parallel=False):
 
     # Configuring the sharding for parallel training (can be removed)
     if parallel:
-        sharding, replicated_sharding = get_sharding(config)
+        sharding, replicated_sharding = get_sharding()
 
         params = jax.device_put(params, replicated_sharding)
         opt_state = jax.device_put(opt_state, replicated_sharding)
@@ -177,5 +170,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config = EnvYAML(args.config)
+
+    if not os.path.exists(config["model_dir"]):
+        os.makedirs(config["model_dir"], exist_ok=True)
+        os.system(f"cp {args.config} {config['model_dir']}/config_{config['dataset']}.yaml")
+
     train_loader = dataloader_zoo[config["dataset"]](config)
     train(config, train_loader, parallel=args.parallel)

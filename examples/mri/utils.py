@@ -5,6 +5,7 @@ import jax
 from jax.experimental import mesh_utils
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
+import yaml
 
 
 def get_first_item(dataloader):
@@ -22,11 +23,8 @@ def get_latest_model(config):
             return -1
         return max(model_files)
 
-    except (ValueError, OSError) as e:
-        if isinstance(e, OSError):
-            raise OSError(f"Error accessing model directory {config['model_dir']}: {e}")
-        raise ValueError(str(e))
-
+    except:
+        return -1
 
 def checkpoint_model(config, params, opt_state, ema_state, ema_params, epoch):
     np.savez(
