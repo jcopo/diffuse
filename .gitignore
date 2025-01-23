@@ -173,5 +173,5 @@ examples/mri/sandbox_mri.ipynb
 script_continuous_training.batch
 
 
-examples/mri/zay_scripts/
-examples/mri/configs/
+examples/mri/zay_scripts/*
+examples/mri/configs/*
