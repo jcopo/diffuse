@@ -11,32 +11,12 @@ from diffuse.base_forward_model import ForwardModel, MeasurementState
 from diffuse.integrator.base import IntegratorState
 from diffuse.utils.plotting import plot_lines
 
-def has_nans_des(position: Array):
-    has_nans = jnp.any(jnp.isnan(position))
-    jax.debug.print("Design has NaNs: {}", has_nans)
-
-def has_nans_theta(position: Array):
-    has_nans = jnp.any(jnp.isnan(position))
-    jax.debug.print("Theta has NaNs: {}", has_nans)
-
 
 class BEDState(NamedTuple):
     denoiser_state: CondDenoiserState
     cntrst_denoiser_state: CondDenoiserState
     design: Array
     opt_state: optax.OptState
-
-
-def _vmapper(fn, type):
-    def _set_axes(path, value):
-        # Vectorize only particles and rng_key fields
-        if any(field in str(path) for field in ["position", "rng_key", "weights"]):
-            return 0
-        return None
-
-    # Create tree with selective vectorization
-    in_axes = jax.tree_util.tree_map_with_path(_set_axes, type)
-    return jax.vmap(fn, in_axes=(in_axes, None))
 
 
 @dataclass
@@ -126,6 +106,9 @@ class ExperimentOptimizer:
 
 
 def restart_state(state, rng_key, denoiser):
+    """
+    Restart the state of the denoiser and cntrst_denoiser to t0
+    """
     n_thetas = state.denoiser_state.integrator_state.position.shape[0]
     n_cntrst_thetas = state.cntrst_denoiser_state.integrator_state.position.shape[0]
     base_shape = state.denoiser_state.integrator_state.position.shape[1:]
@@ -165,8 +148,6 @@ def calculate_and_apply_gradient(
     grad_xi, ys = grad_xi_score(thetas, cntrst_thetas, design, mask)
     updates, new_opt_state = optx_opt.update(grad_xi, opt_state, design)
     new_design = optax.apply_updates(design, updates)
-    # new_design = design
-    #has_nans_des(new_design)
     return new_design, new_opt_state, ys
 
 
@@ -211,3 +192,22 @@ def _fix_time(denoiser_state: CondDenoiserState, cntrst_denoiser_state: CondDeno
         denoiser_state._replace(integrator_state=new_denoiser_integrator),
         cntrst_denoiser_state._replace(integrator_state=new_cntrst_integrator)
     )
+
+
+@dataclass
+class ExperimentRandom:
+    denoiser: CondDenoiser
+    mask: ForwardModel
+    base_shape: Tuple[int, ...]
+
+    def init(self, rng_key: PRNGKeyArray, n_samples: int, n_samples_cntrst: int, dt: float):
+        design = self.mask.init_design(rng_key)
+        denoiser_state = self.denoiser.init(design, rng_key, dt)
+        return BEDState(denoiser_state=denoiser_state, cntrst_denoiser_state=None, design=design, opt_state=None)
+
+    def get_design(self, state: BEDState, rng_key: PRNGKeyArray, measurement_state: MeasurementState, n_steps: int):
+        n_particles = state.denoiser_state.integrator_state.position.shape[0]
+        design = self.mask.init_design(rng_key)
+        cond_denoiser_state, _ = self.denoiser.generate(rng_key, self.mask, measurement_state, design, n_steps, n_particles)
+
+        return BEDState(denoiser_state=cond_denoiser_state, cntrst_denoiser_state=cond_denoiser_state, design=design, opt_state=None), _

@@ -13,7 +13,7 @@ from jaxtyping import PRNGKeyArray
 from torchio.utils import get_first_item
 
 
-from diffuse.bayesian_design import ExperimentOptimizer
+from diffuse.bayesian_design import ExperimentOptimizer, ExperimentRandom
 from diffuse.denoisers.cond_denoiser import CondDenoiser
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.integrator.deterministic import DPMpp2sIntegrator
@@ -44,6 +44,7 @@ WORKDIR = os.getenv("WORK")
 
 def plot_measurement(measurement_state):
     mask_history, y = measurement_state.mask_history, measurement_state.y
+    print(f"% of space used: {jnp.sum(mask_history)/mask_history.size}")
     fig, ax = plt.subplots(1, 2, figsize=(6, 3))
     ax[0].imshow(mask_history, cmap="gray")
     ax[0].set_title("Mask")
@@ -65,7 +66,7 @@ def show_samples_plot(
     size=7,
 ):
     weights = jnp.exp(weights)
-    
+
     thetas = jnp.stack([jnp.abs(thetas[..., 0] + 1j * thetas[..., 1]), thetas[..., -1]], axis=-1)
     ground_truth = jnp.stack([jnp.abs(ground_truth[..., 0] + 1j * ground_truth[..., 1]), ground_truth[..., -1]], axis=-1)
     for i in [0, 1]:
@@ -75,6 +76,19 @@ def show_samples_plot(
         best_idx = jnp.argsort(weights)[-n:][::-1]
         worst_idx = jnp.argsort(weights)[:n]
 
+        # Calculate global min and max for consistent scaling
+        restored_theta = mask.restore_from_mask(
+            mask_history, jnp.zeros_like(ground_truth), joint_y
+        )
+        all_images = [
+            ground_truth[..., i],
+            thetas_i[best_idx],
+            thetas_i[worst_idx]
+        ]
+        vmin = 0
+        vmax = max(img.max() for img in all_images)
+
+        # Create figure
         # Calculate global min and max for consistent scaling
         restored_theta = mask.restore_from_mask(
             mask_history, jnp.zeros_like(ground_truth), joint_y
@@ -99,7 +113,9 @@ def show_samples_plot(
         gs = fig.add_gridspec(6, n, hspace=0.0001)
 
         # Ground truth subplot
+        # Ground truth subplot
         ax_large = fig.add_subplot(gs[:2, :2])
+        ax_large.imshow(ground_truth[..., i], cmap="gray", vmin=vmin, vmax=vmax)
         ax_large.imshow(ground_truth[..., i], cmap="gray", vmin=vmin, vmax=vmax)
         ax_large.text(
             -2.3,
@@ -115,6 +131,7 @@ def show_samples_plot(
         ax_large.set_title("Ground Truth", fontsize=12)
 
         # Measurement subplot
+        # Measurement subplot
         ax_large = fig.add_subplot(gs[:2, 2:4])
         ax_large.imshow(
             jnp.log10(jnp.abs(joint_y[..., 0] + 1j * joint_y[..., 1]) + 1e-10),
@@ -124,11 +141,13 @@ def show_samples_plot(
         ax_large.set_title("Measure $y$", fontsize=12)
 
         # Fourier subplot
+        # Fourier subplot
         ax_large = fig.add_subplot(gs[:2, 4:6])
         ax_large.imshow(restored_theta[..., 0], cmap="gray")
         ax_large.axis("off")
         ax_large.set_title("Fourier($y$)", fontsize=12)
 
+        # Remaining sample subplots
         # Remaining sample subplots
         for idx in range(n - 6):
             ax1 = fig.add_subplot(gs[0, idx + 6])
@@ -136,11 +155,14 @@ def show_samples_plot(
 
             ax1.imshow(thetas_i[best_idx[idx]], cmap="gray", vmin=vmin, vmax=vmax)
             ax2.imshow(thetas_i[worst_idx[idx]], cmap="gray", vmin=vmin, vmax=vmax)
+            ax1.imshow(thetas_i[best_idx[idx]], cmap="gray", vmin=vmin, vmax=vmax)
+            ax2.imshow(thetas_i[worst_idx[idx]], cmap="gray", vmin=vmin, vmax=vmax)
 
             ax1.axis("off")
             ax2.axis("off")
 
         if logging_path:
+            plt.savefig(f"{logging_path}/{i}_samples_{n_meas}.png", bbox_inches="tight")
             plt.savefig(f"{logging_path}/{i}_samples_{n_meas}.png", bbox_inches="tight")
         plt.show()
         plt.close()
@@ -165,8 +187,8 @@ def initialize_experiment(key: PRNGKeyArray, n_t: int):
     xs = get_first_item(dataloader(config))
 
     key, subkey = jax.random.split(key)
-    ground_truth = xs[1]
-    # ground_truth = jax.random.choice(key, xs)
+    #ground_truth = xs[1]
+    ground_truth = jax.random.choice(key, xs)
 
     n_samples, tf = 150, 2.0
     dt = tf / n_t
@@ -229,7 +251,6 @@ def plot_and_log_iteration(
     ground_truth,
     optimal_state,
     measurement_state,
-    hist,
     n_meas,
     logger_metrics_fn=None,
     plotter_theta=None,
@@ -284,9 +305,10 @@ def main(
     plotter_theta=None,
     plotter_contrastive=None,
     logger_metrics=None,
+    random: bool = False,
 ):
     # Initialize experiment forward model
-    n_t = 80
+    n_t = 50
     sde, mask, ground_truth, dt, n_t, nn_score = initialize_experiment(key, n_t)
     n_samples = 150
     n_samples_cntrst = 151
@@ -308,6 +330,8 @@ def main(
     experiment_optimizer = ExperimentOptimizer(
         denoiser, mask, optimizer, ground_truth.shape
     )
+    if random:
+        experiment_optimizer = ExperimentRandom(denoiser, mask, ground_truth.shape)
 
     exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst, dt)
 
@@ -318,7 +342,7 @@ def main(
         jax.debug.print("design start: {}", exp_state.design)
         jax.experimental.io_callback(plot_measurement, None, measurement_state)
 
-        optimal_state, hist = experiment_optimizer.get_design(
+        optimal_state, _ = experiment_optimizer.get_design(
             exp_state, subkey, measurement_state, n_steps=n_opt_steps
         )
         jax.debug.print("design optimal: {}", optimal_state.design)
@@ -335,7 +359,6 @@ def main(
                 ground_truth,
                 optimal_state,
                 measurement_state,
-                hist,
                 n_meas,
                 logger_metrics,
                 plotter_theta,
@@ -343,14 +366,14 @@ def main(
             )
 
         exp_state = experiment_optimizer.init(subkey, n_samples, n_samples_cntrst, dt)
-        return (exp_state, measurement_state, key), optimal_state
+        return (exp_state, measurement_state, key), optimal_state.denoiser_state
 
     init_carry = (exp_state, measurement_state, key)
     (exp_state, measurement_state, key), optimal_states = jax.lax.scan(
         scan_step, init_carry, jnp.arange(num_measurements)
     )
 
-    return ground_truth, optimal_states[-1], measurement_state.y
+    return ground_truth, optimal_states, measurement_state.y
 
 
 if __name__ == "__main__":
@@ -397,11 +420,10 @@ if __name__ == "__main__":
     )
 
     # Calculate final metrics
-    final_samples = optimal_state.denoiser_state.integrator_state.position[
-        -1, : optimal_state.weights.shape[0]
-    ]
+    final_samples = optimal_state.integrator_state.position[-1]
+    weights = optimal_state.weights[-1]
     psnr_score, ssim_score = evaluate_metrics(
-        ground_truth, final_samples, optimal_state.weights
+        ground_truth, final_samples, weights
     )
     print(f"PSNR: {psnr_score} SSIM: {ssim_score}")
 
@@ -411,3 +433,17 @@ if __name__ == "__main__":
         writer = csv.writer(f)
         writer.writerow(["Method", "PSNR", "SSIM"])
         writer.writerow(["Optimized", float(psnr_score), float(ssim_score)])
+
+    # random experiment
+    dir_path_random = f"{dir_path}/random"
+    os.makedirs(dir_path_random, exist_ok=True)
+    plotter_random = partial(show_samples_plot, logging_path=dir_path_random, size=SIZE)
+    logger_metrics_fn_random = partial(logger_metrics, dir_path=dir_path_random)
+    ground_truth_random, optimal_state_random, final_measurement_random = main(
+        num_meas,
+        rng_key,
+        plot=plot,
+        plotter_theta=plotter_random,
+        logger_metrics=logger_metrics_fn_random,
+        random=True
+    )

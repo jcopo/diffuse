@@ -86,7 +86,9 @@ class CondDenoiser:
 
 
         def body_fun(state: CondDenoiserState, key: PRNGKeyArray):
-            posterior = self.posterior_logpdf(key, measurement_state.y, forward_model.make(design))
+            posterior = self.posterior_logpdf(
+                key, measurement_state.y, measurement_state.mask_history
+            )
             state_next = self.batch_step(key, state, posterior, measurement_state)
             return _fix_time(state_next), state_next.integrator_state.position
 
