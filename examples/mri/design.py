@@ -170,7 +170,7 @@ def show_samples_plot(
 
 
 def initialize_experiment(key: PRNGKeyArray, config: dict):
-    data_model = "wmh"
+    data_model = config['dataset']
     path_config = f"{WORKDIR}/diffuse/examples/mri/configs/config_{data_model}.yaml"
     with open(path_config, "r") as f:
         data_config = yaml.safe_load(f)
@@ -179,6 +179,8 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
         dataloader = get_brats_dataloader
     elif data_model == "wmh":
         dataloader = get_wmh_dataloader
+    elif data_model == "fastMRI":
+        dataloader = get_fastmri_dataloader
     else:
         raise ValueError(f"Invalid data model: {data_model}")
 
