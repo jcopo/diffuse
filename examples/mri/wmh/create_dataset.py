@@ -75,9 +75,9 @@ class WMHDataset(Dataset):
         data = self.cached_data[self.file_list[file_idx]]
         vol = data['volume'][..., slice_idx]
         mask = data['mask'][..., slice_idx]
-
-        vol = sp.resize(vol, (92, 112))
-        mask = sp.resize(mask, (92, 112))
+        
+        vol = sp.resize(vol, (112, 112))
+        mask = sp.resize(mask, (112, 112))
         vol_ksp = np.fft.fft2(vol, norm="ortho", axes=[-2, -1])
         vol_xsp = np.fft.ifft2(vol_ksp, norm="ortho", axes=[-2, -1])
         vol_xsp_scale_factor = np.percentile(np.abs(vol_xsp), 99)

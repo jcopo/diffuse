@@ -42,16 +42,16 @@ def score_match_loss(
     # generate samples of x_t \sim p(x_t|x_0)
     state_0 = SDEState(x0_samples, jnp.zeros((n_x0, 1)))
     keys_x = jax.random.split(key_x, n_x0)
-    state = jax.vmap(sde.path)(keys_x, state_0, ts)
-
+    state = jax.vmap(jax.vmap(sde.path, in_axes=(0, 0, None)), in_axes=(None, None, 0))(keys_x, state_0, ts)
+    
     # nn eval
-    nn_eval = network.apply(nn_params, state.position, ts)
+    nn_eval = jax.vmap(network.apply, in_axes=(None, 1, None))(nn_params, state.position, ts)
+
     # evaluate log p(x_t|x_0)
-    score_eval = jax.vmap(sde.score)(state, state_0)
-
+    score_eval = jax.vmap(jax.vmap(sde.score, in_axes=(0, None)), in_axes=(1, 0))(state, state_0)
+    
     # reduce squared diff over all axis except batch
-    sq_diff = einops.reduce(
-        (nn_eval - score_eval) ** 2, "t ... -> t ", "sum"
-    )  # (n_ts)
+    sq_diff = einops.reduce((nn_eval - score_eval) ** 2, "b t ... -> b t ", "sum").mean(axis=0)
 
-    return jnp.mean(lmbda(ts) * sq_diff, axis=0)
+    lmbda_ts = 1 / einops.reduce(score_eval ** 2, "b t ... -> b t ", "sum").mean(axis=0)
+    return jnp.mean(lmbda_ts * sq_diff, axis=0)

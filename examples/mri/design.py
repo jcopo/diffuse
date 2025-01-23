@@ -178,6 +178,7 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
     if data_model == "brats":
         dataloader = get_brats_dataloader
     elif data_model == "wmh":
+        unet = "ann_568.npz"
         dataloader = get_wmh_dataloader
     elif data_model == "fastMRI":
         dataloader = get_fastmri_dataloader
@@ -254,6 +255,8 @@ def logger_metrics(psnr_score: float, ssim_score: float, n_meas: int, dir_path: 
 @jax.jit
 def evaluate_metrics(grande_truite, theta_infered, weights_infered):
     weights_infered = jnp.exp(weights_infered)
+    grande_truite = jnp.stack([jnp.abs(grande_truite[..., 0] + 1j * grande_truite[..., 1]), grande_truite[..., -1]], axis=-1)
+    theta_infered = jnp.stack([jnp.abs(theta_infered[..., 0] + 1j * theta_infered[..., 1]), theta_infered[..., -1]], axis=-1)
     psnr_array = jax.vmap(dm_pix.psnr, in_axes=(None, 0))(grande_truite, theta_infered)
     psnr_score = jnp.sum(psnr_array * weights_infered)
     ssim_array = jax.vmap(dm_pix.ssim, in_axes=(None, 0))(grande_truite, theta_infered)
@@ -331,8 +334,8 @@ def main(
     n_opt_steps = n_t * n_loop_opt + (n_loop_opt - 1)
 
     # Conditional Denoiser
-    # integrator = EulerMaruyama(sde)
-    integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
+    integrator = EulerMaruyama(sde)
+    # integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
     resample = True
     denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
 

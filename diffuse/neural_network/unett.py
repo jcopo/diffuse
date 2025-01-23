@@ -285,6 +285,12 @@ class UNet(nn.Module):
 
     @nn.compact
     def __call__(self, x, time):
+        if time.ndim == 2:
+           time = time.squeeze()
+        if not isinstance(time, jnp.ndarray) or time.ndim == 0:
+            time = jnp.array([time])
+        if x.ndim < 4:
+            x = jnp.expand_dims(x, 0)
         B, H, W, C = x.shape
 
         init_dim = self.dim if self.init_dim is None else self.init_dim
@@ -356,8 +362,11 @@ class UNet(nn.Module):
 
         default_out_dim = C * (1 if not self.learned_variance else 2)
         out_dim = default_out_dim if self.out_dim is None else self.out_dim
-
-        return(nn.Conv(out_dim, kernel_size=(1,1), dtype=self.dtype, name= 'final.conv_0')(out))
+        out = nn.Conv(out_dim, kernel_size=(1,1), dtype=self.dtype, name= 'final.conv_0')(out)
+        if B == 1:
+            return out[0]
+        else:
+            return out
 
 
 
