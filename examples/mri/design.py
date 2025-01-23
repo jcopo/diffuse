@@ -169,35 +169,42 @@ def show_samples_plot(
 
 
 
-def initialize_experiment(key: PRNGKeyArray, n_t: int):
+def initialize_experiment(key: PRNGKeyArray, config: dict):
     data_model = "wmh"
     path_config = f"{WORKDIR}/diffuse/examples/mri/configs/config_{data_model}.yaml"
     with open(path_config, "r") as f:
-        config = yaml.safe_load(f)
+        data_config = yaml.safe_load(f)
 
     if data_model == "brats":
-        unet = "ann_480.npz"
         dataloader = get_brats_dataloader
     elif data_model == "wmh":
-        unet = "ann_382.npz"
         dataloader = get_wmh_dataloader
     else:
         raise ValueError(f"Invalid data model: {data_model}")
 
-    xs = get_first_item(dataloader(config))
+    xs = get_first_item(dataloader(data_config))
 
     key, subkey = jax.random.split(key)
-    #ground_truth = xs[1]
     ground_truth = jax.random.choice(key, xs)
 
-    n_samples, tf = 150, 2.0
+    n_t = config['n_t']
+    tf = config['tf']
     dt = tf / n_t
 
-    beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
+    beta = LinearSchedule(
+        b_min=config['beta_min'],
+        b_max=config['beta_max'],
+        t0=config['t0'],
+        T=tf
+    )
 
-    dt_embedding = tf / 64
-    score_net = UNet(dt_embedding, 64, upsampling="pixel_shuffle")
-    nn_trained = jnp.load(os.path.join(config["save_path"], unet), allow_pickle=True)
+    dt_embedding = config['dt_embedding']
+    score_net = UNet(
+        dt_embedding,
+        config['embedding_dim'],
+        upsampling=config['upsampling']
+    )
+    nn_trained = jnp.load(os.path.join(data_config["save_path"], config['model_name']), allow_pickle=True)
     params = nn_trained["params"].item()
 
     def nn_score(x, t):
@@ -206,8 +213,14 @@ def initialize_experiment(key: PRNGKeyArray, n_t: int):
     sde = SDE(beta=beta, tf=tf)
     shape = ground_truth.shape
 
-    # mask = maskSpiral(img_shape=shape, num_spiral=1, num_samples=100000, sigma=.2)
-    mask = maskRadial(num_lines=5, img_shape=shape, task="anomaly")
+    if config['mask_type'] == 'spiral':
+        mask = maskSpiral(img_shape=shape, task=config['task'], num_spiral=1, num_samples=100000, sigma=.2)
+    else:  # radial
+        mask = maskRadial(
+            num_lines=config['num_lines'],
+            img_shape=shape,
+            task=config['task']
+        )
 
     return sde, mask, ground_truth, dt, n_t, nn_score
 
@@ -301,6 +314,7 @@ def plot_and_log_iteration(
 def main(
     num_measurements: int,
     key: PRNGKeyArray,
+    config: dict,
     plot: bool = False,
     plotter_theta=None,
     plotter_contrastive=None,
@@ -308,11 +322,10 @@ def main(
     random: bool = False,
 ):
     # Initialize experiment forward model
-    n_t = 50
-    sde, mask, ground_truth, dt, n_t, nn_score = initialize_experiment(key, n_t)
-    n_samples = 150
-    n_samples_cntrst = 151
-    n_loop_opt = 3
+    sde, mask, ground_truth, dt, n_t, nn_score = initialize_experiment(key, config)
+    n_samples = config['n_samples']
+    n_samples_cntrst = config['n_samples_cntrst']
+    n_loop_opt = config['n_loop_opt']
     n_opt_steps = n_t * n_loop_opt + (n_loop_opt - 1)
 
     # Conditional Denoiser
@@ -326,7 +339,10 @@ def main(
     measurement_state = mask.init_measurement(xi)
 
     # ExperimentOptimizer
-    optimizer = optax.chain(optax.adam(learning_rate=0.1), optax.scale(-1))
+    optimizer = optax.chain(
+        optax.adam(learning_rate=config['learning_rate']),
+        optax.scale(-1)
+    )
     experiment_optimizer = ExperimentOptimizer(
         denoiser, mask, optimizer, ground_truth.shape
     )
@@ -386,8 +402,14 @@ if __name__ == "__main__":
     parser.add_argument("--prefix", type=str, default="")
     parser.add_argument("--plot", action="store_true")
     parser.add_argument("--space", type=str, default="runs")
+    parser.add_argument("--config", type=str, default="examples/mri/configs/config_fastMRI_inference.yaml")
 
     args = parser.parse_args()
+
+    # Load configuration
+    with open(args.config, 'r') as f:
+        config = yaml.safe_load(f)
+
     key_int = args.rng_key
     plot = args.plot
     num_meas = args.num_meas
@@ -413,6 +435,7 @@ if __name__ == "__main__":
     ground_truth, optimal_state, final_measurement = main(
         num_meas,
         rng_key,
+        config,
         plot=plot,
         plotter_theta=plotter_theta,
         plotter_contrastive=plotter_contrastive,
