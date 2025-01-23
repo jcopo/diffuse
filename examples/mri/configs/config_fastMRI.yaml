@@ -1,14 +1,14 @@
 dataset: "fastMRI"
-
+score_model: "UNet"
 path_dataset: "${WORK}/diffuse/data/fastMRI/singlecoil_train"
 
 # Model paths
 model_dir: "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/fastMRI/models/"
-model_name: "ann_1296.npz"
 
 training:
     n_epochs: 4000
     batch_size: 64
+    loss_weight: "weight_fun"
     num_workers: 0
     lr: 2.0e-4
 
@@ -30,7 +30,6 @@ unet:
     upsampling: "pixel_shuffle"
     dt_embedding: 0.03125  # Time embedding step (tf/64)
     
-
 mask:
     mask_type: "radial"  # or "spiral"
     num_lines: 5

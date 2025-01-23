@@ -13,8 +13,8 @@ def score_match_loss(
     sde: SDE,
     nt_samples: int,
     tf: float,
-    lmbda: Callable,
     network: Callable,
+    lmbda: Callable = None,
 ):
     """
     Calculate the score matching loss. This version shares the batch of x0 and t. Meaning nt_samples and n_x0 must be the same.
@@ -53,5 +53,19 @@ def score_match_loss(
     # reduce squared diff over all axis except batch
     sq_diff = einops.reduce((nn_eval - score_eval) ** 2, "b t ... -> b t ", "sum").mean(axis=0)
 
-    lmbda_ts = 1 / einops.reduce(score_eval ** 2, "b t ... -> b t ", "sum").mean(axis=0)
+    if lmbda is None:
+        score_sq = einops.reduce(score_eval ** 2, "b t ... -> b t ", "sum").mean(axis=0)
+        lmbda_ts = 1 / (score_sq + 1e-8)
+    else:
+        lmbda_ts = lmbda(ts)
     return jnp.mean(lmbda_ts * sq_diff, axis=0)
+
+
+def weight_fun(t, sde: SDE):
+    int_b = sde.beta.integrate(t, 0).squeeze()
+    return 1 - jnp.exp(-int_b)
+
+weight_zoo = {
+    "None": None,
+    "weight_fun": weight_fun,
+}

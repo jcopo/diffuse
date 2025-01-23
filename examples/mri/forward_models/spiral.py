@@ -7,6 +7,7 @@ from jaxtyping import Array, PRNGKeyArray
 
 from examples.mri.forward_models.base import baseMask
 
+
 def generate_spiral_2D(
     N=1, num_samples=1000, k_max=1.0, FOV=1.0, angle_offset=0.0, max_angle=None
 ):
@@ -48,6 +49,7 @@ def grid(kx, ky, size, sigma=0.3, sharpness=400.0):
 
     grid = jax.nn.sigmoid(sharpness * (grid - 1))
     return grid
+
 
 @dataclass
 class maskSpiral(baseMask):

@@ -1,5 +1,5 @@
 dataset: "WMH"
-
+score_model: "UNett"
 path_dataset: "${WORK}/diffuse/data/WMH"
 
 # Model paths
@@ -8,6 +8,8 @@ model_dir: "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/WMH/models/"
 training:
     n_epochs: 4000
     batch_size: 32
+    nt_samples: 32 # Number of t samples for the score matching loss
+    loss_weight: "None" 
     num_workers: 0
     lr: 2.0e-4
 
@@ -26,8 +28,6 @@ sde:
 
 unet:
     embedding_dim: 64
-    upsampling: "pixel_shuffle"
-    
 
 mask:
     mask_type: "radial"  # or "spiral"

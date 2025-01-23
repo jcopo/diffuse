@@ -8,8 +8,10 @@ from tqdm import tqdm
 
 import os
 
+
 def numpy_collate(batch):
     return np.asarray(data.default_collate(batch))
+
 
 def create_h5(cfg):
     path_dataset = cfg["path_dataset"]
@@ -32,17 +34,18 @@ def create_h5(cfg):
         subject = tio.Subject(subject_dict)
         subject = transform(subject)
 
-        with h5py.File(os.path.join(save_path_h5, f'{id_subject}.h5'), 'w') as f:
-            f.create_dataset('volume', data=subject.vol.numpy().squeeze(0)) 
-            f.create_dataset('mask', data=subject.mask.numpy().squeeze(0))
+        with h5py.File(os.path.join(save_path_h5, f"{id_subject}.h5"), "w") as f:
+            f.create_dataset("volume", data=subject.vol.numpy().squeeze(0))
+            f.create_dataset("mask", data=subject.mask.numpy().squeeze(0))
+
 
 class BratsDataset(Dataset):
     def __init__(
-            self,
-            data_path: str,
-            min_slice: int = 50, # 46,
-            max_slice: int = 120, # 130,
-            ):
+        self,
+        data_path: str,
+        min_slice: int = 50,  # 46,
+        max_slice: int = 120,  # 130,
+    ):
         self.data_path = data_path
         self.min_slice = min_slice
         self.max_slice = max_slice
@@ -53,11 +56,11 @@ class BratsDataset(Dataset):
         for file in tqdm(self.file_list):
             with h5py.File(file, "r") as f:
                 self.cached_data[file] = {
-                    'volume': f['volume'][..., min_slice:max_slice],
-                    'mask': f['mask'][..., min_slice:max_slice]
+                    "volume": f["volume"][..., min_slice:max_slice],
+                    "mask": f["mask"][..., min_slice:max_slice],
                 }
-        
-        self.num_slices = [v['volume'].shape[-1] for v in self.cached_data.values()]
+
+        self.num_slices = [v["volume"].shape[-1] for v in self.cached_data.values()]
         self.slice_mapper = np.cumsum(self.num_slices) - 1
 
     def __len__(self):
@@ -68,8 +71,8 @@ class BratsDataset(Dataset):
         slice_idx = idx - self.slice_mapper[file_idx] + self.num_slices[file_idx] - 1
 
         data = self.cached_data[self.file_list[file_idx]]
-        vol = data['volume'][..., slice_idx]
-        mask = data['mask'][..., slice_idx]
+        vol = data["volume"][..., slice_idx]
+        mask = data["mask"][..., slice_idx]
 
         vol_ksp = np.fft.fft2(vol, norm="ortho", axes=[-2, -1])
         vol_xsp = np.fft.ifft2(vol_ksp, norm="ortho", axes=[-2, -1])
@@ -77,6 +80,7 @@ class BratsDataset(Dataset):
         vol_xsp /= vol_xsp_scale_factor
         vol_xsp = np.stack([np.real(vol_xsp), np.imag(vol_xsp), mask], axis=-1)
         return vol_xsp
+
 
 def get_dataloader(cfg, train: bool = True):
     folder = "train_data" if train else "val_data"

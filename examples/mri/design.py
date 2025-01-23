@@ -19,7 +19,7 @@ from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.integrator.deterministic import DPMpp2sIntegrator
 from diffuse.integrator.stochastic import EulerMaruyama
 from diffuse.neural_network.unet import UNet
-from diffuse.neural_network.unett import UNet as Unet # New unet
+from diffuse.neural_network.unett import UNet as Unet
 from examples.mri.forward_models import maskRadial, maskSpiral
 from diffuse.utils.plotting import (
     log_samples,
@@ -198,13 +198,13 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
         T=tf
     )
 
-    # dt_embedding = config['unet']['dt_embedding']
-    # score_net = UNet(
-    #     dt_embedding,
-    #     config['unet']['embedding_dim'],
-    #     upsampling=config['unet']['upsampling']
-    # )
-    score_net = Unet(dim=config['unet']['embedding_dim'])
+    if config['score_model'] == "UNet":
+        score_net = UNet(config["unet"]["dt_embedding"], config["unet"]["embedding_dim"], upsampling=config["unet"]["upsampling"])
+    elif config['score_model'] == "UNett":
+        score_net = Unet(dim=config['unet']['embedding_dim'])
+    else:
+        raise ValueError(f"Score model {config['score_model']} not found")
+
     nn_trained = jnp.load(os.path.join(model_dir, f"ann_{get_latest_model(config)}.npz"), allow_pickle=True)
     params = nn_trained["params"].item()
 

@@ -1,25 +1,21 @@
 import argparse
-import os
 import sys
+import os
+import yaml
 from functools import partial
 
 import jax
-from jax.experimental import mesh_utils
 import jax.numpy as jnp
-from jax.sharding import Mesh, NamedSharding
-from jax.sharding import PartitionSpec as P
 
 import optax
-from optax import EmaState, EmptyState, ScaleByAdamState, ScaleByScheduleState
 
-import numpy as np
-import yaml
+from envyaml import EnvYAML
 from tqdm import tqdm
 
-from diffuse.diffusion.score_matching import score_match_loss
+from diffuse.diffusion.score_matching import score_match_loss, weight_zoo
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.neural_network.unet import UNet
-from diffuse.neural_network.unett import Unet
+from diffuse.neural_network.unett import UNet as Unet
 from examples.mri.brats.create_dataset import (
     get_dataloader as get_brats_dataloader,
 )
@@ -30,114 +26,132 @@ from examples.mri.wmh.create_dataset import (
     get_dataloader as get_wmh_dataloader,
 )
 
-from examples.mri.utils import get_first_item
+from examples.mri.utils import (
+    checkpoint_model,
+    get_first_item,
+    get_latest_model,
+    get_sharding,
+    load_checkpoint,
+)
 
 jax.config.update("jax_enable_x64", False)
 
 dataloader_zoo = {
-    "wmh": lambda cfg: get_wmh_dataloader(cfg, train=True),
-    "brats": lambda cfg: get_brats_dataloader(cfg, train=True),
+    "WMH": lambda cfg: get_wmh_dataloader(cfg, train=True),
+    "BRATS": lambda cfg: get_brats_dataloader(cfg, train=True),
     "fastMRI": lambda cfg: get_fastmri_dataloader(cfg, train=True),
 }
 
-def train(config, train_loader, parallel=False, continue_training=False):
+
+def train(config, train_loader, parallel=False):
     key = jax.random.PRNGKey(0)
 
-    beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
-    sde = SDE(beta, tf=2.0)
+    # Configuring the SDE
+    beta = LinearSchedule(
+        b_min=config["sde"]["beta_min"],
+        b_max=config["sde"]["beta_max"],
+        t0=config["sde"]["t0"],
+        T=config["sde"]["tf"],
+    )
+    sde = SDE(beta, tf=config["sde"]["tf"])
 
-    # nn_unet = UNet(config["tf"] / 200, 64, upsampling="pixel_shuffle")
-    nn_unet = Unet(dim=64)
+    # Configuring the UNet
+    if config["score_model"] == "UNet":
+        score_net = UNet(
+            config["unet"]["dt_embedding"],
+            config["unet"]["embedding_dim"],
+            upsampling=config["unet"]["upsampling"],
+        )
+    elif config["score_model"] == "UNett":
+        score_net = Unet(dim=config["unet"]["embedding_dim"])
+    else:
+        raise ValueError(f"Score model {config['score_model']} not found")
 
+    # Initializing the UNet
     key, subkey = jax.random.split(key)
-    init_params = nn_unet.init(
+    init_params = score_net.init(
         subkey,
         jnp.ones((1, *get_first_item(train_loader).shape[1:])),
         jnp.ones((1,)),
     )
 
-    def weight_fun(t):
-        int_b = sde.beta.integrate(t, 0).squeeze()
-        return 1 - jnp.exp(-int_b)
+    # Configuring the loss function
+    if config["loss_weight"] == "None":
+        lmbda = None
 
-    loss = partial(score_match_loss, lmbda=jax.vmap(weight_fun), network=nn_unet)
+    elif config["loss_weight"] == "weight_fun":
+        lmbda = jax.vmap(partial(weight_zoo["weight_fun"], sde=sde))
 
+    else:
+        raise ValueError(f"Loss weight {config['loss_weight']} not found")
+
+    loss = partial(score_match_loss, network=score_net, lmbda=lmbda)
+
+    # Defining the training step
     def step(key, params, opt_state, ema_state, data, optimizer, ema_kernel, sde, cfg):
         val_loss, g = jax.value_and_grad(loss)(
-            params, key, data, sde, cfg["n_t"], cfg["tf"]
+            params, key, data, sde, cfg["training"]["nt_samples"], cfg["sde"]["tf"]
         )
         updates, opt_state = optimizer.update(g, opt_state)
         params = optax.apply_updates(params, updates)
         ema_params, ema_state = ema_kernel.update(params, ema_state)
         return params, opt_state, ema_state, val_loss, ema_params
 
-    until_steps = int(0.95 * config["n_epochs"]) * len(train_loader)
+    # Configuring the optimizer
+    until_steps = int(0.95 * config["training"]["n_epochs"]) * len(train_loader)
     schedule = optax.cosine_decay_schedule(
-        init_value=config["lr"], decay_steps=until_steps, alpha=1e-2
+        init_value=config["training"]["lr"], decay_steps=until_steps, alpha=1e-2
     )
 
     optimizer = optax.adam(learning_rate=schedule)
     optimizer = optax.chain(optax.clip_by_global_norm(1.0), optimizer)
     ema_kernel = optax.ema(0.99)
 
+    # JIT the training step
     batch_update = jax.jit(
         partial(step, optimizer=optimizer, ema_kernel=ema_kernel, sde=sde, cfg=config)
     )
 
-    if continue_training:
-        checkpoint = jnp.load(
-            os.path.join(config["save_path"], f"ann_{config['begin_epoch']}.npz"),
-            allow_pickle=True,
-        )
-        params = checkpoint["params"].item()
+    # Loading the checkpoint if continue_training is True
+    begin_epoch = get_latest_model(config)
+    if begin_epoch != -1:
+        params, _, ema_state, opt_state = load_checkpoint(config)
+        iterator_epoch = range(begin_epoch, config["training"]["n_epochs"])
 
-        ema_state = EmaState(
-            count=checkpoint["ema_state"][0], ema=checkpoint["ema_state"][1]
-        )
-
-        opt_state = (
-            EmptyState(),
-            (
-                ScaleByAdamState(
-                    count=checkpoint["opt_state_2"][0],
-                    mu=checkpoint["opt_state_2"][1],
-                    nu=checkpoint["opt_state_2"][2],
-                ),
-                ScaleByScheduleState(checkpoint["opt_state_3"][0]),
-            ),
-        )
-        iterator_epoch = range(config["begin_epoch"], config["n_epochs"])
-
+    # Initializing the parameters and optimizer states if continue_training is False
     else:
-        params = init_params
-        opt_state = optimizer.init(params)
-        ema_state = ema_kernel.init(params)
-        iterator_epoch = range(config["n_epochs"])
-
-    if parallel:
-        num_devices = jax.device_count()
-        devices = mesh_utils.create_device_mesh((num_devices,))
-
-        mesh = Mesh(devices, axis_names=("batch",))
-        sharding = NamedSharding(
-            mesh,
-            P(
-                "batch",
-            ),
+        # Save config to model directory
+        os.makedirs(config["model_dir"], exist_ok=True)
+        config_path = os.path.join(
+            config["model_dir"], f"config_{config['dataset']}.yaml"
         )
-        replicated_sharding = NamedSharding(mesh, P())
+        with open(config_path, "w") as f:
+            yaml.dump(dict(config), f)
+
+        # Initialize parameters and optimizer states
+        params, opt_state, ema_state = (
+            init_params,
+            optimizer.init(init_params),
+            ema_kernel.init(init_params),
+        )
+        iterator_epoch = range(config["training"]["n_epochs"])
+
+    # Configuring the sharding for parallel training (can be removed)
+    if parallel:
+        sharding, replicated_sharding = get_sharding(config)
 
         params = jax.device_put(params, replicated_sharding)
         opt_state = jax.device_put(opt_state, replicated_sharding)
         ema_state = jax.device_put(ema_state, replicated_sharding)
 
+    # Training loop
     for epoch in iterator_epoch:
         list_loss = []
         iterator = tqdm(train_loader, desc="Training", file=sys.stdout)
 
         for batch in iterator:
             key, subkey = jax.random.split(key)
-            batch = jax.device_put(batch, sharding)
+            batch = jax.device_put(batch, sharding) if parallel else batch
             params, opt_state, ema_state, val_loss, ema_params = batch_update(
                 subkey, params, opt_state, ema_state, batch
             )
@@ -149,15 +163,7 @@ def train(config, train_loader, parallel=False, continue_training=False):
             f"Epoch {epoch}, loss {val_loss}, mean_loss {sum(list_loss) / len(list_loss)}"
         )
 
-        np.savez(
-            os.path.join(config["save_path"], f"ann_{epoch}.npz"),
-            params=params,
-            ema_params=ema_params,
-            ema_state=ema_state,
-            opt_state_1=opt_state[0],
-            opt_state_2=opt_state[1][0],
-            opt_state_3=opt_state[1][1],
-        )
+        checkpoint_model(config, params, opt_state, ema_state, ema_params, epoch)
 
 
 if __name__ == "__main__":
@@ -171,23 +177,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    with open(args.config, "r") as f:
-        config = yaml.safe_load(f)
-
+    config = EnvYAML(args.config)
     train_loader = dataloader_zoo[config["dataset"]](config)
-
-    try:
-        begin_epoch = (
-        max(
-            [
-                int(e.split(".")[0][4:])
-                for e in os.listdir(config["save_path"])
-                if e.endswith(".npz") and e[0] == "a"
-            ]
-        )
-        - 1
-    )
-        config["begin_epoch"] = begin_epoch
-        train(config, train_loader, parallel=args.parallel, continue_training=True)
-    except:
-        train(config, train_loader, parallel=args.parallel)
+    train(config, train_loader, parallel=args.parallel)
