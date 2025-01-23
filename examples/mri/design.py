@@ -177,7 +177,6 @@ def show_samples_plot(
 
 def initialize_experiment(key: PRNGKeyArray, config: dict):
     data_model = config['dataset']
-    path_dataset = config['path_dataset']
     model_dir = config['model_dir']
 
     dataloader = dataloader_zoo[data_model](config)
@@ -199,7 +198,7 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
     )
 
     if config['score_model'] == "UNet":
-        score_net = UNet(config["unet"]["dt_embedding"], config["unet"]["embedding_dim"], upsampling=config["unet"]["upsampling"])
+        score_net = UNet(config["unet"]["dt_embedding"], config["unet"]["embedding_dim"], upsampling=config["unet"]["upsampling"], dim_mults=config["unet"]["dim_mults"])
     elif config['score_model'] == "UNett":
         score_net = Unet(dim=config['unet']['embedding_dim'])
     else:
