@@ -5,6 +5,44 @@ from typing import Callable
 from jaxtyping import PyTreeDef, PRNGKeyArray
 from diffuse.diffusion.sde import SDE, SDEState
 
+"""
+def score_match_loss(
+    nn_params: PyTreeDef,
+    rng_key: PRNGKeyArray,
+    x0_samples,
+    sde: SDE,
+    nt_samples: int,
+    tf: float,
+    network: Callable,
+    lmbda: Callable = None,
+):
+    key_t, key_x = jax.random.split(rng_key)
+    n_x0 = x0_samples.shape[0]
+    # generate time samples
+    ts = jax.random.uniform(key_t, (nt_samples - 1, 1), minval=1e-5, maxval=tf)
+    ts = jnp.concatenate([ts, jnp.array([[tf]])], axis=0)
+
+    # generate samples of x_t \sim p(x_t|x_0)
+    state_0 = SDEState(x0_samples, jnp.zeros((n_x0, 1)))
+    keys_x = jax.random.split(key_x, n_x0)
+    state = jax.vmap(jax.vmap(sde.path, in_axes=(0, 0, None)), in_axes=(None, None, 0))(keys_x, state_0, ts)
+    
+    # nn eval
+    nn_eval = jax.vmap(network.apply, in_axes=(None, 1, None))(nn_params, state.position, ts)
+
+    # evaluate log p(x_t|x_0)
+    score_eval = jax.vmap(jax.vmap(sde.score, in_axes=(0, None)), in_axes=(1, 0))(state, state_0)
+    
+    # reduce squared diff over all axis except batch
+    sq_diff = einops.reduce((nn_eval - score_eval) ** 2, "b t ... -> b t ", "sum").mean(axis=0)
+
+    if lmbda is None:
+        score_sq = einops.reduce(score_eval ** 2, "b t ... -> b t ", "sum").mean(axis=0)
+        lmbda_ts = 1 / (score_sq + 1e-8)
+    else:
+        lmbda_ts = lmbda(ts)
+    return jnp.mean(lmbda_ts * sq_diff, axis=0)
+"""
 
 def score_match_loss(
     nn_params: PyTreeDef,
@@ -13,8 +51,8 @@ def score_match_loss(
     sde: SDE,
     nt_samples: int,
     tf: float,
-    lmbda: Callable,
     network: Callable,
+    lmbda: Callable = None,
 ):
     """
     Calculate the score matching loss. This version shares the batch of x0 and t. Meaning nt_samples and n_x0 must be the same.
@@ -54,4 +92,18 @@ def score_match_loss(
         (nn_eval - score_eval) ** 2, "t ... -> t ", "mean"
     )  # (n_ts)
 
-    return jnp.mean(lmbda(ts) * sq_diff, axis=0)
+    if lmbda is None:
+        score_sq = einops.reduce(score_eval ** 2, "b t ... -> b t ", "sum").mean(axis=0)
+        lmbda_ts = 1 / (score_sq + 1e-8)
+    else:
+        lmbda_ts = lmbda(ts)
+    return jnp.mean(lmbda_ts * sq_diff, axis=0)
+
+def weight_fun(t, sde: SDE):
+    int_b = sde.beta.integrate(t, 0).squeeze()
+    return 1 - jnp.exp(-int_b)
+
+weight_zoo = {
+    "None": None,
+    "weight_fun": weight_fun,
+}

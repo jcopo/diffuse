@@ -1,12 +1,39 @@
-path_dataset: "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/BRATS/ASNR-MICCAI-BraTS2023-Local-Synthesis-Challenge-Training"
-save_path: "/lustre/fswork/projects/rech/hlp/uha64uw/diffuse/data/BRATS/models/"
+dataset: "BRATS"
+score_model: "UNet"
+path_dataset: "${WORK}/diffuse/data/BRATS"
 
-dataset: "brats"
+# Model paths
+model_dir: "/lustre/fsn1/projects/rech/hlp/uha64uw//data/BRATS/models_big_a100/"
 
-n_epochs: 4000
-batch_size: 64
-num_workers: 0
+training:
+    n_epochs: 4000
+    batch_size: 32
+    nt_samples: 32
+    loss_weight: "weight_fun"
+    num_workers: 0
+    lr: 2.0e-4
 
-n_t: 64
-tf: 2.0
-lr: 2.0e-4
+inference:
+    n_t: 50  # Number of time steps
+    n_samples: 15  # Number of samples for denoiser
+    n_samples_cntrst: 16  # Number of contrastive samples
+    n_loop_opt: 3  # Number of optimization loops
+    lr: 0.1
+    
+sde:
+    beta_min: 0.02
+    beta_max: 5.0
+    t0: 0.0
+    tf: 2.0
+
+unet:
+    embedding_dim: 128
+    upsampling: "pixel_shuffle"
+    dim_mults: [1, 2, 4, 8, 8]
+    dt_embedding: 0.002  # Time embedding step (tf/2000)
+    
+mask:
+    mask_type: "radial"  # or "spiral"
+    num_lines: 5
+
+task: "anomaly"
