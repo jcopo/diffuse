@@ -90,9 +90,9 @@ def get_dataloader(cfg, train: bool = True):
     )
     return DataLoader(
         dataset,
-        batch_size=cfg["batch_size"],
+        batch_size=cfg["training"]["batch_size"],
         shuffle=True,
-        num_workers=cfg["num_workers"],
+        num_workers=cfg["training"]["num_workers"],
         pin_memory=True,
         drop_last=True,
         collate_fn=numpy_collate,

@@ -115,7 +115,7 @@ def train(config, train_loader, parallel=False):
     # Loading the checkpoint if continue_training is True
     begin_epoch = get_latest_model(config)
     if begin_epoch != -1:
-        params, _, ema_state, opt_state = load_checkpoint(config)
+        params, _, ema_state, opt_state, begin_epoch = load_checkpoint(config)
         iterator_epoch = range(begin_epoch, config["training"]["n_epochs"])
 
     # Initializing the parameters and optimizer states if continue_training is False
