@@ -323,6 +323,14 @@ def main(
     logger_metrics=None,
     random: bool = False,
 ):
+    print("Running with config: \n \
+          path_dataset: ", config['path_dataset'], "\n \
+          model_dir: ", config['model_dir'], "\n \
+          dataset: ", config['dataset'], "\n \
+          task: ", config['task'], "\n \
+          mask_type: ", config['mask']['mask_type'], "\n \
+          num_lines: ", config['mask']['num_lines'], "\n \
+          ")
     # Initialize experiment forward model
     sde, mask, ground_truth, dt, n_t, nn_score = initialize_experiment(key, config)
     n_samples = config['inference']['n_samples']
@@ -331,8 +339,8 @@ def main(
     n_opt_steps = n_t * n_loop_opt + (n_loop_opt - 1)
 
     # Conditional Denoiser
-    integrator = EulerMaruyama(sde)
-    # integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
+    #integrator = EulerMaruyama(sde)
+    integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
     resample = True
     denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
 
