@@ -1,6 +1,6 @@
 dataset: "fastMRI"
 score_model: "UNet"
-path_dataset: "${WORK}/diffuse/data/fastMRI/singlecoil_train"
+path_dataset: "${WORK}/diffuse/data/fastMRI"
 
 # Model paths
 model_dir: "/lustre/fsn1/projects/rech/hlp/uha64uw/diffuse/data/fastMRI/models_big_a100/"

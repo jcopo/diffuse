@@ -63,11 +63,13 @@ class FastMRIDataset(Dataset):
 
 
 def get_dataloader(cfg, train: bool = True):
-    dataset = FastMRIDataset(cfg["path_dataset"])
+    folder = "singlecoil_train" if train else "singlecoil_val"
+    path_dataset = os.path.join(cfg["path_dataset"], folder)
+    dataset = FastMRIDataset(path_dataset)
     return DataLoader(
         dataset,
         batch_size=cfg["training"]["batch_size"],
-        shuffle=True,
+        shuffle=train,
         num_workers=cfg["training"]["num_workers"],
         pin_memory=True,
         drop_last=True,

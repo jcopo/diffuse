@@ -36,7 +36,7 @@ def generate_line(angle_rad, size_line, img_shape):
 @dataclass
 class maskRadial(baseMask):
     num_lines: int
-    img_shape: tuple
+    img_shape: tuple # (H, W, C)
     task: str
 
     def init_design(self, key: PRNGKeyArray) -> Array:
