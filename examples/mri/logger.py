@@ -17,7 +17,7 @@ class ExperimentLogger(Protocol):
 class MRILogger:
     """Handles logging and plotting for MRI experiments."""
 
-    def __init__(self, config, rng_key, experiment:Experiment, prefix="", space="runs", random=False):
+    def __init__(self, config, rng_key, experiment:Experiment, prefix="", space="runs", random=False, save_plots=True):
         """
         Initialize the logger with experiment configuration.
 
@@ -29,13 +29,14 @@ class MRILogger:
             random: Whether this is a random experiment
         """
         self.config = config
-        self.rng_key = rng_key
         self.random = random
         self.experiment = experiment
+        self.save_plots = save_plots
 
         # Set up directory paths
         timestamp = datetime.datetime.now().strftime('%m-%d_%H-%M-%S')
-        experiment_name = f"{prefix}/{rng_key}_{timestamp}"
+        key_save = rng_key[1]
+        experiment_name = f"{prefix}/{key_save}_{timestamp}"
         if random:
             experiment_name += "/random"
 
@@ -44,7 +45,7 @@ class MRILogger:
         self.contrastive_path = os.path.join(self.dir_path, "contrastive")
         self.metrics_file = os.path.join(self.dir_path, "metrics.csv")
 
-        print("Saving to", self.dir_path)
+        print("Saving to \n \n", self.dir_path)
         # Create directories
         os.makedirs(self.theta_path, exist_ok=True)
         os.makedirs(self.contrastive_path, exist_ok=True)
@@ -65,18 +66,13 @@ class MRILogger:
         Log all metrics and generate plots for the current iteration.
 
         Args:
-            mask: The mask object containing measurement operations
             ground_truth: The ground truth image
             optimal_state: The current optimal state
             measurement_state: The current measurement state
             iteration: Current iteration number
         """
         # Plot measurement state using io_callback
-        jax.experimental.io_callback(
-            self.experiment.plot_measurement,
-            None,  # no result needed
-            measurement_state
-        )
+        #jax.experimental.io_callback( self.experiment.plot_measurement, None, measurement_state)
 
         # Get current samples and weights
         current_samples = optimal_state.denoiser_state.integrator_state.position
@@ -97,10 +93,10 @@ class MRILogger:
             "Iteration {} | PSNR: {} | SSIM: {} | K-space: {}%",
             iteration, psnr_score, ssim_score, kspace_percent
         )
-
+        plot_samples = partial(self.experiment.plot_samples, logging_path=self.theta_path) if self.save_plots else self.experiment.plot_samples
         # Plot theta samples using io_callback
         jax.experimental.io_callback(
-            self.experiment.plot_samples,
+            plot_samples,
             None,
             measurement_state,
             ground_truth,
@@ -110,9 +106,10 @@ class MRILogger:
         )
 
         # Plot contrastive samples only for non-random experiments
-        if not self.random and hasattr(optimal_state, 'integrator_state_cntrst'):
+        if not self.random and getattr(optimal_state, 'cntrst_denoiser_state', None) is not None:
+            plot_contrastive = partial(self.experiment.plot_samples, logging_path=self.contrastive_path) if self.save_plots else self.experiment.plot_samples
             jax.experimental.io_callback(
-                self.experiment.plot_samples,
+                plot_contrastive,
                 None,
                 measurement_state,
                 ground_truth,

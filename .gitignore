@@ -171,3 +171,8 @@ outputs/
 examples/mri/sandbox_local.ipynb
 examples/mri/sandbox_mri.ipynb
 script_continuous_training.batch
+
+
+examples/mri/zay_scripts/train_wmh.slurm
+examples/mri/zay_scripts/train_fastMRI.slurm
+examples/mri/zay_scripts/train_brats.slurm

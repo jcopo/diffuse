@@ -150,7 +150,8 @@ def plot_channel(
 
     if logging_path:
         plt.savefig(f"{logging_path}/{i}_samples_{n_meas}.png", bbox_inches="tight")
-    plt.show()
+    else:
+        plt.show()
     plt.close()
 
 

@@ -10,6 +10,7 @@ from jaxtyping import PRNGKeyArray
 from diffuse.bayesian_design import ExperimentOptimizer, ExperimentRandom
 from diffuse.denoisers.cond_denoiser import CondDenoiser
 from diffuse.diffusion.sde import SDE, LinearSchedule
+from diffuse.integrator.stochastic import EulerMaruyama
 from diffuse.integrator.deterministic import DPMpp2sIntegrator
 from diffuse.neural_network.unet import UNet
 from diffuse.neural_network.unett import UNet as Unet
@@ -26,9 +27,9 @@ USER = os.getenv("USER")
 WORKDIR = os.getenv("WORK")
 
 dataloader_zoo = {
-    "WMH": lambda cfg: get_wmh_dataloader(cfg, train=True),
-    "BRATS": lambda cfg: get_brats_dataloader(cfg, train=True),
-    "fastMRI": lambda cfg: get_fastmri_dataloader(cfg, train=True),
+    "WMH": lambda cfg: get_wmh_dataloader(cfg, train=False),
+    "BRATS": lambda cfg: get_brats_dataloader(cfg, train=False),
+    "fastMRI": lambda cfg: get_fastmri_dataloader(cfg, train=False),
 }
 
 
@@ -94,6 +95,7 @@ def main(
     space: str = "runs",
     logging: bool = False,
     random: bool = False,
+    save_plots: bool = True,
 ):
     print("Running with config: \n \
           path_dataset: ", config['path_dataset'], "\n \
@@ -114,7 +116,8 @@ def main(
         experiment=experiment,
         prefix=prefix,
         space=space,
-        random=random
+        random=random,
+        save_plots=save_plots
     ) if logging else None
 
     n_samples = config['inference']['n_samples']
@@ -123,8 +126,8 @@ def main(
     n_opt_steps = n_t * n_loop_opt + (n_loop_opt - 1)
 
     # Conditional Denoiser
-    #integrator = EulerMaruyama(sde)
-    integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
+    integrator = EulerMaruyama(sde)
+    # integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
     resample = True
     denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
 
@@ -155,13 +158,6 @@ def main(
             exp_state, subkey, measurement_state, n_steps=n_opt_steps
         )
         jax.debug.print("design optimal: {}", optimal_state.design)
-
-        # make new measurement
-        new_measurement = mask.measure(optimal_state.design, ground_truth)
-        measurement_state = mask.update_measurement(
-            measurement_state, new_measurement, optimal_state.design
-        )
-
         if logger:
             logger.log(
                 ground_truth,
@@ -169,6 +165,13 @@ def main(
                 measurement_state,
                 n_meas
             )
+
+
+        # make new measurement
+        new_measurement = mask.measure(optimal_state.design, ground_truth)
+        measurement_state = mask.update_measurement(
+            measurement_state, new_measurement, optimal_state.design
+        )
 
         exp_state = experiment_optimizer.init(subkey, n_samples, n_samples_cntrst, dt)
         return (exp_state, measurement_state, key), optimal_state.denoiser_state
