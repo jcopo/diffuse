@@ -20,7 +20,7 @@ from examples.mri.fastMRI.create_dataset import get_dataloader as get_fastmri_da
 from examples.mri.evals import WMHExperiment
 from examples.mri.forward_models import maskRadial, maskSpiral
 from examples.mri.logger import MRILogger, ExperimentLogger
-from examples.mri.utils import get_first_item, get_latest_model
+from examples.mri.utils import get_first_item, load_checkpoint
 
 # get user from environment variable
 USER = os.getenv("USER")
@@ -61,12 +61,9 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
         score_net = Unet(dim=config['unet']['embedding_dim'])
     else:
         raise ValueError(f"Score model {config['score_model']} not found")
-
-    nn_trained = jnp.load(os.path.join(model_dir, f"ann_{get_latest_model(config)}.npz"), allow_pickle=True)
-    params = nn_trained["params"].item()
-
-    def nn_score(x, t):
-        return score_net.apply(params, x, t)
+    
+    _, params, _, _, _ = load_checkpoint(config) # load the ema params
+    nn_score = lambda x, t: score_net.apply(params, x, t)
 
     sde = SDE(beta=beta, tf=tf)
     shape = ground_truth.shape

@@ -50,7 +50,7 @@ def checkpoint_model(config, params, opt_state, ema_state, ema_params, epoch, de
                 os.remove(os.path.join(config["model_dir"], f))
 
 
-def load_checkpoint(config):
+def load_checkpoint(config, verbose=False):
     begin_epoch = get_latest_model(config)
     best_model = None
     while best_model is None:
@@ -83,6 +83,8 @@ def load_checkpoint(config):
             ScaleByScheduleState(checkpoint["opt_state_3"][0]),
         ),
     )
+    if verbose:
+        print(f"Loaded checkpoint from epoch {begin_epoch}")
     return params, ema_params, ema_state, opt_state, begin_epoch
 
 

@@ -112,7 +112,7 @@ def train(config, train_loader, parallel=False):
         partial(step, optimizer=optimizer, ema_kernel=ema_kernel, sde=sde, cfg=config)
     )
 
-    # Loading the checkpoint if continue_training is True
+    # Loading the checkpoint if exists
     begin_epoch = get_latest_model(config)
     if begin_epoch != -1:
         params, _, ema_state, opt_state, begin_epoch = load_checkpoint(config)
