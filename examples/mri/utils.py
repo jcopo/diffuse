@@ -26,17 +26,22 @@ def get_latest_model(config):
     except:
         return -1
 
+def checkpoint_best_model(config, params, ema_params, best_val_loss):
+    np.savez(
+        os.path.join(config["model_dir"], f"best_model_.npz"),
+        params=params,
+        ema_params=ema_params,
+        best_val_loss=best_val_loss,
+    )
 
-def checkpoint_model(
-    config,
-    params,
-    opt_state,
-    ema_state,
-    ema_params,
-    epoch,
-    new_best_val_loss,
-    old_best_epoch,
-):
+    # Delete best_model.npz and rename best_model_.npz to best_model.npz
+    try:
+        os.remove(os.path.join(config["model_dir"], f"best_model.npz"))
+    except FileNotFoundError:
+        pass
+    os.rename(os.path.join(config["model_dir"], f"best_model_.npz"), os.path.join(config["model_dir"], f"best_model.npz"))
+
+def checkpoint_model(config, params, opt_state, ema_state, ema_params, epoch, delete_old=True):
     np.savez(
         os.path.join(config["model_dir"], f"ann_{epoch}.npz"),
         params=params,
@@ -45,29 +50,34 @@ def checkpoint_model(
         opt_state_1=opt_state[0],
         opt_state_2=opt_state[1][0],
         opt_state_3=opt_state[1][1],
-        val_loss=new_best_val_loss,
-        epoch=epoch,
     )
-    print(f"Saved checkpoint to epoch {epoch}")
-    if old_best_epoch != -1:
-        os.remove(os.path.join(config["model_dir"], f"ann_{old_best_epoch}.npz"))
-        print(f"Deleted checkpoint from epoch {old_best_epoch}")
+    if delete_old:
+        # Get all model files and sort them by epoch number
+        model_files = [
+            f for f in os.listdir(config["model_dir"]) 
+            if f.startswith("ann_") and f.endswith(".npz") and f[4:-4].isdigit()
+        ]
+        model_files.sort(key=lambda x: int(x[4:-4]))
 
+        # Remove all but the last 5 models
+        if len(model_files) > 5:
+            for f in model_files[:-5]:
+                os.remove(os.path.join(config["model_dir"], f))
 
-def load_checkpoint(config, verbose=False):
+def load_checkpoint(config,verbose=False):
     begin_epoch = get_latest_model(config)
-    best_model = None
-    while best_model is None:
+    if begin_epoch == -1:
+        raise ValueError("No checkpoint found")
+    
+    checkpoint = None
+    while checkpoint is None:
         try:
             checkpoint = np.load(
                 os.path.join(config["model_dir"], f"ann_{begin_epoch}.npz"),
                 allow_pickle=True,
             )
-            best_model = begin_epoch
         except:
             begin_epoch -= 1
-
-    params = checkpoint["params"].item()
 
     params = checkpoint["params"].item()
     ema_params = checkpoint["ema_params"].item()
@@ -87,23 +97,21 @@ def load_checkpoint(config, verbose=False):
             ScaleByScheduleState(checkpoint["opt_state_3"][0]),
         ),
     )
-
-    best_val_loss = checkpoint["val_loss"]
-    old_best_epoch = checkpoint["epoch"]
-
     if verbose:
         print(f"Loaded checkpoint from epoch {begin_epoch}")
+    return params, ema_params, ema_state, opt_state, begin_epoch
 
-    return (
-        params,
-        ema_params,
-        ema_state,
-        opt_state,
-        begin_epoch,
-        best_val_loss,
-        old_best_epoch,
+
+def load_best_model_checkpoint(config):
+    checkpoint = np.load(
+        os.path.join(config["model_dir"], f"best_model.npz"),
+        allow_pickle=True,
     )
 
+    params = checkpoint["params"].item()
+    ema_params = checkpoint["ema_params"].item()
+    best_val_loss = checkpoint["best_val_loss"]
+    return params, ema_params, best_val_loss
 
 def get_sharding():
     num_devices = jax.device_count()

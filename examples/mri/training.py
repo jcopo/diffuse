@@ -26,10 +26,11 @@ from examples.mri.wmh.create_dataset import (
 )
 
 from examples.mri.utils import (
+    checkpoint_best_model,
     checkpoint_model,
     get_first_item,
-    get_latest_model,
     get_sharding,
+    load_best_model_checkpoint,
     load_checkpoint,
 )
 
@@ -125,15 +126,14 @@ def train(config, train_val_loaders, parallel=False):
     batch_validate = jax.jit(partial(validate_step, sde=sde, cfg=config))
 
     # Loading the checkpoint if exists
-    begin_epoch = get_latest_model(config)
-    if begin_epoch != -1:
-        params, _, ema_state, opt_state, begin_epoch, best_val_loss, old_best_epoch = (
+    try:
+        params, _, ema_state, opt_state, begin_epoch = (
             load_checkpoint(config)
         )
         iterator_epoch = range(begin_epoch, config["training"]["n_epochs"])
+        _, _, best_val_loss = load_best_model_checkpoint(config)
 
-    # Initializing the parameters and optimizer states if continue_training is False
-    else:
+    except ValueError:
         # Initialize parameters and optimizer states
         params, opt_state, ema_state = (
             init_params,
@@ -180,23 +180,16 @@ def train(config, train_val_loaders, parallel=False):
         current_val_loss = sum(list_val_loss) / len(list_val_loss)
         print(f"Validation loss: {current_val_loss}")
 
-        # Save checkpoint only if validation loss improves
+        # Save checkpoint and keep only the last 5 models
+        checkpoint_model(config, params, opt_state, ema_state, ema_params, epoch)
+
+        # Save checkpoint of the new best model
         if current_val_loss < best_val_loss:
             print(
                 f"Validation loss improved from {best_val_loss} to {current_val_loss}"
             )
             best_val_loss = current_val_loss
-            checkpoint_model(
-                config,
-                params,
-                opt_state,
-                ema_state,
-                ema_params,
-                epoch,
-                best_val_loss,
-                old_best_epoch,
-            )
-            old_best_epoch = epoch
+            checkpoint_best_model(config, params, ema_params, best_val_loss)
 
 
 if __name__ == "__main__":
