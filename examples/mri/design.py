@@ -20,7 +20,7 @@ from examples.mri.fastMRI.create_dataset import get_dataloader as get_fastmri_da
 from examples.mri.evals import WMHExperiment
 from examples.mri.forward_models import maskRadial, maskSpiral
 from examples.mri.logger import MRILogger, ExperimentLogger
-from examples.mri.utils import get_first_item, load_checkpoint
+from examples.mri.utils import get_first_item, load_checkpoint, load_best_model_checkpoint
 
 # get user from environment variable
 USER = os.getenv("USER")
@@ -62,7 +62,8 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
     else:
         raise ValueError(f"Score model {config['score_model']} not found")
     
-    _, params, _, _, _ = load_checkpoint(config) # load the ema params
+    # _, params, _, _, _ = load_checkpoint(config) # load the ema params
+    _, params, _ = load_best_model_checkpoint(config)
     nn_score = lambda x, t: score_net.apply(params, x, t)
 
     sde = SDE(beta=beta, tf=tf)
