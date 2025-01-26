@@ -42,8 +42,11 @@ dataloader_zoo = {
 }
 
 
-def train(config, train_loader, parallel=False):
+def train(config, train_val_loaders, parallel=False):
     key = jax.random.PRNGKey(0)
+
+    # Unpack train and validation loaders
+    train_loader, val_loader = train_val_loaders
 
     # Configuring the SDE
     beta = LinearSchedule(
@@ -63,7 +66,9 @@ def train(config, train_loader, parallel=False):
             dim_mults=config["unet"]["dim_mults"],
         )
     elif config["score_model"] == "UNett":
-        score_net = model_zoo[config["score_model"]](dim=config["unet"]["embedding_dim"])
+        score_net = model_zoo[config["score_model"]](
+            dim=config["unet"]["embedding_dim"]
+        )
     else:
         raise ValueError(f"Score model {config['score_model']} not found")
 
@@ -97,6 +102,12 @@ def train(config, train_loader, parallel=False):
         ema_params, ema_state = ema_kernel.update(params, ema_state)
         return params, opt_state, ema_state, val_loss, ema_params
 
+    def validate_step(key, params, data, sde, cfg):
+        val_loss = loss(
+            params, key, data, sde, cfg["training"]["nt_samples"], cfg["sde"]["tf"]
+        )
+        return val_loss
+
     # Configuring the optimizer
     until_steps = int(0.95 * config["training"]["n_epochs"]) * len(train_loader)
     schedule = optax.cosine_decay_schedule(
@@ -111,11 +122,14 @@ def train(config, train_loader, parallel=False):
     batch_update = jax.jit(
         partial(step, optimizer=optimizer, ema_kernel=ema_kernel, sde=sde, cfg=config)
     )
+    batch_validate = jax.jit(partial(validate_step, sde=sde, cfg=config))
 
     # Loading the checkpoint if exists
     begin_epoch = get_latest_model(config)
     if begin_epoch != -1:
-        params, _, ema_state, opt_state, begin_epoch = load_checkpoint(config)
+        params, _, ema_state, opt_state, begin_epoch, best_val_loss, old_best_epoch = (
+            load_checkpoint(config)
+        )
         iterator_epoch = range(begin_epoch, config["training"]["n_epochs"])
 
     # Initializing the parameters and optimizer states if continue_training is False
@@ -127,6 +141,8 @@ def train(config, train_loader, parallel=False):
             ema_kernel.init(init_params),
         )
         iterator_epoch = range(config["training"]["n_epochs"])
+        best_val_loss = float("inf")
+        old_best_epoch = -1
 
     # Configuring the sharding for parallel training (can be removed)
     if parallel:
@@ -138,24 +154,49 @@ def train(config, train_loader, parallel=False):
 
     # Training loop
     for epoch in iterator_epoch:
-        list_loss = []
-        iterator = tqdm(train_loader, desc="Training", file=sys.stdout)
+        list_loss, list_val_loss = [], []
+        train_iterator = tqdm(train_loader, desc="Training", file=sys.stdout)
+        val_iterator = tqdm(val_loader, desc="Validation", file=sys.stdout)
 
-        for batch in iterator:
+        for batch in train_iterator:
             key, subkey = jax.random.split(key)
             batch = jax.device_put(batch, sharding) if parallel else batch
             params, opt_state, ema_state, val_loss, ema_params = batch_update(
                 subkey, params, opt_state, ema_state, batch
             )
 
-            iterator.set_postfix({"loss": val_loss})
+            train_iterator.set_postfix({"loss": val_loss})
             list_loss.append(val_loss)
 
-        print(
-            f"Epoch {epoch}, loss {val_loss}, mean_loss {sum(list_loss) / len(list_loss)}"
-        )
+        train_loss = sum(list_loss) / len(list_loss)
+        print(f"Epoch {epoch}, training loss: {train_loss}")
 
-        checkpoint_model(config, params, opt_state, ema_state, ema_params, epoch)
+        for batch in val_iterator:
+            key, subkey = jax.random.split(key)
+            batch = jax.device_put(batch, sharding) if parallel else batch
+            val_loss = batch_validate(subkey, params, batch)
+            val_iterator.set_postfix({"loss": val_loss})
+            list_val_loss.append(val_loss)
+        current_val_loss = sum(list_val_loss) / len(list_val_loss)
+        print(f"Validation loss: {current_val_loss}")
+
+        # Save checkpoint only if validation loss improves
+        if current_val_loss < best_val_loss:
+            print(
+                f"Validation loss improved from {best_val_loss} to {current_val_loss}"
+            )
+            best_val_loss = current_val_loss
+            checkpoint_model(
+                config,
+                params,
+                opt_state,
+                ema_state,
+                ema_params,
+                epoch,
+                best_val_loss,
+                old_best_epoch,
+            )
+            old_best_epoch = epoch
 
 
 if __name__ == "__main__":
@@ -173,7 +214,9 @@ if __name__ == "__main__":
 
     if not os.path.exists(config["model_dir"]):
         os.makedirs(config["model_dir"], exist_ok=True)
-        os.system(f"cp {args.config} {config['model_dir']}/config_{config['dataset']}.yaml")
+        os.system(
+            f"cp {args.config} {config['model_dir']}/config_{config['dataset']}.yaml"
+        )
 
-    train_loader = dataloader_zoo[config["dataset"]](config)
-    train(config, train_loader, parallel=args.parallel)
+    train_val_loaders = dataloader_zoo[config["dataset"]](config)
+    train(config, train_val_loaders, parallel=args.parallel)

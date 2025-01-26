@@ -66,12 +66,45 @@ def get_dataloader(cfg, train: bool = True):
     folder = "singlecoil_train" if train else "singlecoil_val"
     path_dataset = os.path.join(cfg["path_dataset"], folder)
     dataset = FastMRIDataset(path_dataset)
+    if train:
+        # Get train/val split ratio from config, default to 0.8
+        train_ratio = cfg["training"].get("train_ratio", 0.8)
+
+        # Calculate split sizes
+        total_size = len(dataset)
+        train_size = int(total_size * train_ratio)
+        val_size = total_size - train_size
+
+        # Split dataset
+        train_dataset, val_dataset = data.random_split(dataset, [train_size, val_size])
+
+        # Create and return both dataloaders
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=cfg["training"]["batch_size"],
+            shuffle=True,
+            num_workers=cfg["training"]["num_workers"],
+            collate_fn=numpy_collate,
+            drop_last=True,
+        )
+
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=cfg["training"]["batch_size"],
+            shuffle=False,
+            num_workers=cfg["training"]["num_workers"],
+            collate_fn=numpy_collate,
+            drop_last=True,
+        )
+
+        return train_loader, val_loader
+
+    # If train=False, return single test dataloader as before
     return DataLoader(
         dataset,
         batch_size=cfg["training"]["batch_size"],
-        shuffle=train,
+        shuffle=False,
         num_workers=cfg["training"]["num_workers"],
-        pin_memory=True,
-        drop_last=True,
         collate_fn=numpy_collate,
+        drop_last=True,
     )

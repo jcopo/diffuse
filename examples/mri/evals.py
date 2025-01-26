@@ -35,7 +35,9 @@ class WMHExperiment(Experiment):
         plot_channel(0, measurement_state.mask_history, measurement_state.y, abs_thetas, abs_ground_truth, weights, n_meas, self.mask, ground_truth, logging_path)
 
     def evaluate_metrics(self, ground_truth, theta_infered, weights_infered):
+        jax.debug.print("weights_infered logger: {}", jax.scipy.special.logsumexp(weights_infered))
         weights_infered = jnp.exp(weights_infered)
+        jax.debug.print("sum of weights_infered logger: {}", jnp.sum(weights_infered))
         # Convert to magnitude images and ensure correct shape
         abs_theta_infered = jnp.abs(theta_infered[..., 0] + 1j * theta_infered[..., 1])
         abs_ground_truth = jnp.abs(ground_truth[..., 0] + 1j * ground_truth[..., 1])
@@ -43,7 +45,6 @@ class WMHExperiment(Experiment):
         # Add channel dimension
         abs_theta_infered = abs_theta_infered[..., None]
         abs_ground_truth = abs_ground_truth[..., None]
-
         psnr_array = jax.vmap(dm_pix.psnr, in_axes=(None, 0))(abs_ground_truth, abs_theta_infered)
         psnr_score = jnp.sum(psnr_array * weights_infered)
         ssim_array = jax.vmap(dm_pix.ssim, in_axes=(None, 0))(abs_ground_truth, abs_theta_infered)

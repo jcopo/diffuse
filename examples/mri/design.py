@@ -154,6 +154,8 @@ def main(
         optimal_state, _ = experiment_optimizer.get_design(
             exp_state, subkey, measurement_state, n_steps=n_opt_steps
         )
+        jax.debug.print("weights: {}", optimal_state.denoiser_state.weights)
+        jax.debug.print("sum of weights: {}", jax.scipy.special.logsumexp(optimal_state.denoiser_state.weights))
         jax.debug.print("design optimal: {}", optimal_state.design)
         if logger:
             logger.log(

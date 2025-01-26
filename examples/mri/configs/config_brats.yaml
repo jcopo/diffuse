@@ -6,10 +6,11 @@ score_model: "UNet"
 path_dataset: "${WORK}/diffuse/data/BRATS"
 
 # Model paths
-model_dir: "/lustre/fsn1/projects/rech/hlp/uha64uw/diffuse/data/BRATS/models_big_a100/"
+model_dir: "/lustre/fsn1/projects/rech/hlp/uha64uw/diffuse/data/BRATS/models_with_val/"
 
 training:
     n_epochs: 4000
+    train_ratio: 0.8
     batch_size: 32
     nt_samples: 32
     loss_weight: "weight_fun"
@@ -32,7 +33,7 @@ sde:
 unet:
     embedding_dim: 128
     upsampling: "pixel_shuffle"
-    dim_mults: [1, 2, 4, 8, 8]
+    dim_mults: [1, 2, 4, 8]
     dt_embedding: 0.002  # Time embedding step (tf/2000)
 
 mask:

@@ -36,7 +36,7 @@ def generate_line(angle_rad, size_line, img_shape):
 @dataclass
 class maskRadial(baseMask):
     num_lines: int
-    img_shape: tuple # (H, W, C)
+    img_shape: tuple  # (H, W, C)
     task: str
 
     def init_design(self, key: PRNGKeyArray) -> Array:
@@ -44,7 +44,7 @@ class maskRadial(baseMask):
             key, shape=(self.num_lines,), minval=0.0, maxval=2 * jnp.pi
         )
         size_line = jax.random.uniform(
-            key, shape=(self.num_lines,), minval=0.0, maxval=10
+            key, shape=(self.num_lines,), minval=0.0, maxval=20
         )
         return jnp.stack([angles, size_line], axis=-1)
 

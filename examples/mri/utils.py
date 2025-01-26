@@ -26,7 +26,17 @@ def get_latest_model(config):
     except:
         return -1
 
-def checkpoint_model(config, params, opt_state, ema_state, ema_params, epoch, delete_old=True):
+
+def checkpoint_model(
+    config,
+    params,
+    opt_state,
+    ema_state,
+    ema_params,
+    epoch,
+    new_best_val_loss,
+    old_best_epoch,
+):
     np.savez(
         os.path.join(config["model_dir"], f"ann_{epoch}.npz"),
         params=params,
@@ -35,19 +45,13 @@ def checkpoint_model(config, params, opt_state, ema_state, ema_params, epoch, de
         opt_state_1=opt_state[0],
         opt_state_2=opt_state[1][0],
         opt_state_3=opt_state[1][1],
+        val_loss=new_best_val_loss,
+        epoch=epoch,
     )
-    if delete_old:
-        # Get all model files and sort them by epoch number
-        model_files = [
-            f for f in os.listdir(config["model_dir"]) 
-            if f.startswith("ann_") and f.endswith(".npz") and f[4:-4].isdigit()
-        ]
-        model_files.sort(key=lambda x: int(x[4:-4]))
-        
-        # Remove all but the last 5 models
-        if len(model_files) > 5:
-            for f in model_files[:-5]:
-                os.remove(os.path.join(config["model_dir"], f))
+    print(f"Saved checkpoint to epoch {epoch}")
+    if old_best_epoch != -1:
+        os.remove(os.path.join(config["model_dir"], f"ann_{old_best_epoch}.npz"))
+        print(f"Deleted checkpoint from epoch {old_best_epoch}")
 
 
 def load_checkpoint(config, verbose=False):
@@ -83,9 +87,22 @@ def load_checkpoint(config, verbose=False):
             ScaleByScheduleState(checkpoint["opt_state_3"][0]),
         ),
     )
+
+    best_val_loss = checkpoint["val_loss"]
+    old_best_epoch = checkpoint["epoch"]
+
     if verbose:
         print(f"Loaded checkpoint from epoch {begin_epoch}")
-    return params, ema_params, ema_state, opt_state, begin_epoch
+
+    return (
+        params,
+        ema_params,
+        ema_state,
+        opt_state,
+        begin_epoch,
+        best_val_loss,
+        old_best_epoch,
+    )
 
 
 def get_sharding():
