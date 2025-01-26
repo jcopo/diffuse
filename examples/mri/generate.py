@@ -12,6 +12,8 @@ from examples.mri.wmh.create_dataset import get_dataloader as get_wmh_dataloader
 from examples.mri.fastMRI.create_dataset import get_dataloader as get_fastmri_dataloader
 from examples.mri.utils import get_first_item, load_checkpoint
 from diffuse.utils.plotting import plot_lines
+from diffuse.integrator.stochastic import EulerMaruyama
+from diffuse.utils.plotting import sigle_plot
 
 dataloader_zoo = {
     "WMH": lambda cfg: get_wmh_dataloader(cfg, train=False),
@@ -28,6 +30,9 @@ def initialize_experiment(key, config):
 
     n_t = config['inference']['n_t']
     tf = config['sde']['tf']
+    key, subkey = jax.random.split(key)
+    ground_truth = jax.random.choice(subkey, xs)
+
 
     beta = LinearSchedule(
         b_min=config['sde']['beta_min'],
@@ -54,16 +59,26 @@ def initialize_experiment(key, config):
     sde = SDE(beta=beta, tf=tf)
     shape = xs[0].shape
 
-    return sde, shape, n_t, nn_score
+    return sde, shape, n_t, nn_score, ground_truth
 
-def main(n_samples=50, config_path="examples/mri/configs/config_fastMRI_inference.yaml"):
+def main(key, n_samples=50, config_path="examples/mri/configs/config_fastMRI_inference.yaml"):
     config = EnvYAML(config_path)
-    key = jax.random.PRNGKey(0)
 
-    sde, shape, n_t, nn_score = initialize_experiment(key, config)
+    # Get ground truth data
+    sde, shape, n_t, nn_score, ground_truth = initialize_experiment(key, config)
+
+
+
+    # Plot ground truth
+    ground_truth_complex = ground_truth[..., 0] + 1j * ground_truth[..., 1]
+    abs_ground_truth = jnp.abs(ground_truth_complex)
+    sigle_plot(abs_ground_truth)
+
+    n_t = 100
 
     # Initialize denoiser
-    integrator = DPMpp2sIntegrator(sde)
+    # integrator = DPMpp2sIntegrator(sde)
+    integrator = EulerMaruyama(sde)
     denoiser = Denoiser(
         integrator=integrator,
         sde=sde,
@@ -78,7 +93,10 @@ def main(n_samples=50, config_path="examples/mri/configs/config_fastMRI_inferenc
     state, hist = vec_generator(keys)
 
     # Plot results
-    plot_lines(state.integrator_state.position)
+    samples = state.integrator_state.position
+    abs_samples = jnp.abs(samples[..., 0] + 1j * samples[..., 1])
+    plot_lines(abs_samples)
+
     return state, hist
 
 if __name__ == "__main__":
