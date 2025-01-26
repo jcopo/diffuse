@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 from jaxtyping import Array, PRNGKeyArray
 from blackjax.smc.resampling import stratified
+import chex
 
 from diffuse.integrator.base import Integrator, IntegratorState
 from diffuse.diffusion.sde import SDE, SDEState
@@ -213,8 +214,7 @@ class CondDenoiser:
     ) -> Tuple[Array, Array]:
         """Resample particles based on weights if effective sample size is in target range"""
         _norm = jax.scipy.special.logsumexp(log_weights, axis=0)
-        log_weights = log_weights - _norm
-        weights = jnp.exp(log_weights)
+        weights = jnp.exp(log_weights - _norm)
 
         ess_val = ess(log_weights)
         n_particles = position.shape[0]
@@ -224,8 +224,8 @@ class CondDenoiser:
         # jax.debug.print("ess_val: {}", ess_val/n_particles)
         return jax.lax.cond(
             (ess_val < 0.2 * n_particles),# & (ess_val > 0.1 * n_particles),
-            lambda x: (x[idx], log_weights[idx]),
-            lambda x: (x, log_weights),
+            lambda x: (x[idx], _normalize_log_weights(log_weights[idx])),
+            lambda x: (x, _normalize_log_weights(log_weights)),
             position,
         )
 
@@ -239,3 +239,7 @@ def _fix_time(denoiser_state: CondDenoiserState):
 
     # Return new denoiser states with updated integrator states
     return denoiser_state._replace(integrator_state=new_denoiser_integrator)
+
+def _normalize_log_weights(log_weights: Array) -> Array:
+    _norm = jax.scipy.special.logsumexp(log_weights, axis=0)
+    return log_weights - _norm
