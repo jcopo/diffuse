@@ -77,6 +77,7 @@ class MRILogger:
         # Get current samples and weights
         current_samples = optimal_state.denoiser_state.integrator_state.position
         current_weights = optimal_state.denoiser_state.weights
+        jax.debug.print("current_weights: {}", jnp.exp(current_weights))
 
         # Calculate metrics for current iteration
         psnr_score, ssim_score = self.experiment.evaluate_metrics(

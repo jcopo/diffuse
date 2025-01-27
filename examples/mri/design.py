@@ -61,7 +61,7 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
         score_net = Unet(dim=config['unet']['embedding_dim'])
     else:
         raise ValueError(f"Score model {config['score_model']} not found")
-    
+
     # _, params, _, _, _ = load_checkpoint(config) # load the ema params
     _, params, _ = load_best_model_checkpoint(config)
     nn_score = lambda x, t: score_net.apply(params, x, t)
@@ -102,6 +102,10 @@ def main(
           task: ", config['task'], "\n \
           mask_type: ", config['mask']['mask_type'], "\n \
           num_lines: ", config['mask']['num_lines'], "\n \
+          n_t: ", config['inference']['n_t'], "\n \
+          n_samples: ", config['inference']['n_samples'], "\n \
+          n_samples_cntrst: ", config['inference']['n_samples_cntrst'], "\n \
+          n_loop_opt: ", config['inference']['n_loop_opt'], "\n \
           ")
 
     # Initialize experiment components
@@ -145,6 +149,10 @@ def main(
         experiment_optimizer = ExperimentRandom(denoiser, mask, ground_truth.shape)
 
     exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst, dt)
+    new_measurement = mask.measure(exp_state.design, ground_truth)
+    measurement_state = mask.update_measurement(
+        measurement_state, new_measurement, exp_state.design
+    )
 
     def scan_step(carry, n_meas):
         exp_state, measurement_state, key = carry

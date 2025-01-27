@@ -13,7 +13,7 @@ import chex
 from diffuse.integrator.base import Integrator, IntegratorState
 from diffuse.diffusion.sde import SDE, SDEState
 from diffuse.base_forward_model import ForwardModel, MeasurementState
-from diffuse.utils.plotting import sigle_plot
+from diffuse.utils.plotting import sigle_plot, plot_lines
 
 def _vmapper(fn, type):
     def _set_axes(path, value):
@@ -69,7 +69,7 @@ class CondDenoiser:
         self, position: Array, rng_key: PRNGKeyArray, dt: float
     ) -> CondDenoiserState:
         n_particles = position.shape[0]
-        weights = jnp.ones(n_particles) / n_particles
+        weights = jnp.log(jnp.ones(n_particles) / n_particles)
         keys = jax.random.split(rng_key, n_particles)
         integrator_state = self.integrator.init(
             position, keys, jnp.array(0.0), jnp.array(dt)
@@ -130,14 +130,80 @@ class CondDenoiser:
             y_noised = self.y_noiser(mask, rng_key, SDEState(y, 0), tf-t).position
             A_theta = self.forward_model.measure_from_mask(mask, position)
 
+            # abs_A_theta = jnp.abs(A_theta[..., 0] + 1j * A_theta[..., 1])
+            # # Only plot if t > 1.5
+            # jax.lax.cond(
+            #     t > 1.5,
+            #     lambda x: jax.experimental.io_callback(plot_lines, None, x, t),
+            #     lambda x: None,
+            #     jnp.log(abs_A_theta)
+            # )
+            # #plot position
+            # jax.lax.cond(
+            #     t > 1.5,
+            #     lambda x: jax.experimental.io_callback(plot_lines, None, x),
+            #     lambda x: None,
+            #     jnp.abs(position[..., 0] + 1j * position[..., 1])
+            # )
+            # # Plot y_noised similar to abs_A_theta
+            # abs_y_noised = jnp.abs(y_noised[..., 0] + 1j * y_noised[..., 1])
+            # jax.lax.cond(
+            #     t > 1.5,
+            #     lambda x: jax.experimental.io_callback(sigle_plot, None, x),
+            #     lambda x: None,
+            #     jnp.log(abs_y_noised)
+            # )
+
             alpha_t = jnp.exp(self.sde.beta.integrate(0.0, t))
             #jax.experimental.io_callback(sigle_plot, None, y_noised)
-            logsprobs = jax.scipy.stats.norm.logpdf(y_noised, A_theta, alpha_t)
+            logsprobs = jax.scipy.stats.norm.logpdf(y_noised[..., :2], A_theta[..., :2], alpha_t)
+            #jax.debug.print("logsprobs: {}", logsprobs)
+            # logsprobs = self.forward_model.logprob_y(y_noised, A_theta, alpha_t)
             logsprobs = self.forward_model.measure_from_mask(mask, logsprobs)
             logsprobs = einops.reduce(logsprobs, "t ... -> t ", "sum")
+            # Find index of highest logprob
+            max_idx = jnp.argmax(logsprobs)
+
+            # Plot the highest logprob position and A_theta
+            def plot_max_state(logprob, pos, a_theta, y, t_val):
+                import matplotlib.pyplot as plt
+
+                fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(10, 4))
+
+                # Plot position
+                pos_mag = jnp.abs(pos[..., 0] + 1j * pos[..., 1])
+                ax1.imshow(pos_mag, cmap='gray')
+                ax1.set_title(f'Position (logprob={logprob:.2f}, t={t_val:.2f})')
+
+                # Plot A_theta
+                a_theta_mag = jnp.log(jnp.abs(a_theta[..., 0] + 1j * a_theta[..., 1]))
+                ax2.imshow(a_theta_mag, cmap='gray')
+                ax2.set_title('A_theta')
+
+                # plot diff
+                abs_y = jnp.abs(y[..., 0] + 1j * y[..., 1])
+                diff = abs_y - a_theta_mag
+                ax3.imshow(diff, cmap='gray')
+                ax3.set_title('Difference')
+
+                plt.tight_layout()
+                plt.show()
+                plt.close()
+            def f(x, logsprobs):
+                jax.debug.print("logsprobs: {}", logsprobs)
+                jax.experimental.io_callback(plot_max_state, None, *x)
+            jax.lax.cond(
+                t > 1.5,
+                lambda x: f(x, logsprobs),
+                lambda x: None,
+                (logsprobs[max_idx], position[max_idx], A_theta[max_idx], y_noised, t)
+            )
+
+            # jax.debug.print("logsprobs: {}", logsprobs)
 
 
             position, weights = self._resampling(position, logsprobs, rng_key)
+            # jax.debug.print("weights: {}", weights)
 
         return CondDenoiserState(integrator_state_next, weights)
 
@@ -214,17 +280,18 @@ class CondDenoiser:
     ) -> Tuple[Array, Array]:
         """Resample particles based on weights if effective sample size is in target range"""
         _norm = jax.scipy.special.logsumexp(log_weights, axis=0)
-        weights = jnp.exp(log_weights - _norm)
+        #weights = jnp.exp(log_weights - _norm)
+        weights = jax.nn.softmax(log_weights, axis=0)
 
         ess_val = ess(log_weights)
         n_particles = position.shape[0]
         key_resample = jax.random.split(rng_key)[1]
         idx = stratified(key_resample, weights, n_particles)
 
-        # jax.debug.print("ess_val: {}", ess_val/n_particles)
         return jax.lax.cond(
-            (ess_val < 0.2 * n_particles),# & (ess_val > 0.1 * n_particles),
-            lambda x: (x[idx], _normalize_log_weights(log_weights[idx])),
+            (ess_val < 0.4 * n_particles) & (ess_val > 0.2 * n_particles),
+            #lambda x: (x[idx], _normalize_log_weights(log_weights[idx])),
+            lambda x: (x, _normalize_log_weights(log_weights)),
             lambda x: (x, _normalize_log_weights(log_weights)),
             position,
         )
@@ -241,5 +308,4 @@ def _fix_time(denoiser_state: CondDenoiserState):
     return denoiser_state._replace(integrator_state=new_denoiser_integrator)
 
 def _normalize_log_weights(log_weights: Array) -> Array:
-    _norm = jax.scipy.special.logsumexp(log_weights, axis=0)
-    return log_weights - _norm
+    return jax.nn.log_softmax(log_weights, axis=0)
