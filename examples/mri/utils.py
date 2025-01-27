@@ -5,7 +5,6 @@ import jax
 from jax.experimental import mesh_utils
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
-import yaml
 
 
 def get_first_item(dataloader):

@@ -1,7 +1,6 @@
 import argparse
 import sys
 import os
-import yaml
 from functools import partial
 
 import jax
@@ -142,7 +141,6 @@ def train(config, train_val_loaders, parallel=False):
         )
         iterator_epoch = range(config["training"]["n_epochs"])
         best_val_loss = float("inf")
-        old_best_epoch = -1
 
     # Configuring the sharding for parallel training (can be removed)
     if parallel:
