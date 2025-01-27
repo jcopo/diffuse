@@ -159,16 +159,17 @@ class CondDenoiser:
             logsprobs = jax.scipy.stats.norm.logpdf(y_noised[..., :2], A_theta[..., :2], alpha_t)
             #jax.debug.print("logsprobs: {}", logsprobs)
             # logsprobs = self.forward_model.logprob_y(y_noised, A_theta, alpha_t)
-            logsprobs = self.forward_model.measure_from_mask(mask, logsprobs)
-            logsprobs = einops.reduce(logsprobs, "t ... -> t ", "sum")
+            logsprobs1 = einops.einsum(logsprobs, measurement_state.mask_history, "t ... i, ... -> t ... i")
+            #logsprobs = self.forward_model.measure_from_mask(mask, logsprobs)
+            logsprobs = einops.reduce(logsprobs1, "t ... -> t ", "sum")
             # Find index of highest logprob
             max_idx = jnp.argmax(logsprobs)
 
             # Plot the highest logprob position and A_theta
-            def plot_max_state(logprob, pos, a_theta, y, t_val):
+            def plot_max_state(logprobs, logprob, pos, a_theta, y, t_val):
                 import matplotlib.pyplot as plt
 
-                fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(10, 4))
+                fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(15, 4))
 
                 # Plot position
                 pos_mag = jnp.abs(pos[..., 0] + 1j * pos[..., 1])
@@ -186,17 +187,22 @@ class CondDenoiser:
                 ax3.imshow(diff, cmap='gray')
                 ax3.set_title('Difference')
 
+                # Plot logprobs distribution
+                ax4.imshow(logprobs[..., 0], cmap='gray')
+                ax4.set_title('Logprobs Distribution')
+                ax4.set_xlabel('Log Probability')
+                ax4.set_ylabel('Count')
+                ax4.legend()
+
                 plt.tight_layout()
                 plt.show()
                 plt.close()
-            def f(x, logsprobs):
-                jax.debug.print("logsprobs: {}", logsprobs)
-                jax.experimental.io_callback(plot_max_state, None, *x)
+
             jax.lax.cond(
                 t > 1.5,
-                lambda x: f(x, logsprobs),
+                lambda x: jax.experimental.io_callback(plot_max_state, None, *x),
                 lambda x: None,
-                (logsprobs[max_idx], position[max_idx], A_theta[max_idx], y_noised, t)
+                (logsprobs1, logsprobs[max_idx], position[max_idx], A_theta[max_idx], y_noised, t)
             )
 
             # jax.debug.print("logsprobs: {}", logsprobs)
