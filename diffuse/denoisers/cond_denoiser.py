@@ -166,7 +166,7 @@ class CondDenoiser:
             max_idx = jnp.argmax(logsprobs)
 
             # Plot the highest logprob position and A_theta
-            def plot_max_state(logprobs, logprob, pos, a_theta, y, t_val):
+            def plot_max_state(logprobs, idx, pos, a_theta, y, t_val):
                 import matplotlib.pyplot as plt
 
                 fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(15, 4))
@@ -174,25 +174,25 @@ class CondDenoiser:
                 # Plot position
                 pos_mag = jnp.abs(pos[..., 0] + 1j * pos[..., 1])
                 ax1.imshow(pos_mag, cmap='gray')
-                ax1.set_title(f'Position (logprob={logprob:.2f}, t={t_val:.2f})')
+                ax1.set_title(f'Position (logprob={idx}, t={t_val:.2f})')
+                #colorbar
+                cbar = ax1.figure.colorbar(ax1.images[0], ax=ax1)
 
                 # Plot A_theta
                 a_theta_mag = jnp.log(jnp.abs(a_theta[..., 0] + 1j * a_theta[..., 1]))
                 ax2.imshow(a_theta_mag, cmap='gray')
                 ax2.set_title('A_theta')
-
+                cbar = ax2.figure.colorbar(ax2.images[0], ax=ax2)
                 # plot diff
                 abs_y = jnp.abs(y[..., 0] + 1j * y[..., 1])
                 diff = abs_y - a_theta_mag
                 ax3.imshow(diff, cmap='gray')
                 ax3.set_title('Difference')
-
+                cbar = ax3.figure.colorbar(ax3.images[0], ax=ax3)
                 # Plot logprobs distribution
                 ax4.imshow(logprobs[..., 0], cmap='gray')
                 ax4.set_title('Logprobs Distribution')
-                ax4.set_xlabel('Log Probability')
-                ax4.set_ylabel('Count')
-                ax4.legend()
+                cbar = ax4.figure.colorbar(ax4.images[0], ax=ax4)
 
                 plt.tight_layout()
                 plt.show()
@@ -202,7 +202,7 @@ class CondDenoiser:
                 t > 1.5,
                 lambda x: jax.experimental.io_callback(plot_max_state, None, *x),
                 lambda x: None,
-                (logsprobs1, logsprobs[max_idx], position[max_idx], A_theta[max_idx], y_noised, t)
+                (logsprobs1[max_idx], max_idx, position[max_idx], A_theta[max_idx], y_noised, t)
             )
 
             # jax.debug.print("logsprobs: {}", logsprobs)
@@ -212,6 +212,7 @@ class CondDenoiser:
             # jax.debug.print("weights: {}", weights)
 
         return CondDenoiserState(integrator_state_next, weights)
+
 
     def posterior_logpdf(
         self, rng_key: PRNGKeyArray, y_meas: Array, design_mask: Array
