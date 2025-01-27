@@ -69,7 +69,8 @@ class baseMask:
         mask_history = jnp.zeros_like(self.make(xi_init))
         return MeasurementState(y=y, mask_history=mask_history)
 
-    def supp_mask(self, xi: Array, hist_mask: Array, new_mask: Array) -> Array:
+    def supp_mask(self, xi: Array, hist_mask: Array) -> Array:
+        new_mask = self.make(xi)
         inv_mask = 1 - self.make(xi)
         return hist_mask * inv_mask + new_mask
 
@@ -80,7 +81,7 @@ class baseMask:
         inv_mask = 1 - self.make(design)
         joint_y = jnp.einsum("ij,ijk->ijk", inv_mask, y) + new_measurement
         mask_history = self.supp_mask(
-            design, measurement_state.mask_history, self.make(design)
+            design, measurement_state.mask_history
         )
         return MeasurementState(y=joint_y, mask_history=mask_history)
 
