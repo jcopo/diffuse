@@ -20,10 +20,10 @@ class BrainfastMRIDataset(Dataset):
         for file in self.file_list:
             with h5py.File(file, "r") as f:
                 self.cached_data[file] = {
-                    "kspace": np.array(f["kspace"])
+                    "xspace": np.array(f["xspace"])
                 }
 
-        self.num_slices = [v["kspace"].shape[0] for v in self.cached_data.values()]
+        self.num_slices = [v["xspace"].shape[0] for v in self.cached_data.values()]
         self.slice_mapper = np.cumsum(self.num_slices) - 1
 
     def __len__(self):
@@ -34,7 +34,7 @@ class BrainfastMRIDataset(Dataset):
         slice_idx = idx - self.slice_mapper[file_idx] + self.num_slices[file_idx] - 1
         
         data = self.cached_data[self.file_list[file_idx]]
-        return data["kspace"][slice_idx]
+        return data["xspace"][slice_idx]
 
 
 def get_dataloader(cfg, train: bool = True):
