@@ -43,9 +43,12 @@ class maskRadial(baseMask):
         angles = jax.random.uniform(
             key, shape=(self.num_lines,), minval=0.0, maxval=2 * jnp.pi
         )
-        size_line = jnp.exp(2*jax.random.normal(
-            key, shape=(self.num_lines,))
+        size_line = jax.random.uniform(
+            key, shape=(self.num_lines,), minval=0.0, maxval=10
         )
+        # size_line = jnp.exp(2*jax.random.normal(
+        #     key, shape=(self.num_lines,))
+        # )
         return jnp.stack([angles, size_line], axis=-1)
 
     def make(self, xi: Array) -> Array:
