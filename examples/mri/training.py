@@ -23,6 +23,9 @@ from examples.mri.fastMRI.create_dataset import (
 from examples.mri.wmh.create_dataset import (
     get_dataloader as get_wmh_dataloader,
 )
+from examples.mri.brainFastMRI.create_dataset import (
+    get_dataloader as get_brainfastmri_dataloader,
+)
 
 from examples.mri.utils import (
     checkpoint_best_model,
@@ -39,6 +42,7 @@ dataloader_zoo = {
     "WMH": lambda cfg: get_wmh_dataloader(cfg, train=True),
     "BRATS": lambda cfg: get_brats_dataloader(cfg, train=True),
     "fastMRI": lambda cfg: get_fastmri_dataloader(cfg, train=True),
+    "brainFastMRI": lambda cfg: get_brainfastmri_dataloader(cfg, train=True),
 }
 
 

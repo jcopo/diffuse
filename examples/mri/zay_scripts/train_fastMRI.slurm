@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#BATCH --job-name=train_fastMRI
+#SBATCH --job-name=knee
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:4

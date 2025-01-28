@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#BATCH --job-name=train_BRATS
+#SBATCH --job-name=brats
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:4

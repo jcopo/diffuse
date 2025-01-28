@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=wmh
+#SBATCH --job-name=brainfast
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:4
@@ -21,4 +21,4 @@ module load miniforge/24.9.0
 conda activate /lustre/fswork/projects/rech/hlp/uha64uw/.conda/envs/aoas
 
 cd $WORK/diffuse/
-python -m examples.mri.training --config examples/mri/configs/config_WMH.yaml --parallel True
+python -m examples.mri.training --config examples/mri/configs/config_brainFastMRI.yaml --parallel True
