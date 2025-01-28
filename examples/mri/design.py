@@ -149,10 +149,6 @@ def main(
         experiment_optimizer = ExperimentRandom(denoiser, mask, ground_truth.shape)
 
     exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst, dt)
-    new_measurement = mask.measure(exp_state.design, ground_truth)
-    measurement_state = mask.update_measurement(
-        measurement_state, new_measurement, exp_state.design
-    )
 
     def scan_step(carry, n_meas):
         exp_state, measurement_state, key = carry

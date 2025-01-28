@@ -154,7 +154,7 @@ class CondDenoiser:
             #     jnp.log(abs_y_noised)
             # )
 
-            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, t))
+            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf -t))
             #jax.experimental.io_callback(sigle_plot, None, y_noised)
             logsprobs = jax.scipy.stats.norm.logpdf(y_noised[..., :2], A_theta[..., :2], alpha_t)
             #jax.debug.print("logsprobs: {}", logsprobs)
@@ -169,7 +169,7 @@ class CondDenoiser:
             def plot_max_state(logprobs, idx, pos, a_theta, y, t_val):
                 import matplotlib.pyplot as plt
 
-                fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(15, 4))
+                fig, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(1, 5, figsize=(15, 4))
 
                 # Plot position
                 pos_mag = jnp.abs(pos[..., 0] + 1j * pos[..., 1])
@@ -193,17 +193,21 @@ class CondDenoiser:
                 ax4.imshow(logprobs[..., 0], cmap='gray')
                 ax4.set_title('Logprobs Distribution')
                 cbar = ax4.figure.colorbar(ax4.images[0], ax=ax4)
+                # Plot y_noised
+                ax5.imshow(y[..., 0], cmap='gray')
+                ax5.set_title('y_noised')
+                cbar = ax5.figure.colorbar(ax5.images[0], ax=ax5)
 
                 plt.tight_layout()
                 plt.show()
                 plt.close()
 
-            jax.lax.cond(
-                t > 1.5,
-                lambda x: jax.experimental.io_callback(plot_max_state, None, *x),
-                lambda x: None,
-                (logsprobs1[max_idx], max_idx, position[max_idx], A_theta[max_idx], y_noised, t)
-            )
+            # jax.lax.cond(
+            #     t > 1.5,
+            #     lambda x: jax.experimental.io_callback(plot_max_state, None, *x),
+            #     lambda x: None,
+            #     (logsprobs1[max_idx], max_idx, position[max_idx], A_theta[max_idx], y_noised, t)
+            # )
 
             # jax.debug.print("logsprobs: {}", logsprobs)
 
@@ -296,7 +300,8 @@ class CondDenoiser:
         idx = stratified(key_resample, weights, n_particles)
 
         return jax.lax.cond(
-            (ess_val < 0.4 * n_particles) & (ess_val > 0.2 * n_particles),
+            (ess_val < 0.5 * n_particles), #& (ess_val > 0.2 * n_particles),
+            #(ess_val < 0.4 * n_particles) & (ess_val > 0.2 * n_particles),
             #lambda x: (x[idx], _normalize_log_weights(log_weights[idx])),
             lambda x: (x, _normalize_log_weights(log_weights)),
             lambda x: (x, _normalize_log_weights(log_weights)),
