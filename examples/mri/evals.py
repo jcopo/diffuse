@@ -168,20 +168,22 @@ def plot_channel(
         x=0.62,
     )
 
-    gs = fig.add_gridspec(6, n, hspace=0.0001)
+    # Increase vertical spacing between rows
+    gs = fig.add_gridspec(6, n, hspace=0.01)  # Changed from 0.0001 to 0.3
 
     # Ground truth subplot
     ax_large = fig.add_subplot(gs[:2, :2])
     ax_large.imshow(ground_truth_i, cmap="gray", vmin=vmin, vmax=vmax)
     ax_large.text(
-        -2.3,
-        1.0,
+        -0.05,  # Just outside the right edge of the axes
+        0.5,  # Vertically centered
         f"Measurement {n_meas}",
         ha="center",
         va="center",
         fontsize=14,
         fontweight="bold",
         rotation="vertical",
+        transform=ax_large.transAxes  # Use axes coordinates
     )
     ax_large.axis("off")
     ax_large.set_title("Ground Truth", fontsize=12)

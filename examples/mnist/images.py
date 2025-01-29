@@ -83,6 +83,12 @@ class SquareMask:
     def init_design(self, rng_key: PRNGKeyArray) -> Array:
         return jax.random.uniform(rng_key, (2,), minval=0, maxval=28)
 
+    def logprob_y_t(self, theta: Array, y: Array, mask: Array, alpha_t: float) -> Array:
+        A_theta = self.measure_from_mask(mask, theta)
+        logsprobs = jax.scipy.stats.norm.logpdf(y, A_theta, alpha_t)
+        logsprobs = einops.reduce(logsprobs, "t ... -> t ", "sum")
+        return logsprobs
+
 
 if __name__ == "__main__":
     data = jnp.load("dataset/mnist.npz")
