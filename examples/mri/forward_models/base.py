@@ -94,9 +94,18 @@ class baseMask:
             y_flat, mean=f_y_flat, cov=self.sigma_prob**2
         )
 
+    def logprob_y_t(self, theta: Array, y: Array, mask: Array, alpha_t: float) -> Array:
+        A_theta = self.measure_from_mask(mask, theta)
+        tmp = y[..., :2] - A_theta[..., :2]
+        tmp = jnp.abs(tmp[..., 0] + 1j * tmp[..., 1]) ** 2
+        logprob = - tmp / (self.sigma_prob * alpha_t) - mask.sum() * jnp.log(jnp.pi * self.sigma_prob * alpha_t)
+        logprob = einops.einsum(logprob, mask, "t ..., ... -> t ...")
+        logprob = einops.reduce(logprob, "t ... -> t", "sum")
+        return logprob
+
     def grad_logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
         meas_x = self.measure_from_mask(design, theta)
         return (
             self.restore_from_mask(design, jnp.zeros_like(theta), (y - meas_x))
             / self.sigma_prob
-        )
+        ) * 2

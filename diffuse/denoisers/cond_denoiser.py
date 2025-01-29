@@ -157,17 +157,15 @@ class CondDenoiser:
             alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t))
             #jax.experimental.io_callback(sigle_plot, None, y_noised)
             # logsprobs = jax.scipy.stats.norm.logpdf(y_noised[..., :2], A_theta[..., :2], alpha_t)
-            # logsprobs1 = einops.einsum(logsprobs, measurement_state.mask_history, "t ... i, ... -> t ... i")
-
-
-            tmp = y_noised[..., :2] - A_theta[..., :2]
-            tmp = jnp.abs(tmp[..., 0] + 1j * tmp[..., 1]) ** 2
-            logsprobs = - 2 * tmp / alpha_t - jnp.log(jnp.pi * alpha_t / 2)
-            logsprobs1 = jnp.einsum("kij,ij->kij", logsprobs, mask)
+            # tmp = y_noised[..., :2] - A_theta[..., :2]
+            # tmp = jnp.abs(tmp[..., 0] + 1j * tmp[..., 1]) ** 2
+            # logsprobs = - 2 * tmp / alpha_t - jnp.log(jnp.pi * alpha_t / 2)
 
             # logsprobs = self.forward_model.logprob_y(y_noised, A_theta, alpha_t)
-
-            logsprobs = einops.reduce(logsprobs1, "t ... -> t ", "sum")
+            # logsprobs1 = einops.einsum(logsprobs, measurement_state.mask_history, "t ... i, ... -> t ... i")
+            logsprobs = self.forward_model.logprob_y_t(position, y_noised, mask, alpha_t)
+            # logsprobs1 = jnp.einsum("kij,ij->kij", logsprobs, mask)
+            # logsprobs = einops.reduce(logsprobs1, "t ... -> t ", "sum")
 
             # Find index of highest logprob
             max_idx = jnp.argmax(logsprobs)
@@ -235,7 +233,7 @@ class CondDenoiser:
             y_t = self.y_noiser(
                 design_mask, rng_key, SDEState(y_meas, 0), t
             ).position
-            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t))
+            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, t))
             #guidance = jax.grad(self.forward_model.logprob_y)(x, y_t, design) #/ alpha_t
             guidance = self.forward_model.grad_logprob_y(x, y_t, design_mask) / alpha_t
             return guidance + self.score(x, t)
