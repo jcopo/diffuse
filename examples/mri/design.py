@@ -96,6 +96,7 @@ def main(
     logging: bool = False,
     random: bool = False,
     save_plots: bool = True,
+    experiment_name: str = "",
 ):
     print("Running with config: \n \
           path_dataset: ", config['path_dataset'], "\n \
@@ -193,7 +194,6 @@ def main(
 if __name__ == "__main__":
     import argparse
     import datetime
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--rng_key", type=int, default=0)
     parser.add_argument("--num_meas", type=int, default=3)
@@ -210,8 +210,12 @@ if __name__ == "__main__":
     key_int = args.rng_key
     plot = args.plot
     num_meas = args.num_meas
-    logging = args.logging
     rng_key = jax.random.PRNGKey(key_int)
+
+    # Set up directory paths
+    timestamp = datetime.datetime.now().strftime('%m-%d_%H-%M-%S')
+    key_save = rng_key[1]
+    experiment_name = f"{args.prefix}/{key_save}_{timestamp}"
 
     ground_truth, optimal_state, final_measurement = main(
         num_meas,
@@ -219,7 +223,8 @@ if __name__ == "__main__":
         config,
         prefix=args.prefix,
         space=args.space,
-        logging=args.logging
+        logging=args.plot,
+        experiment_name=experiment_name
     )
 
 
@@ -229,6 +234,7 @@ if __name__ == "__main__":
         config,
         prefix=args.prefix,
         space=args.space,
-        logging=args.logging,
-        random=True
+        logging=args.plot,
+        random=True,
+        experiment_name=experiment_name
     )

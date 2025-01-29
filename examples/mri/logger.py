@@ -17,7 +17,7 @@ class ExperimentLogger(Protocol):
 class MRILogger:
     """Handles logging and plotting for MRI experiments."""
 
-    def __init__(self, config, rng_key, experiment:Experiment, prefix="", space="runs", random=False, save_plots=True):
+    def __init__(self, config, rng_key, experiment:Experiment, prefix="", space="runs", random=False, save_plots=True, experiment_name: str = ""):
         """
         Initialize the logger with experiment configuration.
 
@@ -33,10 +33,6 @@ class MRILogger:
         self.experiment = experiment
         self.save_plots = save_plots
 
-        # Set up directory paths
-        timestamp = datetime.datetime.now().strftime('%m-%d_%H-%M-%S')
-        key_save = rng_key[1]
-        experiment_name = f"{prefix}/{key_save}_{timestamp}"
         if random:
             experiment_name += "/random"
 
