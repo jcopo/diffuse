@@ -233,7 +233,7 @@ class CondDenoiser:
             y_t = self.y_noiser(
                 design_mask, rng_key, SDEState(y_meas, 0), t
             ).position
-            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t))
+            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t)/2)
             #guidance = jax.grad(self.forward_model.logprob_y)(x, y_t, design) #/ alpha_t
             guidance = self.forward_model.grad_logprob_y(x, y_t, design_mask) / alpha_t
             return guidance + self.score(x, t)
@@ -262,7 +262,7 @@ class CondDenoiser:
                 mask, rng_key1, SDEState(y_cntrst, 0), t
             ).position
             tf = self.sde.tf
-            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t))
+            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t)/2)
             guidance = jax.vmap(
                 #jax.grad(self.forward_model.logprob_y), in_axes=(None, 0, None)
                 self.forward_model.grad_logprob_y, in_axes=(None, 0, None)
