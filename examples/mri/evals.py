@@ -11,6 +11,58 @@ from typing import Protocol
 from jaxtyping import Array
 from diffuse.base_forward_model import ForwardModel
 
+def get_confusion_matrix_metrics(ground_truth: Array, x: Array) -> dict:
+    """Calculate confusion matrix metrics between ground truth and predicted values.
+    
+    Args:
+        ground_truth: Binary ground truth values (0 or 1)
+        x: Binary predicted values (0 or 1)
+        
+    Returns:
+        Dictionary containing TP, FP, TN, FN counts
+    """
+    # Ensure inputs are binary
+    ground_truth = (ground_truth > 0.5).astype(jnp.float32)
+    x = (x > 0.5).astype(jnp.float32)
+    
+    # Calculate each metric
+    true_positives = jnp.sum(ground_truth * x)
+    false_positives = jnp.sum((1 - ground_truth) * x)
+    true_negatives = jnp.sum((1 - ground_truth) * (1 - x))
+    false_negatives = jnp.sum(ground_truth * (1 - x))
+    
+    return {
+        "TP": true_positives,
+        "FP": false_positives,
+        "TN": true_negatives,
+        "FN": false_negatives
+    }
+
+
+def get_segmentation_metrics(ground_truth: Array, x: Array) -> dict:
+    """Calculate DICE and IoU scores between ground truth and predicted segmentation.
+    
+    Args:
+        ground_truth: Binary ground truth values (0 or 1)
+        x: Binary predicted values (0 or 1)
+        
+    Returns:
+        Dictionary containing DICE and IoU scores
+    """
+    metrics = get_confusion_matrix_metrics(ground_truth, x)
+    tp, fp, fn = metrics["TP"], metrics["FP"], metrics["FN"]
+    
+    # Calculate DICE coefficient: 2*TP / (2*TP + FP + FN)
+    dice = 2 * tp / jnp.maximum(2 * tp + fp + fn, 1e-8)
+    
+    # Calculate IoU (Jaccard index): TP / (TP + FP + FN)
+    iou = tp / jnp.maximum(tp + fp + fn, 1e-8)
+    
+    return {
+        "DICE": dice,
+        "IoU": iou
+    }
+
 class Experiment(Protocol):
     def plot_measurement(self, measurement_state):
         pass
@@ -35,7 +87,7 @@ class WMHExperiment(Experiment):
         plot_channel(0, measurement_state.mask_history, measurement_state.y, abs_thetas, abs_ground_truth, weights, n_meas, self.mask, ground_truth, logging_path)
         plot_channel(1, measurement_state.mask_history, measurement_state.y, thetas[..., 2], ground_truth[..., 2], weights, n_meas, self.mask, ground_truth, logging_path)
 
-    def evaluate_metrics(self, ground_truth, theta_infered, weights_infered):
+    def evaluate_metrics(self, ground_truth, theta_infered, weights_infered, task="anomaly"):
         jax.debug.print("weights_infered logger: {}", jax.scipy.special.logsumexp(weights_infered))
         weights_infered = jnp.exp(weights_infered)
         jax.debug.print("sum of weights_infered logger: {}", jnp.sum(weights_infered))
@@ -54,7 +106,13 @@ class WMHExperiment(Experiment):
         ssim = partial(dm_pix.ssim, max_val=max_val, filter_size=7, filter_sigma=1.02)
         ssim_array = jax.vmap(ssim, in_axes=(None, 0))(abs_ground_truth, abs_theta_infered)
         ssim_score = jnp.sum(ssim_array * weights_infered)
-        return psnr_score, ssim_score
+
+        if task == "anomaly":
+            segmentation_metrics = jax.vmap(get_segmentation_metrics, in_axes=(None, 0))(ground_truth[..., -1], theta_infered[..., -1])
+            segmentation_metrics = jax.tree_map(lambda x: jnp.sum(x * weights_infered), segmentation_metrics)
+            return psnr_score, ssim_score, segmentation_metrics
+        else:
+            return psnr_score, ssim_score, None
 
 
 

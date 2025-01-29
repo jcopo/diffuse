@@ -49,13 +49,19 @@ class MRILogger:
         # Initialize metrics CSV file with headers
         with open(self.metrics_file, "w", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(["Iteration", "PSNR", "SSIM", "K-space"])
+            if self.config['task'] == "anomaly":
+                writer.writerow(["Iteration", "PSNR", "SSIM", "DICE", "IoU", "K-space"])
+            else:
+                writer.writerow(["Iteration", "PSNR", "SSIM", "K-space"])
 
-    def metrics_logger(self, iteration, psnr_score, ssim_score, kspace_percent):
+    def metrics_logger(self, iteration, psnr_score, ssim_score, kspace_percent, segmentation_metrics):
         """Log metrics to CSV file."""
         with open(self.metrics_file, "a", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow([iteration, float(psnr_score), float(ssim_score), float(kspace_percent)])
+            if self.config['task'] == "anomaly":
+                writer.writerow([iteration, float(psnr_score), float(ssim_score), float(segmentation_metrics['DICE']), float(segmentation_metrics['IoU']), float(kspace_percent)])
+            else:
+                writer.writerow([iteration, float(psnr_score), float(ssim_score), float(kspace_percent)])
 
     def log(self, ground_truth: Array, optimal_state: BEDState, measurement_state: MeasurementState, iteration: int):
         """
@@ -76,8 +82,8 @@ class MRILogger:
         jax.debug.print("current_weights: {}", jnp.exp(current_weights))
 
         # Calculate metrics for current iteration
-        psnr_score, ssim_score = self.experiment.evaluate_metrics(
-            ground_truth, current_samples, current_weights
+        psnr_score, ssim_score, segmentation_metrics = self.experiment.evaluate_metrics(
+            ground_truth, current_samples, current_weights, task=self.config['task']
         )
 
         # Calculate k-space usage percentage
@@ -86,10 +92,17 @@ class MRILogger:
         kspace_percent = (used_points / total_points) * 100
 
         # Replace multiple print statements with a single combined print
-        jax.debug.print(
-            "Iteration {} | PSNR: {} | SSIM: {} | K-space: {}%",
-            iteration, psnr_score, ssim_score, kspace_percent
-        )
+        if self.config['task'] == "anomaly":
+            jax.debug.print(
+                "Iteration {} | PSNR: {} | SSIM: {} | DICE: {} | IoU: {} | K-space: {}%",
+                iteration, psnr_score, ssim_score, segmentation_metrics['DICE'], segmentation_metrics['IoU'], kspace_percent
+            )
+        else:
+            jax.debug.print(
+                "Iteration {} | PSNR: {} | SSIM: {} | K-space: {}%",
+                iteration, psnr_score, ssim_score, kspace_percent
+            )
+
         plot_samples = partial(self.experiment.plot_samples, logging_path=self.theta_path) if self.save_plots else self.experiment.plot_samples
         # Plot theta samples using io_callback
         jax.experimental.io_callback(
@@ -122,5 +135,6 @@ class MRILogger:
             iteration,
             psnr_score,
             ssim_score,
-            kspace_percent
+            kspace_percent,
+            segmentation_metrics
         )

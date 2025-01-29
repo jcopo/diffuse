@@ -3,10 +3,10 @@ score_model: "UNet"
 path_dataset: "${WORK}/diffuse/data/WMH"
 
 # Model paths
-model_dir: "/lustre/fsn1/projects/rech/hlp/uha64uw//diffuse/data/WMH/models_with_val_2000/"
+model_dir: "/lustre/fsn1/projects/rech/hlp/uha64uw//diffuse/data/WMH/models_with_val_small/"
 
 training:
-    n_epochs: 2000
+    n_epochs: 4000
     train_ratio: 0.8
     batch_size: 32
     nt_samples: 32 # Number of t samples for the score matching loss
@@ -28,9 +28,9 @@ sde:
     tf: 2.0
 
 unet:
-    embedding_dim: 128
+    embedding_dim: 64
     upsampling: "pixel_shuffle"
-    dim_mults: [1, 2, 4, 8]
+    dim_mults: [1, 2, 4]
     dt_embedding: 0.002  # Time embedding step (tf/2000)
 
 mask:
