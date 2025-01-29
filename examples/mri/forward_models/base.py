@@ -86,13 +86,8 @@ class baseMask:
         return MeasurementState(y=joint_y, mask_history=mask_history)
 
     def logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
-        f_y = self.measure(design, theta)
-        f_y_flat = einops.rearrange(f_y, "... h w c -> ... (h w c)")
-        y_flat = einops.rearrange(y, "... h w c -> ... (h w c)")
-
-        return jax.scipy.stats.multivariate_normal.logpdf(
-            y_flat, mean=f_y_flat, cov=self.sigma_prob**2
-        )
+        mask = self.make(design)
+        return self.logprob_y_t(theta, y, mask, 1.0)
 
     def logprob_y_t(self, theta: Array, y: Array, mask: Array, alpha_t: float) -> Array:
         A_theta = self.measure_from_mask(mask, theta)
