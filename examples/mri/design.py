@@ -18,6 +18,7 @@ from examples.mri.brats.create_dataset import get_dataloader as get_brats_datalo
 from examples.mri.wmh.create_dataset import get_dataloader as get_wmh_dataloader
 from examples.mri.fastMRI.create_dataset import get_dataloader as get_fastmri_dataloader
 from examples.mri.brainFastMRI.create_dataset import get_dataloader as get_brainfastmri_dataloader
+from examples.mri.kneeFastMRI.create_dataset import get_dataloader as get_kneefastmri_dataloader
 from examples.mri.evals import WMHExperiment
 from examples.mri.forward_models import maskRadial, maskSpiral
 from examples.mri.logger import MRILogger, ExperimentLogger
@@ -32,6 +33,7 @@ dataloader_zoo = {
     "BRATS": lambda cfg: get_brats_dataloader(cfg, train=False),
     "fastMRI": lambda cfg: get_fastmri_dataloader(cfg, train=False),
     "brainFastMRI": lambda cfg: get_brainfastmri_dataloader(cfg, train=False),
+    "kneeFastMRI": lambda cfg: get_kneefastmri_dataloader(cfg, train=False),
 }
 
 
