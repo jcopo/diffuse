@@ -33,6 +33,7 @@ class WMHExperiment(Experiment):
         abs_thetas = jnp.abs(thetas[..., 0] + 1j * thetas[..., 1])
         abs_ground_truth = jnp.abs(ground_truth[..., 0] + 1j * ground_truth[..., 1])
         plot_channel(0, measurement_state.mask_history, measurement_state.y, abs_thetas, abs_ground_truth, weights, n_meas, self.mask, ground_truth, logging_path)
+        plot_channel(1, measurement_state.mask_history, measurement_state.y, thetas[..., 2], ground_truth[..., 2], weights, n_meas, self.mask, ground_truth, logging_path)
 
     def evaluate_metrics(self, ground_truth, theta_infered, weights_infered):
         jax.debug.print("weights_infered logger: {}", jax.scipy.special.logsumexp(weights_infered))
@@ -45,14 +46,17 @@ class WMHExperiment(Experiment):
         # Add channel dimension
         abs_theta_infered = abs_theta_infered[..., None]
         abs_ground_truth = abs_ground_truth[..., None]
+
+        max_val = jnp.maximum(jnp.max(abs_ground_truth), jnp.max(abs_theta_infered))
         psnr_array = jax.vmap(dm_pix.psnr, in_axes=(None, 0))(abs_ground_truth, abs_theta_infered)
         psnr_score = jnp.sum(psnr_array * weights_infered)
-        ssim_array = jax.vmap(dm_pix.ssim, in_axes=(None, 0))(abs_ground_truth, abs_theta_infered)
+
+        ssim = partial(dm_pix.ssim, max_val=max_val, filter_size=7, filter_sigma=1.02)
+        ssim_array = jax.vmap(ssim, in_axes=(None, 0))(abs_ground_truth, abs_theta_infered)
         ssim_score = jnp.sum(ssim_array * weights_infered)
         return psnr_score, ssim_score
 
 
-#class FastMRIExperiment(Experiment):
 
 
 def plot_measurement(measurement_state):
@@ -81,6 +85,7 @@ def plot_channel(
     logging_path=None
 ):
     n = 20
+    weights = jnp.exp(weights)
     best_idx = jnp.argsort(weights)[-n:][::-1]
     worst_idx = jnp.argsort(weights)[:n]
 
@@ -101,8 +106,8 @@ def plot_channel(
     fig.suptitle(
         "High weight (top) and low weight (bottom) Samples",
         fontsize=18,
-        y=0.67,
-        x=0.6,
+        y=.92,
+        x=0.62,
     )
 
     gs = fig.add_gridspec(6, n, hspace=0.0001)
@@ -112,7 +117,7 @@ def plot_channel(
     ax_large.imshow(ground_truth_i, cmap="gray", vmin=vmin, vmax=vmax)
     ax_large.text(
         -2.3,
-        9.0,
+        1.0,
         f"Measurement {n_meas}",
         ha="center",
         va="center",
@@ -136,7 +141,7 @@ def plot_channel(
     ax_large = fig.add_subplot(gs[:2, 4:6])
     ax_large.imshow(restored_theta[..., 0], cmap="gray")
     ax_large.axis("off")
-    ax_large.set_title("Fourier($y$)", fontsize=12)
+    ax_large.set_title("$F^{-1}(y)$", fontsize=12)
 
     # Remaining sample subplots
     for idx in range(n - 6):

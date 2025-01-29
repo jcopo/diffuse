@@ -304,6 +304,7 @@ class CondDenoiser:
         key_resample = jax.random.split(rng_key)[1]
         idx = stratified(key_resample, weights, n_particles)
 
+        # jax.debug.print("ess_val: {}", ess_val/n_particles)
         return jax.lax.cond(
             (ess_val < 0.5 * n_particles), #& (ess_val > 0.2 * n_particles),
             #(ess_val < 0.4 * n_particles) & (ess_val > 0.2 * n_particles),

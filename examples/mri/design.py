@@ -124,7 +124,8 @@ def main(
         prefix=prefix,
         space=space,
         random=random,
-        save_plots=save_plots
+        save_plots=save_plots,
+        experiment_name=experiment_name
     ) if logging else None
 
     n_samples = config['inference']['n_samples']
