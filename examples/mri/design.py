@@ -87,7 +87,8 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
         mask = maskRadial(
             num_lines=config['mask']['num_lines'],
             img_shape=shape,
-            task=config['task']
+            task=config['task'],
+            data_model=config['dataset']
         )
 
     # Initialize experiment

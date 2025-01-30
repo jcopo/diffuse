@@ -6,6 +6,20 @@ from jaxtyping import Array
 from diffuse.base_forward_model import MeasurementState
 
 
+PARAMS_SIZE_LINE = {
+    "kneeFastMRI": {"minval": 0.0, "maxval": 20},
+    "brainFastMRI": {"minval": 0.0, "maxval": 20},
+    "WMH": {"minval": 0.0, "maxval": 10},
+    "BRATS": {"minval": 0.0, "maxval": 15},
+}
+
+PARAMS_WIDTH = {
+    "kneeFastMRI": 1,
+    "brainFastMRI": 1,
+    "WMH": 0.5,
+    "BRATS": 0.8,
+}
+
 def slice_fourier(mri_slice):
     mri_slice = mri_slice[..., 0] + 1j * mri_slice[..., 1]
     f = jnp.fft.fftshift(
@@ -31,6 +45,7 @@ def slice_inverse_fourier(fourier_transform):
 class baseMask:
     img_shape: tuple
     task: str
+    data_model: str
     num_samples: int = 1000
     sigma: float = 0.3
     sigma_prob: float = 1.0
