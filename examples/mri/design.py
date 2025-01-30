@@ -22,7 +22,7 @@ from examples.mri.kneeFastMRI.create_dataset import get_dataloader as get_kneefa
 from examples.mri.evals import WMHExperiment
 from examples.mri.forward_models import maskRadial, maskSpiral
 from examples.mri.logger import MRILogger, ExperimentLogger
-from examples.mri.utils import get_first_item, load_checkpoint, load_best_model_checkpoint
+from examples.mri.utils import get_first_item, load_checkpoint, load_best_model_checkpoint, get_sharding
 
 # get user from environment variable
 USER = os.getenv("USER")
@@ -68,7 +68,14 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
 
     # _, params, _, _, _ = load_checkpoint(config) # load the ema params
     _, params, _ = load_best_model_checkpoint(config)
-    nn_score = lambda x, t: score_net.apply(params, x, t)
+    sharding, replicated_sharding = get_sharding()
+    params = jax.device_put(params, replicated_sharding)
+    def nn_score(x, t):
+        x = jax.device_put(x, sharding)
+        # t = jax.device_put(t, sharding)
+        score_value = score_net.apply(params, x, t)
+        score_value = jax.device_get(score_value)
+        return score_value
 
     sde = SDE(beta=beta, tf=tf)
     shape = ground_truth.shape
