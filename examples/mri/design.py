@@ -26,6 +26,8 @@ from examples.mri.forward_models import maskRadial, maskSpiral
 from examples.mri.logger import MRILogger, ExperimentLogger
 from examples.mri.utils import get_first_item, load_checkpoint, load_best_model_checkpoint, get_sharding
 
+import sys
+
 # get user from environment variable
 USER = os.getenv("USER")
 WORKDIR = os.getenv("WORK")
@@ -111,20 +113,18 @@ def main(
     save_plots: bool = True,
     experiment_name: str = "",
 ):
-    # Add process index check for main execution prints
-    if jax.process_index() == 0:
-        print("Running with config: \n \
-              path_dataset: ", config['path_dataset'], "\n \
-              model_dir: ", config['model_dir'], "\n \
-              dataset: ", config['dataset'], "\n \
-              task: ", config['task'], "\n \
-              mask_type: ", config['mask']['mask_type'], "\n \
-              num_lines: ", config['mask']['num_lines'], "\n \
-              n_t: ", config['inference']['n_t'], "\n \
-              n_samples: ", config['inference']['n_samples'], "\n \
-              n_samples_cntrst: ", config['inference']['n_samples_cntrst'], "\n \
-              n_loop_opt: ", config['inference']['n_loop_opt'], "\n \
-              ")
+    print("Running with config: \n \
+            path_dataset: ", config['path_dataset'], "\n \
+            model_dir: ", config['model_dir'], "\n \
+            dataset: ", config['dataset'], "\n \
+            task: ", config['task'], "\n \
+            mask_type: ", config['mask']['mask_type'], "\n \
+            num_lines: ", config['mask']['num_lines'], "\n \
+            n_t: ", config['inference']['n_t'], "\n \
+            n_samples: ", config['inference']['n_samples'], "\n \
+            n_samples_cntrst: ", config['inference']['n_samples_cntrst'], "\n \
+            n_loop_opt: ", config['inference']['n_loop_opt'], "\n \
+            ", file=sys.stdout, flush=True)
 
     # Initialize experiment components
     sde, mask, ground_truth, dt, n_t, nn_score, experiment = initialize_experiment(key, config)
@@ -240,9 +240,9 @@ if __name__ == "__main__":
     parser.add_argument("--plot", action="store_true")
     parser.add_argument("--space", type=str, default="runs")
     parser.add_argument("--config", type=str, default="examples/mri/configs/config_fastMRI_inference.yaml")
-
+        
     args = parser.parse_args()
-
+    sys.stdout.reconfigure(line_buffering=True)
     # Load configuration
     config = EnvYAML(args.config)
 

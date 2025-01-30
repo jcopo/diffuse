@@ -96,6 +96,9 @@ class WMHExperiment(Experiment):
         abs_theta_infered = jnp.abs(theta_infered[..., 0] + 1j * theta_infered[..., 1])
         abs_ground_truth = jnp.abs(ground_truth[..., 0] + 1j * ground_truth[..., 1])
 
+        abs_theta_infered = jnp.where(abs_theta_infered < 0.2, 0, abs_theta_infered)
+        abs_ground_truth = jnp.where(abs_ground_truth < 0.2, 0, abs_ground_truth)
+        
         # Add channel dimension
         abs_theta_infered = abs_theta_infered[..., None]
         abs_ground_truth = abs_ground_truth[..., None]

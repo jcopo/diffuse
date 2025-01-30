@@ -4,7 +4,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:4
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=24
 #SBATCH --hint=nomultithread
 #SBATCH --time=02:00:00
 #SBATCH --output=slurm_logs/%j_exp_brain.out
@@ -29,8 +29,6 @@ echo "Data Model: $data_model"
 echo "Model Folder: $name_model_folder"
 echo "Config Path: $config_path"
 
-set -x
-
 module purge
 
 module load cuda/12.4.1
@@ -39,5 +37,5 @@ conda activate /lustre/fswork/projects/rech/hlp/uha64uw/.conda/envs/aoas
 
 cd $WORK/diffuse/
 
-#srun python -m examples.mri.design --rng_key=$2 --num_meas=15  --prefix=$1 --plot --space=$SCRATCH/runs --config "$config_path"
-srun python -m examples.mri.design --rng_key=$SLURM_ARRAY_TASK_ID --num_meas=15  --prefix=$1 --plot --space=$SCRATCH/runs --config "$config_path"
+python -m examples.mri.design --rng_key=$2 --num_meas=15  --prefix=$1 --plot --space=$SCRATCH/runs --config "$config_path"
+# python -m examples.mri.design --rng_key=$SLURM_ARRAY_TASK_ID --num_meas=15  --prefix=$1 --plot --space=$SCRATCH/runs --config "$config_path"

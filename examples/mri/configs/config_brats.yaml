@@ -3,13 +3,13 @@ score_model: "UNet"
 path_dataset: "${WORK}/diffuse/data/BRATS"
 
 # Model paths
-model_dir: "/lustre/fsn1/projects/rech/hlp/uha64uw/diffuse/data/BRATS/models_with_val/"
+model_dir: "/lustre/fsn1/projects/rech/hlp/uha64uw/diffuse/data/BRATS/models_with_val_very_small/"
 
 training:
     n_epochs: 4000
     train_ratio: 0.8
-    batch_size: 32
-    nt_samples: 32
+    batch_size: 64
+    nt_samples: 64
     loss_weight: "weight_fun"
     num_workers: 0
     lr: 2.0e-4
@@ -28,10 +28,10 @@ sde:
     tf: 2.0
 
 unet:
-    embedding_dim: 128
+    embedding_dim: 32
     upsampling: "pixel_shuffle"
-    dim_mults: [1, 2, 4, 8]
-    dt_embedding: 0.002  # Time embedding step (tf/2000)
+    dim_mults: [1, 2, 3, 4]
+    dt_embedding: 0.01  # Time embedding step (tf/2000)
 
 mask:
     mask_type: "radial"  # or "spiral"
