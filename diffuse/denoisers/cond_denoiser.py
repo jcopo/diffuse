@@ -17,14 +17,14 @@ from diffuse.utils.plotting import sigle_plot, plot_lines
 
 def _vmapper(fn, type):
     def _set_axes(path, value):
-        # Vectorize only particles and rng_key fields
+        # Shard only particles and rng_key fields for pmap
         if any(field in str(path) for field in ["position", "rng_key", "weights"]):
             return 0
         return None
 
-    # Create tree with selective vectorization
+    # Create tree with selective sharding
     in_axes = jax.tree_util.tree_map_with_path(_set_axes, type)
-    return jax.vmap(fn, in_axes=(in_axes, None))
+    return jax.pmap(fn, in_axes=(in_axes, None), axis_name='devices')
 
 def ess(log_weights: Array) -> float:
     return jnp.exp(log_ess(log_weights))
@@ -110,11 +110,25 @@ class CondDenoiser:
     def batch_step(
         self, rng_key: PRNGKeyArray, state: CondDenoiserState, score: Callable[[Array, float], Array], measurement_state: MeasurementState
     ) -> CondDenoiserState:
-        r"""
+        """
         batch step for conditional diffusion
         """
-        # vmap over position, rng_key, weights
+        # Shard the state across devices
+        num_devices = jax.device_count()
+        state = jax.tree_map(
+            lambda x: x.reshape((num_devices, -1, *x.shape[1:])) if hasattr(x, 'shape') else x,
+            state
+        )
+
+        # pmap over position, rng_key, weights
         state_next = _vmapper(self.step, state)(state, score)
+
+        # Reshape back to original dimensions
+        state_next = jax.tree_map(
+            lambda x: x.reshape((-1, *x.shape[2:])) if hasattr(x, 'shape') else x,
+            state_next
+        )
+
         integrator_state_next = state_next.integrator_state
         integrator_state, weights = state.integrator_state, state.weights
 
@@ -286,9 +300,8 @@ class CondDenoiser:
         alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
 
         rndm = jax.random.normal(key, y.shape)
-        res = alpha * y + jnp.sqrt(beta) * self.forward_model.measure_from_mask(
-            mask, rndm
-        )
+        res = alpha * y + jnp.sqrt(beta) * rndm
+        #self.forward_model.measure_from_mask(    mask, rndm)
         return SDEState(res, ts)
 
     def _resampling(

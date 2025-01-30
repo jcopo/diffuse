@@ -78,7 +78,7 @@ class ExperimentOptimizer:
         # Condition for multiple optimization steps
         design_tuple = (design, opt_state)
         def true_branch(x):
-            (design, opt_state), y = jax.lax.scan(opt_step, x, jnp.arange(100))
+            (design, opt_state), y = jax.lax.scan(opt_step, x, jnp.arange(5))
             return (design, opt_state), y[0]  # Return just the last y_cntrst
 
         def false_branch(x):
