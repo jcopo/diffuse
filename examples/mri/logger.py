@@ -103,7 +103,7 @@ class MRILogger:
                 iteration, psnr_score, ssim_score, kspace_percent
             )
 
-        plot_samples = partial(self.experiment.plot_samples, logging_path=self.theta_path) if self.save_plots else self.experiment.plot_samples
+        plot_samples = partial(self.experiment.plot_samples, task=self.config['task'], logging_path=self.theta_path) if self.save_plots else partial(self.experiment.plot_samples, task=self.config['task'])
         # Plot theta samples using io_callback
         jax.experimental.io_callback(
             plot_samples,
@@ -113,7 +113,6 @@ class MRILogger:
             current_samples,
             current_weights,
             iteration,
-            self.config['task']
         )
 
         # Plot contrastive samples only for non-random experiments
