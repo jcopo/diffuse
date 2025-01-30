@@ -107,6 +107,18 @@ class WMHExperiment(Experiment):
         ssim = partial(dm_pix.ssim, max_val=max_val, filter_size=7, filter_sigma=1.02)
         ssim_array = jax.vmap(ssim, in_axes=(None, 0))(abs_ground_truth, abs_theta_infered)
         ssim_score = jnp.sum(ssim_array * weights_infered)
+        
+        # Save the magnitude images - fixed callback usage
+        # save_path = "/lustre/fswork/projects/rech/hlp/uha64uw/tmp_res/magnitude_images.npz"
+        # def save_callback(gt, pred):
+            # jnp.savez(save_path, ground_truth_=gt, prediction_=pred)
+        
+        # jax.experimental.io_callback(
+            # save_callback,
+            # None,
+            # abs_ground_truth,
+            # abs_theta_infered
+        # )
 
         if task == "anomaly":
             segmentation_metrics = jax.vmap(get_segmentation_metrics, in_axes=(None, 0))(ground_truth[..., -1], theta_infered[..., -1])

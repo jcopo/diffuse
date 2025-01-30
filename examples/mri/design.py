@@ -11,7 +11,7 @@ from diffuse.bayesian_design import ExperimentOptimizer, ExperimentRandom
 from diffuse.denoisers.cond_denoiser import CondDenoiser
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.integrator.stochastic import EulerMaruyama
-from diffuse.integrator.deterministic import DPMpp2sIntegrator
+from diffuse.integrator.deterministic import DPMpp2sIntegrator, Euler
 from diffuse.neural_network.unet import UNet
 from diffuse.neural_network.unett import UNet as Unet
 from examples.mri.brats.create_dataset import get_dataloader as get_brats_dataloader
