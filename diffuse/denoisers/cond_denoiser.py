@@ -318,7 +318,7 @@ class CondDenoiser:
         alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
 
         rndm = jax.random.normal(key, y.shape)
-        res = alpha * y + jnp.sqrt(beta) * rndm
+        res = alpha * y + jnp.sqrt(beta) * einops.einsum(mask, rndm, "... , ... c -> ... c")
         #self.forward_model.measure_from_mask(    mask, rndm)
         return SDEState(res, ts)
 
