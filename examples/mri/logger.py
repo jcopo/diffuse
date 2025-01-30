@@ -113,6 +113,7 @@ class MRILogger:
             current_samples,
             current_weights,
             iteration,
+            self.config['task']
         )
 
         # Plot contrastive samples only for non-random experiments
