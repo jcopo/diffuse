@@ -285,7 +285,7 @@ def log_samples(
     ax_large = fig.add_subplot(gs[:2, 2:4])
     ax_large.imshow(joint_y, cmap="gray")
     ax_large.axis("off")
-    ax_large.set_title("Measure $y$", fontsize=12)
+    ax_large.set_title(r"Measure $y$", fontsize=12)
     ax_large.scatter(opt_hist[-1, 0], opt_hist[-1, 1], marker="o", c="red")
     # add a square above the image. Around the design and 5 pixels from it
     ax_large.add_patch(

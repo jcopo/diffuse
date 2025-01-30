@@ -17,14 +17,31 @@ from diffuse.utils.plotting import sigle_plot, plot_lines
 
 def _vmapper(fn, type):
     def _set_axes(path, value):
-        # Shard only particles and rng_key fields for pmap
-        if any(field in str(path) for field in ["position", "rng_key", "weights"]):
+        # Handle nested state structures
+        if isinstance(value, (Array, PRNGKeyArray)) and any(
+            field in str(path) for field in ["position", "rng_key", "weights"]
+        ):
+            return 0
+        return None
+
+    def _set_axes_pmap(path, value):
+        # Handle nested state structures
+        if isinstance(value, (Array, PRNGKeyArray)) and any(
+            field in str(path) for field in ["position", "rng_key", "weights"]
+        ):
             return 0
         return None
 
     # Create tree with selective sharding
     in_axes = jax.tree_util.tree_map_with_path(_set_axes, type)
-    return jax.pmap(fn, in_axes=(in_axes, None), axis_name='devices')
+    in_axes_pmap = jax.tree_util.tree_map_with_path(_set_axes_pmap, type)
+
+    return jax.pmap(
+        jax.vmap(fn, in_axes=(in_axes, None)),
+        axis_name='devices',
+        in_axes=(in_axes_pmap, None),
+        static_broadcasted_argnums=1
+    )
 
 def ess(log_weights: Array) -> float:
     return jnp.exp(log_ess(log_weights))
@@ -113,10 +130,11 @@ class CondDenoiser:
         """
         batch step for conditional diffusion
         """
+
         # Shard the state across devices
         num_devices = jax.device_count()
         state = jax.tree_map(
-            lambda x: x.reshape((num_devices, -1, *x.shape[1:])) if hasattr(x, 'shape') else x,
+            lambda x: x.reshape((num_devices, -1, *x.shape[1:])) if len(x.shape) > 0 else x,
             state
         )
 
@@ -125,7 +143,7 @@ class CondDenoiser:
 
         # Reshape back to original dimensions
         state_next = jax.tree_map(
-            lambda x: x.reshape((-1, *x.shape[2:])) if hasattr(x, 'shape') else x,
+            lambda x: x.reshape((-1, *x.shape[2:])) if len(x.shape) > 0 else x,
             state_next
         )
 

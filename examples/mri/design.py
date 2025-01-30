@@ -6,9 +6,11 @@ import jax.numpy as jnp
 import optax
 from envyaml import EnvYAML
 from jaxtyping import PRNGKeyArray
+import matplotlib.pyplot as plt
 
 from diffuse.bayesian_design import ExperimentOptimizer, ExperimentRandom
 from diffuse.denoisers.cond_denoiser import CondDenoiser
+from diffuse.denoisers.cond_tweedie import CondTweedie
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.integrator.stochastic import EulerMaruyama
 from diffuse.integrator.deterministic import DPMpp2sIntegrator, Euler
@@ -108,18 +110,20 @@ def main(
     save_plots: bool = True,
     experiment_name: str = "",
 ):
-    print("Running with config: \n \
-          path_dataset: ", config['path_dataset'], "\n \
-          model_dir: ", config['model_dir'], "\n \
-          dataset: ", config['dataset'], "\n \
-          task: ", config['task'], "\n \
-          mask_type: ", config['mask']['mask_type'], "\n \
-          num_lines: ", config['mask']['num_lines'], "\n \
-          n_t: ", config['inference']['n_t'], "\n \
-          n_samples: ", config['inference']['n_samples'], "\n \
-          n_samples_cntrst: ", config['inference']['n_samples_cntrst'], "\n \
-          n_loop_opt: ", config['inference']['n_loop_opt'], "\n \
-          ")
+    # Add process index check for main execution prints
+    if jax.process_index() == 0:
+        print("Running with config: \n \
+              path_dataset: ", config['path_dataset'], "\n \
+              model_dir: ", config['model_dir'], "\n \
+              dataset: ", config['dataset'], "\n \
+              task: ", config['task'], "\n \
+              mask_type: ", config['mask']['mask_type'], "\n \
+              num_lines: ", config['mask']['num_lines'], "\n \
+              n_t: ", config['inference']['n_t'], "\n \
+              n_samples: ", config['inference']['n_samples'], "\n \
+              n_samples_cntrst: ", config['inference']['n_samples_cntrst'], "\n \
+              n_loop_opt: ", config['inference']['n_loop_opt'], "\n \
+              ")
 
     # Initialize experiment components
     sde, mask, ground_truth, dt, n_t, nn_score, experiment = initialize_experiment(key, config)
@@ -146,6 +150,7 @@ def main(
     # integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
     resample = True
     denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
+    # denoiser = CondTweedie(integrator, sde, nn_score, mask, resample)
 
     # init design and measurement
     xi = mask.init_design(key)
@@ -168,22 +173,69 @@ def main(
         exp_state, measurement_state, key = carry
 
         key, subkey = jax.random.split(key)
-        jax.debug.print("design start: {}", exp_state.design)
+
+        # Move debug prints to host callback
+        def print_debug_info(design, t, weights, logsumexp):
+            from IPython.display import display, clear_output
+            print("design start:", design)
+            if t is not None:
+                print("final time:", t)
+                print("weights:", weights)
+                print("sum of weights:", logsumexp)
+                print("design optimal:", design)
+            # Force display in notebook
+            display(flush=True)
+            return None
+
+        # Get initial design state (gather to host to avoid replication)
+        initial_design = jax.device_get(exp_state.design)
+
+        dummy = jax.pure_callback(
+            print_debug_info,
+            None,  # return type
+            initial_design,
+            None,
+            None,
+            None
+        )
 
         optimal_state, _ = experiment_optimizer.get_design(
             exp_state, subkey, measurement_state, n_steps=n_opt_steps
         )
-        jax.debug.print("weights: {}", optimal_state.denoiser_state.weights)
-        jax.debug.print("sum of weights: {}", jax.scipy.special.logsumexp(optimal_state.denoiser_state.weights))
-        jax.debug.print("design optimal: {}", optimal_state.design)
+
+        # Gather results to host before printing
+        final_state_host = jax.device_get(optimal_state)
+        final_t = jax.device_get(final_state_host.denoiser_state.integrator_state.t)
+        final_weights = jax.device_get(final_state_host.denoiser_state.weights)
+        logsumexp = jax.device_get(jax.scipy.special.logsumexp(final_state_host.denoiser_state.weights))
+
+        dummy = jax.pure_callback(
+            print_debug_info,
+            None,
+            final_state_host.design,
+            final_t,
+            final_weights,
+            logsumexp
+        )
+
         if logger:
-            logger.log(
+            def do_logging(ground_truth, optimal_state, measurement_state, n_meas):
+                from IPython.display import display, clear_output
+                print(f"Logging step {n_meas}")
+                logger.log(ground_truth, optimal_state, measurement_state, n_meas)
+                # Force display in notebook
+                display(flush=True)
+                plt.close('all')
+                return None
+
+            dummy = jax.pure_callback(
+                do_logging,
+                None,
                 ground_truth,
                 optimal_state,
                 measurement_state,
                 n_meas
             )
-
 
         # make new measurement
         new_measurement = mask.measure(optimal_state.design, ground_truth)

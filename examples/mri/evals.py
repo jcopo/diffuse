@@ -208,13 +208,13 @@ def plot_channel(
         cmap="gray",
     )
     ax_large.axis("off")
-    ax_large.set_title("Measure $y$", fontsize=12)
+    ax_large.set_title(r"Measure $y$", fontsize=12)
 
     # Fourier subplot
     ax_large = fig.add_subplot(gs[:2, 4:6])
     ax_large.imshow(restored_theta[..., 0], cmap="gray")
     ax_large.axis("off")
-    ax_large.set_title("$F^{-1}(y)$", fontsize=12)
+    ax_large.set_title(r"$F^{-1}(y)$", fontsize=12)
 
     # Remaining sample subplots
     for idx in range(n - 6):
