@@ -174,68 +174,12 @@ def main(
 
         key, subkey = jax.random.split(key)
 
-        # Move debug prints to host callback
-        def print_debug_info(design, t, weights, logsumexp):
-            from IPython.display import display, clear_output
-            print("design start:", design)
-            if t is not None:
-                print("final time:", t)
-                print("weights:", weights)
-                print("sum of weights:", logsumexp)
-                print("design optimal:", design)
-            # Force display in notebook
-            display(flush=True)
-            return None
-
-        # Get initial design state (gather to host to avoid replication)
-        initial_design = jax.device_get(exp_state.design)
-
-        dummy = jax.pure_callback(
-            print_debug_info,
-            None,  # return type
-            initial_design,
-            None,
-            None,
-            None
-        )
+        # Minimal debug print just for step tracking
+        jax.debug.print("Processing step {n}", n=n_meas)
 
         optimal_state, _ = experiment_optimizer.get_design(
             exp_state, subkey, measurement_state, n_steps=n_opt_steps
         )
-
-        # Gather results to host before printing
-        final_state_host = jax.device_get(optimal_state)
-        final_t = jax.device_get(final_state_host.denoiser_state.integrator_state.t)
-        final_weights = jax.device_get(final_state_host.denoiser_state.weights)
-        logsumexp = jax.device_get(jax.scipy.special.logsumexp(final_state_host.denoiser_state.weights))
-
-        dummy = jax.pure_callback(
-            print_debug_info,
-            None,
-            final_state_host.design,
-            final_t,
-            final_weights,
-            logsumexp
-        )
-
-        if logger:
-            def do_logging(ground_truth, optimal_state, measurement_state, n_meas):
-                from IPython.display import display, clear_output
-                print(f"Logging step {n_meas}")
-                logger.log(ground_truth, optimal_state, measurement_state, n_meas)
-                # Force display in notebook
-                display(flush=True)
-                plt.close('all')
-                return None
-
-            dummy = jax.pure_callback(
-                do_logging,
-                None,
-                ground_truth,
-                optimal_state,
-                measurement_state,
-                n_meas
-            )
 
         # make new measurement
         new_measurement = mask.measure(optimal_state.design, ground_truth)
@@ -244,14 +188,44 @@ def main(
         )
 
         exp_state = experiment_optimizer.init(subkey, n_samples, n_samples_cntrst, dt)
-        return (exp_state, measurement_state, key), optimal_state.denoiser_state
+        # Return the full optimal_state instead of just denoiser_state
+        return (exp_state, measurement_state, key), (optimal_state, measurement_state)
 
     init_carry = (exp_state, measurement_state, key)
-    (exp_state, measurement_state, key), optimal_states = jax.lax.scan(
+    (exp_state, final_measurement_state, key), (optimal_states, measurement_states) = jax.lax.scan(
         scan_step, init_carry, jnp.arange(num_measurements)
     )
 
-    return ground_truth, optimal_states, measurement_state.y
+    # Do logging after scan completes
+    if logging:
+        def log_all_steps(ground_truth, optimal_states, measurement_states):
+            from IPython.display import display, clear_output
+            try:
+                print("\n==== Starting Post-Scan Logging ====")
+                for step in range(num_measurements):
+                    print(f"\nLogging step {step}")
+                    # Get the states for this step
+                    step_state = jax.tree_map(lambda x: x[step], optimal_states)
+                    step_measurement = jax.tree_map(lambda x: x[step], measurement_states)
+                    logger.log(ground_truth, step_state, step_measurement, step)
+                    plt.close('all')
+                print("\n==== Logging Complete ====")
+                display(flush=True)
+            except Exception as e:
+                print(f"Error during logging: {str(e)}")
+                import traceback
+                traceback.print_exc()
+            return None
+
+        # Get data to host
+        optimal_states_host = jax.device_get(optimal_states)
+        measurement_states_host = jax.device_get(measurement_states)
+        ground_truth_host = jax.device_get(ground_truth)
+
+        # Do the logging on host
+        log_all_steps(ground_truth_host, optimal_states_host, measurement_states_host)
+
+    return ground_truth, optimal_states, final_measurement_state.y
 
 
 if __name__ == "__main__":
