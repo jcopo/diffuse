@@ -65,14 +65,36 @@ class ExperimentOptimizer:
         score_likelihood = self.denoiser.posterior_logpdf(rng_key, y, mask_history)
         denoiser_state = self.denoiser.batch_step(rng_key, denoiser_state, score_likelihood, measurement_state)
 
-        # update design
         thetas = denoiser_state.integrator_state.position
         cntrst_thetas = cntrst_denoiser_state.integrator_state.position
-        design, opt_state, y_cntrst = calculate_and_apply_gradient(
-            thetas, cntrst_thetas, design, self.mask, self.optimizer, opt_state
+        # update design with optional multiple optimization steps
+        def opt_step(state_tuple, _):
+            design, opt_state = state_tuple
+            design, opt_state, y_cntrst = calculate_and_apply_gradient(
+                thetas, cntrst_thetas, design, self.mask, self.optimizer, opt_state
+            )
+            return (design, opt_state), y_cntrst
+
+        # Condition for multiple optimization steps
+        design_tuple = (design, opt_state)
+        def true_branch(x):
+            (design, opt_state), y = jax.lax.scan(opt_step, x, jnp.arange(100))
+            return (design, opt_state), y[0]  # Return just the last y_cntrst
+
+        def false_branch(x):
+            design, opt_state, y_cntrst = calculate_and_apply_gradient(
+                thetas, cntrst_thetas, x[0], self.mask, self.optimizer, x[1]
+            )
+            return (design, opt_state), y_cntrst
+
+        design_tuple, y_cntrst = jax.lax.cond(
+            denoiser_state.integrator_state.t[0] > 1.4,
+            true_branch,
+            false_branch,
+            design_tuple,
         )
-        #jax.debug.print("thetas: {}", thetas)
-        # jax.experimental.io_callback( plot_lines, None, cntrst_thetas, t)
+        design, opt_state = design_tuple
+
         # step cntrst_theta
         score_likelihood = self.denoiser.pooled_posterior_logpdf(
             key_t, y_cntrst, y, design, mask_history
