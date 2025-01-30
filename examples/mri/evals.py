@@ -102,11 +102,11 @@ class WMHExperiment(Experiment):
 
         max_val = jnp.maximum(jnp.max(abs_ground_truth), jnp.max(abs_theta_infered))
         psnr_array = jax.vmap(dm_pix.psnr, in_axes=(None, 0))(abs_ground_truth, abs_theta_infered)
-        psnr_score = jnp.sum(psnr_array * weights_infered)
+        psnr_score = jnp.max(psnr_array) # jnp.sum(psnr_array * weights_infered)
 
         ssim = partial(dm_pix.ssim, max_val=max_val, filter_size=7, filter_sigma=1.02)
         ssim_array = jax.vmap(ssim, in_axes=(None, 0))(abs_ground_truth, abs_theta_infered)
-        ssim_score = jnp.sum(ssim_array * weights_infered)
+        ssim_score = jnp.max(ssim_array) # jnp.sum(ssim_array * weights_infered)
         
         # Save the magnitude images - fixed callback usage
         # save_path = "/lustre/fswork/projects/rech/hlp/uha64uw/tmp_res/magnitude_images.npz"

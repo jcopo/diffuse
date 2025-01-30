@@ -1,21 +1,21 @@
 #!/bin/bash
 
-#SBATCH --job-name=exp
+#SBATCH --job-name=exp_brain
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:4
 #SBATCH --cpus-per-task=16
 #SBATCH --hint=nomultithread
 #SBATCH --time=02:00:00
-#SBATCH --output=slurm_logs/%j_exp.out
-#SBATCH --error=slurm_logs/%j_exp.err
-#SBATCH -C a100
-#SBATCH --qos=qos_gpu_a100-t3
-#SBATCH -A hlp@a100
+#SBATCH --output=slurm_logs/%j_exp_brain.out
+#SBATCH --error=slurm_logs/%j_exp_brain.err
+#SBATCH -C h100
+#SBATCH --qos=qos_gpu_h100-dev
+#SBATCH -A hlp@h100
 
 # Set data model (0=WMH, 1=BRATS, 2=fastMRI, 3=brainFastMRI)
 data_model_index=3
-data_model_array=("WMH" "BRATS" "fastMRI" "brainFastMRI")
+data_model_array=("WMH" "BRATS" "fastMRI" "brainFastMRI" "kneeFastMRI")
 data_model=${data_model_array[$data_model_index]}
 
 # Set model folder name
