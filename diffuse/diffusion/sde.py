@@ -144,3 +144,38 @@ class SDE:
     def reverse_diffusion(self, state: SDEState) -> Array:
         t = state.t
         return jnp.sqrt(self.beta(self.tf - t))
+
+    def score_to_noise(self, score_fn: Callable) -> Callable:
+        """
+        Convert a score function to a noise prediction function.
+
+        Args:
+            score_fn: Function that predicts score, with signature (x, t) -> score
+
+        Returns:
+            Function that predicts noise, with signature (x, t) -> noise
+        """
+        def noise_fn(x: Array, t: Array) -> Array:
+            int_b = self.beta.integrate(t, self.beta.t0).squeeze()
+            beta = 1 - jnp.exp(-int_b)  # β_t = 1 - α_t
+            score = score_fn(x, t)
+            return -jnp.sqrt(beta) * score  # ε = -√β * score
+
+        return noise_fn
+
+    def noise_to_score(self, noise_fn: Callable) -> Callable:
+        """
+        Convert a noise prediction function to a score function.
+
+        Args:
+            noise_fn: Function that predicts noise, with signature (x, t) -> noise
+
+        Returns:
+            Function that predicts score, with signature (x, t) -> score
+        """
+        def score_fn(x: Array, t: Array) -> Array:
+            int_b = self.beta.integrate(t, self.beta.t0).squeeze()
+            beta = 1 - jnp.exp(-int_b)  # β_t = 1 - α_t
+            noise = noise_fn(x, t)
+            return -noise / jnp.sqrt(beta)  # Correct equivalence: score = -ε / √β
+        return score_fn
