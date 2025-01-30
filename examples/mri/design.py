@@ -82,7 +82,7 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
 
     # Get mask configuration
     if config['mask']['mask_type'] == 'spiral':
-        mask = maskSpiral(img_shape=shape, task=config['task'], num_spiral=3, data_model=config['dataset'])
+        mask = maskSpiral(img_shape=shape, task=config['task'], num_spiral=config['mask']['num_spirals'], data_model=config['dataset'])
     else:  # radial
         mask = maskRadial(
             num_lines=config['mask']['num_lines'],
