@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import partial
-from typing import Callable, NamedTuple
+from typing import Callable, NamedTuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -84,25 +84,42 @@ class SDE:
         alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
 
         return -(x - alpha * x0) / beta
-    
+
     def tweedie(self, state: SDEState, score: Callable) -> SDEState:
         x, t = state.position, state.t
         int_b = self.beta.integrate(t, self.beta.t0).squeeze()
         alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
         return SDEState((x + beta * score(x, t)) / alpha, self.beta.t0)
 
-    def path(self, key: PRNGKeyArray, state: SDEState, ts: float) -> SDEState:
-        r"""
+    def path(
+        self,
+        key: PRNGKeyArray,
+        state: SDEState,
+        ts: float,
+        return_noise: bool = False
+    ) -> Union[SDEState, tuple[SDEState, Array]]:
+        """
         Generate x_ts | x_t ~ N(.| exp(-0.5 \int_ts^t \beta(s) ds) x_0, 1 - exp(-\int_ts^t \beta(s) ds))
+
+        Args:
+            key: Random number generator key
+            state: Current state
+            ts: Target time
+            return_noise: If True, also return the noise used to generate the sample
+
+        Returns:
+            If return_noise is False, returns just the new state
+            If return_noise is True, returns tuple of (new state, noise used)
         """
         x, t = state.position, state.t
 
         int_b = self.beta.integrate(ts, t)
         alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
 
-        rndm = jax.random.normal(key, x.shape)
-        res = alpha * x + jnp.sqrt(beta) * rndm
-        return SDEState(res, ts)
+        noise = jax.random.normal(key, x.shape)
+        res = alpha * x + jnp.sqrt(beta) * noise
+
+        return (SDEState(res, ts), noise) if return_noise else SDEState(res, ts)
 
     def drift(self, state: SDEState) -> PyTreeDef:
         x, t = state.position, state.t
@@ -123,7 +140,7 @@ class SDE:
         beta_t = self.beta(self.tf - t)
         s = score(x, self.tf - t)
         return 0.5 * (beta_t * x + beta_t * s)
-    
+
     def reverse_diffusion(self, state: SDEState) -> Array:
         t = state.t
         return jnp.sqrt(self.beta(self.tf - t))
