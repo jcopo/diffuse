@@ -89,7 +89,7 @@ class SDE:
         x, t = state.position, state.t
         int_b = self.beta.integrate(t, self.beta.t0).squeeze()
         alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
-        return SDEState(x + beta * score(x, t) / alpha, self.beta.t0)
+        return SDEState((x + beta * score(x, t)) / alpha, self.beta.t0)
 
     def path(self, key: PRNGKeyArray, state: SDEState, ts: float) -> SDEState:
         r"""
