@@ -210,7 +210,7 @@ def main(
     )
 
     # Do logging after scan completes
-    if logging:
+    if logging and len(devices) > 1:
         def log_all_steps(ground_truth, optimal_states, measurement_states):
             from IPython.display import display, clear_output
             try:
