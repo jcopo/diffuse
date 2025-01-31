@@ -197,10 +197,11 @@ class DDIMIntegrator:
     def __call__(
         self,
         integrator_state: DDIMState,
-        noise_pred: Callable
+        score: Callable
     ) -> DDIMState:
         """Perform one DDIM step from t to t+dt in the REVERSE process"""
         position, rng_key, t_reverse, dt = integrator_state
+        noise_pred = self.sde.score_to_noise(score)
 
         # Convert reverse time (t) to forward time (T - t_reverse)
         t_forward_curr = self.sde.tf - t_reverse  # Current forward time
@@ -217,7 +218,7 @@ class DDIMIntegrator:
         beta_curr = 1.0 - alpha_curr**2               # β_t = 1 - α_t² (noise variance)
 
         # Predict noise using the FORWARD time (t_forward_curr)
-        eps = noise_pred(position, t_forward_curr)  # Key fix: Pass forward time to noise predictor
+        eps = noise_pred(position, t_forward_curr)
 
         # Estimate x₀ from x_t and predicted noise
         pred_x0 = (position - jnp.sqrt(beta_curr) * eps) / alpha_curr
