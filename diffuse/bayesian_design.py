@@ -228,7 +228,7 @@ class ExperimentRandom:
         return BEDState(denoiser_state=denoiser_state, cntrst_denoiser_state=None, design=design, opt_state=None)
 
     def get_design(self, state: BEDState, rng_key: PRNGKeyArray, measurement_state: MeasurementState, n_steps: int):
-        n_particles = state.denoiser_state.integrator_state.position.shape[0]
+        n_particles = jax.num_devices() * 5
         design = self.mask.init_design(rng_key)
         cond_denoiser_state, _ = self.denoiser.generate(rng_key, self.mask, measurement_state, design, n_steps, n_particles)
 
