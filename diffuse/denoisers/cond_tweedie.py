@@ -152,11 +152,9 @@ class CondTweedie:
         mask = self.forward_model.make(design)
 
         def _pooled_posterior_logpdf(x, t):
-            tf = self.sde.tf
-            t_forward = tf - t
 
             # Apply Tweedie's formula
-            denoised = self.sde.tweedie(SDEState(x, t_forward), self.score).position
+            denoised = self.sde.tweedie(SDEState(x, t), self.score).position
 
             # Compute guidance using denoised prediction for contrast samples
             guidance = jax.vmap(
