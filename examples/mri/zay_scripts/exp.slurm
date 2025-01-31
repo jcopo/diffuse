@@ -1,20 +1,20 @@
 #!/bin/bash
 
-#SBATCH --job-name=exp_brain
+#SBATCH --job-name=exp_brats
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:4
 #SBATCH --cpus-per-task=24
 #SBATCH --hint=nomultithread
 #SBATCH --time=00:30:00
-#SBATCH --output=slurm_logs/%j_exp_brain.out
-#SBATCH --error=slurm_logs/%j_exp_brain.err
+#SBATCH --output=slurm_logs/%j_exp_brats.out
+#SBATCH --error=slurm_logs/%j_exp_brats.err
 #SBATCH -C h100
 #SBATCH --qos=qos_gpu_h100-t3
 #SBATCH -A hlp@h100
 
 # Set data model (0=WMH, 1=BRATS, 2=fastMRI, 3=brainFastMRI)
-data_model_index=3
+data_model_index=1
 data_model_array=("WMH" "BRATS" "fastMRI" "brainFastMRI" "kneeFastMRI")
 data_model=${data_model_array[$data_model_index]}
 
