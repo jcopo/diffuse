@@ -24,7 +24,13 @@ def _vmapper(fn, type):
 
     # Create tree with selective vectorization
     in_axes = jax.tree_util.tree_map_with_path(_set_axes, type)
-    return jax.vmap(fn, in_axes=(in_axes, None))
+
+    return jax.pmap(
+        jax.vmap(fn, in_axes=(in_axes, None)),
+        axis_name='devices',
+        in_axes=(in_axes, None),
+        static_broadcasted_argnums=1
+    )
 
 def ess(log_weights: Array) -> float:
     return jnp.exp(log_ess(log_weights))
@@ -113,11 +119,26 @@ class CondTweedie:
         r"""
         batch step for conditional diffusion
         """
+        # Shard the state across devices
+        num_devices = jax.device_count()
+        state = jax.tree_map(
+            lambda x: x.reshape((num_devices, -1, *x.shape[1:])) if len(x.shape) > 0 else x,
+            state
+        )
+
         # vmap over position, rng_key, weights
         state_next = _vmapper(self.step, state)(state, score)
+
+        # Reshape back to original dimensions
+        state_next = jax.tree_map(
+            lambda x: x.reshape((-1, *x.shape[2:])) if len(x.shape) > 0 else x,
+            state_next
+        )
+
         integrator_state_next = state_next.integrator_state
         integrator_state, weights = state.integrator_state, state.weights
 
+        weights = weights.reshape((-1,))
         return CondDenoiserState(integrator_state_next, weights)
 
 

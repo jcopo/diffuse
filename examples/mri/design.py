@@ -55,6 +55,8 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
     ground_truth = jax.random.choice(key, xs)
 
     n_t = config['inference']['n_t']
+
+    n_t = 100
     tf = config['sde']['tf']
     n_t = 30
     dt = tf / n_t
@@ -143,12 +145,9 @@ def main(
         experiment_name=experiment_name
     ) if logging else None
     devices = jax.devices()
-    n_samples = config['inference']['n_samples']
-    n_samples_cntrst = config['inference']['n_samples_cntrst']
-    n_samples = 20
-    n_samples_cntrst = 19
-    n_loop_opt = config['inference']['n_loop_opt']
-    n_loop_opt = 1
+    n_samples = 48 # config['inference']['n_samples']
+    n_samples_cntrst = 48 # config['inference']['n_samples_cntrst']
+    n_loop_opt = 3 # config['inference']['n_loop_opt']
     n_opt_steps = n_t * n_loop_opt + (n_loop_opt - 1)
 
     # Conditional Denoiser
@@ -158,6 +157,8 @@ def main(
     # integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
     #nn_score = sde.score_to_noise(nn_score)
     resample = False
+    # denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
+    denoiser = CondTweedie(integrator, sde, nn_score, mask, resample)
     # denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
     denoiser = CondTweedie(integrator, sde, nn_score, mask, resample)
 
@@ -185,12 +186,12 @@ def main(
 
         # Minimal debug print just for step tracking
         jax.debug.print("Processing step {n}", n=n_meas)
-        jax.debug.print("design start: {}", exp_state.design)
+        # jax.debug.print("design start: {}", exp_state.design)
 
         optimal_state, _ = experiment_optimizer.get_design(
             exp_state, subkey, measurement_state, n_steps=n_opt_steps
         )
-        jax.debug.print("design optimal: {}", optimal_state.design)
+        # jax.debug.print("design optimal: {}", optimal_state.design)
         if logger and len(devices) == 1:
             logger.log(
                 ground_truth,
