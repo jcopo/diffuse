@@ -86,7 +86,7 @@ class WMHExperiment(Experiment):
         abs_ground_truth = jnp.abs(ground_truth[..., 0] + 1j * ground_truth[..., 1])
         plot_channel(0, measurement_state.mask_history, measurement_state.y, abs_thetas, abs_ground_truth, weights, n_meas, self.mask, ground_truth, logging_path)
         if task == "anomaly":
-            plot_channel(1, measurement_state.mask_history, measurement_state.y, thetas[..., 2], ground_truth[..., 2], weights, n_meas, self.mask, ground_truth, logging_path)
+            plot_channel(1, measurement_state.mask_history, measurement_state.y, thetas[..., -1], ground_truth[..., -1], weights, n_meas, self.mask, ground_truth, logging_path)
 
     def evaluate_metrics(self, ground_truth, theta_infered, weights_infered, task="anomaly"):
         jax.debug.print("weights_infered logger: {}", jax.scipy.special.logsumexp(weights_infered))
@@ -165,10 +165,9 @@ def plot_channel(
     logging_path=None,
 ):
     show_colorbar = False
-    n = 20
+    n_samples = 6  # Number of sample plots
     weights = jnp.exp(weights)
-    best_idx = jnp.argsort(weights)[-n:][::-1]
-    worst_idx = jnp.argsort(weights)[:n]
+    best_idx = jnp.argsort(weights)[-n_samples:][::-1]
 
     # Calculate global min and max for consistent scaling
     restored_theta = mask.restore_from_mask(
@@ -177,44 +176,43 @@ def plot_channel(
     all_images = [
         ground_truth_i,
         thetas_i[best_idx],
-        thetas_i[worst_idx]
     ]
     vmin = 0
     vmax = max(img.max() for img in all_images)
 
     # Create figure
-    fig = plt.figure(figsize=(40, 10))
+    fig = plt.figure(figsize=(30, 4))
     fig.suptitle(
-        "High weight (top) and low weight (bottom) Samples",
+        "Generated Samples",
         fontsize=18,
-        y=.92,
-        x=0.62,
+        y=.9,
+        x=0.65,
     )
 
-    # Increase vertical spacing between rows
-    gs = fig.add_gridspec(6, n, hspace=0.01)  # Changed from 0.0001 to 0.3
+    # Create grid with vertical divider
+    gs = fig.add_gridspec(1, 10, width_ratios=[1, 1, 1, 0.2] + [1]*6, wspace=0.02)
 
     # Ground truth subplot
-    ax_large = fig.add_subplot(gs[:2, :2])
+    ax_large = fig.add_subplot(gs[0])
     im = ax_large.imshow(ground_truth_i, cmap="gray", vmin=vmin, vmax=vmax)
     if show_colorbar:
         plt.colorbar(im, ax=ax_large)
     ax_large.text(
-        -0.05,  # Just outside the right edge of the axes
-        0.5,  # Vertically centered
+        -0.05,
+        0.5,
         f"Measurement {n_meas}",
         ha="center",
         va="center",
         fontsize=14,
         fontweight="bold",
         rotation="vertical",
-        transform=ax_large.transAxes  # Use axes coordinates
+        transform=ax_large.transAxes
     )
     ax_large.axis("off")
     ax_large.set_title("Ground Truth", fontsize=12)
 
     # Measurement subplot
-    ax_large = fig.add_subplot(gs[:2, 2:4])
+    ax_large = fig.add_subplot(gs[1])
     im = ax_large.imshow(
         jnp.log10(jnp.abs(joint_y[..., 0] + 1j * joint_y[..., 1]) + 1e-10),
         cmap="gray",
@@ -225,27 +223,141 @@ def plot_channel(
     ax_large.set_title(r"Measure $y$", fontsize=12)
 
     # Fourier subplot
-    ax_large = fig.add_subplot(gs[:2, 4:6])
+    ax_large = fig.add_subplot(gs[2])
     im = ax_large.imshow(restored_theta[..., 0], cmap="gray")
     if show_colorbar:
         plt.colorbar(im, ax=ax_large)
     ax_large.axis("off")
     ax_large.set_title(r"$F^{-1}(y)$", fontsize=12)
 
-    # Remaining sample subplots
-    for idx in range(n - 6):
-        ax1 = fig.add_subplot(gs[0, idx + 6])
-        ax2 = fig.add_subplot(gs[1, idx + 6])
+    # Add vertical divider
+    divider = fig.add_subplot(gs[3])
+    divider.axvline(x=0.5, color='black', linewidth=2)
+    divider.axis('off')
 
-        im1 = ax1.imshow(thetas_i[best_idx[idx]], cmap="gray", vmin=vmin, vmax=vmax)
+    # Sample plots
+    for idx in range(n_samples):
+        ax = fig.add_subplot(gs[idx + 4])
+        im = ax.imshow(thetas_i[best_idx[idx]], cmap="gray", vmin=vmin, vmax=vmax)
         if show_colorbar:
-            plt.colorbar(im1, ax=ax1)
-        im2 = ax2.imshow(thetas_i[worst_idx[idx]], cmap="gray", vmin=vmin, vmax=vmax)
-        if show_colorbar:
-            plt.colorbar(im2, ax=ax2)
+            plt.colorbar(im, ax=ax)
+        ax.axis("off")
 
-        ax1.axis("off")
-        ax2.axis("off")
+        # Add "Samples" text to first sample plot
+        if idx == 0:
+            ax.text(
+                -0.3,
+                0.5,
+                "Samples",
+                ha="center",
+                va="center",
+                fontsize=14,
+                fontweight="bold",
+                rotation="vertical",
+                transform=ax.transAxes
+            )
+
+    if logging_path:
+        plt.savefig(f"{logging_path}/{i}_samples_{n_meas}.png", bbox_inches="tight")
+    else:
+        plt.show()
+    plt.close()
+
+def _plot_channel(
+    i,
+    mask_history,
+    joint_y,
+    thetas_i,
+    ground_truth_i,
+    weights,
+    n_meas,
+    mask,
+    ground_truth,
+    logging_path=None,
+):
+    show_colorbar = False
+    n_samples = 10
+    fontsize = 8
+    weights = jnp.exp(weights)
+    best_idx = jnp.argsort(weights)[-n_samples:][::-1]
+
+    # Calculate global min and max for consistent scaling
+    restored_theta = mask.restore_from_mask(
+        mask_history, jnp.zeros_like(ground_truth), joint_y
+    )
+    all_images = [
+        ground_truth_i,
+        thetas_i[best_idx],
+    ]
+    vmin = 0
+    vmax = max(img.max() for img in all_images)
+
+    # Create figure with smaller dimensions while keeping proportions
+    fig = plt.figure(figsize=(12, 2.5))  # Reduced from (15, 6)
+
+    # Create two-row grid with centered first row
+    gs = fig.add_gridspec(2, 10, height_ratios=[1.2, 1], hspace=0.05, wspace=0.03)  # Changed to 10 columns
+
+    # First row: 3 main plots (centered)
+    # Ground truth subplot
+    ax_large = fig.add_subplot(gs[0, 2:4])  # Keeping centered position
+    im = ax_large.imshow(ground_truth_i, cmap="gray", vmin=vmin, vmax=vmax)
+    if show_colorbar:
+        plt.colorbar(im, ax=ax_large)
+    ax_large.text(
+        -1.05,
+        0.5,
+        f"Measurement {n_meas}",
+        ha="center",
+        va="center",
+        fontsize=fontsize,
+        fontweight="bold",
+        rotation="vertical",
+        transform=ax_large.transAxes
+    )
+    ax_large.axis("off")
+    ax_large.set_title("Ground Truth", fontsize=fontsize)
+
+    # Measurement subplot
+    ax_large = fig.add_subplot(gs[0, 4:6])  # Keeping centered position
+    im = ax_large.imshow(
+        jnp.log10(jnp.abs(joint_y[..., 0] + 1j * joint_y[..., 1]) + 1e-10),
+        cmap="gray",
+    )
+    if show_colorbar:
+        plt.colorbar(im, ax=ax_large)
+    ax_large.axis("off")
+    ax_large.set_title(r"Measure $y$", fontsize=fontsize)
+
+    # Fourier subplot
+    ax_large = fig.add_subplot(gs[0, 6:8])  # Keeping centered position
+    im = ax_large.imshow(restored_theta[..., 0], cmap="gray")
+    if show_colorbar:
+        plt.colorbar(im, ax=ax_large)
+    ax_large.axis("off")
+    ax_large.set_title(r"$F^{-1}(y)$", fontsize=fontsize)
+
+    # Second row: 10 sample plots
+    for idx in range(n_samples):
+        ax = fig.add_subplot(gs[1, idx])
+        im = ax.imshow(thetas_i[best_idx[idx]], cmap="gray", vmin=vmin, vmax=vmax)
+        if show_colorbar:
+            plt.colorbar(im, ax=ax)
+        ax.axis("off")
+
+        # Add text to first subplot only
+        if idx == 0:
+            ax.text(
+                -0.13,
+                0.5,
+                f"Generated \n Samples {n_meas}",
+                ha="center",
+                va="center",
+                fontsize=fontsize,
+                fontweight="bold",
+                rotation="vertical",
+                transform=ax.transAxes
+            )
 
     if logging_path:
         plt.savefig(f"{logging_path}/{i}_samples_{n_meas}.png", bbox_inches="tight")
