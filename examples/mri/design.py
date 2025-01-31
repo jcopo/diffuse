@@ -53,7 +53,7 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
     ground_truth = jax.random.choice(key, xs)
 
     n_t = config['inference']['n_t']
-    n_t = 50
+    n_t = 20
     tf = config['sde']['tf']
     dt = tf / n_t
 
@@ -152,7 +152,7 @@ def main(
     # integrator = Euler(sde)
     # integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
     #nn_score = sde.score_to_noise(nn_score)
-    resample = True
+    resample = False
     # denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
     denoiser = CondTweedie(integrator, sde, nn_score, mask, resample)
 

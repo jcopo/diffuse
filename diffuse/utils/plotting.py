@@ -138,10 +138,11 @@ def plotter_random(
     plt.close()
 
 
-def sigle_plot(array):
+def sigle_plot(array, t=0.):
     plt.imshow(array, cmap="gray")
     plt.axis("off")
     plt.colorbar()
+    plt.title(f"t={t:.2f}")
     plt.show()
 
 def sigle_plot_fourier(array):

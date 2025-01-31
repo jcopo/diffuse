@@ -98,7 +98,7 @@ class WMHExperiment(Experiment):
 
         abs_theta_infered = jnp.where(abs_theta_infered < 0.2, 0, abs_theta_infered)
         abs_ground_truth = jnp.where(abs_ground_truth < 0.2, 0, abs_ground_truth)
-        
+
         # Add channel dimension
         abs_theta_infered = abs_theta_infered[..., None]
         abs_ground_truth = abs_ground_truth[..., None]
@@ -110,12 +110,12 @@ class WMHExperiment(Experiment):
         ssim = partial(dm_pix.ssim, max_val=max_val, filter_size=7, filter_sigma=1.02)
         ssim_array = jax.vmap(ssim, in_axes=(None, 0))(abs_ground_truth, abs_theta_infered)
         ssim_score = jnp.max(ssim_array) # jnp.sum(ssim_array * weights_infered)
-        
+
         # Save the magnitude images - fixed callback usage
         # save_path = "/lustre/fswork/projects/rech/hlp/uha64uw/tmp_res/magnitude_images.npz"
         # def save_callback(gt, pred):
             # jnp.savez(save_path, ground_truth_=gt, prediction_=pred)
-        
+
         # jax.experimental.io_callback(
             # save_callback,
             # None,
@@ -156,8 +156,9 @@ def plot_channel(
     n_meas,
     mask,
     ground_truth,
-    logging_path=None
+    logging_path=None,
 ):
+    show_colorbar = False
     n = 20
     weights = jnp.exp(weights)
     best_idx = jnp.argsort(weights)[-n:][::-1]
@@ -189,7 +190,9 @@ def plot_channel(
 
     # Ground truth subplot
     ax_large = fig.add_subplot(gs[:2, :2])
-    ax_large.imshow(ground_truth_i, cmap="gray", vmin=vmin, vmax=vmax)
+    im = ax_large.imshow(ground_truth_i, cmap="gray", vmin=vmin, vmax=vmax)
+    if show_colorbar:
+        plt.colorbar(im, ax=ax_large)
     ax_large.text(
         -0.05,  # Just outside the right edge of the axes
         0.5,  # Vertically centered
@@ -206,16 +209,20 @@ def plot_channel(
 
     # Measurement subplot
     ax_large = fig.add_subplot(gs[:2, 2:4])
-    ax_large.imshow(
+    im = ax_large.imshow(
         jnp.log10(jnp.abs(joint_y[..., 0] + 1j * joint_y[..., 1]) + 1e-10),
         cmap="gray",
     )
+    if show_colorbar:
+        plt.colorbar(im, ax=ax_large)
     ax_large.axis("off")
     ax_large.set_title(r"Measure $y$", fontsize=12)
 
     # Fourier subplot
     ax_large = fig.add_subplot(gs[:2, 4:6])
-    ax_large.imshow(restored_theta[..., 0], cmap="gray")
+    im = ax_large.imshow(restored_theta[..., 0], cmap="gray")
+    if show_colorbar:
+        plt.colorbar(im, ax=ax_large)
     ax_large.axis("off")
     ax_large.set_title(r"$F^{-1}(y)$", fontsize=12)
 
@@ -224,8 +231,12 @@ def plot_channel(
         ax1 = fig.add_subplot(gs[0, idx + 6])
         ax2 = fig.add_subplot(gs[1, idx + 6])
 
-        ax1.imshow(thetas_i[best_idx[idx]], cmap="gray", vmin=vmin, vmax=vmax)
-        ax2.imshow(thetas_i[worst_idx[idx]], cmap="gray", vmin=vmin, vmax=vmax)
+        im1 = ax1.imshow(thetas_i[best_idx[idx]], cmap="gray", vmin=vmin, vmax=vmax)
+        if show_colorbar:
+            plt.colorbar(im1, ax=ax1)
+        im2 = ax2.imshow(thetas_i[worst_idx[idx]], cmap="gray", vmin=vmin, vmax=vmax)
+        if show_colorbar:
+            plt.colorbar(im2, ax=ax2)
 
         ax1.axis("off")
         ax2.axis("off")
@@ -264,6 +275,6 @@ def show_samples_plot(
             n_meas,
             mask,
             ground_truth,
-            logging_path
+            logging_path,
         )
 
