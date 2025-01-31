@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray
 
 from diffuse.integrator.base import IntegratorState
-from diffuse.diffusion.sde import SDE, SDEState, DDIM
+from diffuse.diffusion.sde import SDE, SDEState
 
 
 class EulerState(IntegratorState):
@@ -167,7 +167,6 @@ class DPMpp2sIntegrator:
         return EulerState(position + dx, rng_key_next, t + dt, dt)
 
 
-@dataclass
 class DDIMState(IntegratorState):
     """DDIM integrator state"""
     position: Array
@@ -179,10 +178,11 @@ class DDIMState(IntegratorState):
 @dataclass
 class DDIMIntegrator:
     """
-    Deterministic DDIM integrator that performs reverse process steps using dt
+    Deterministic DDIM integrator that performs reverse process steps using dt.
+    The reverse process starts at t=0 (noise at forward time T) and progresses to t=T (data at forward time 0).
     """
     sde: SDE
-    eta: float = 0.0
+    eta: float = 0.0  # Controls stochasticity (η=0 for deterministic DDIM)
 
     def init(
         self,
@@ -199,44 +199,46 @@ class DDIMIntegrator:
         integrator_state: DDIMState,
         noise_pred: Callable
     ) -> DDIMState:
-        """Perform one DDIM step from t to t+dt"""
-        position, rng_key, t, dt = integrator_state
+        """Perform one DDIM step from t to t+dt in the REVERSE process"""
+        position, rng_key, t_reverse, dt = integrator_state
 
-        # Get current and next timestep
-        curr_t = self.sde.tf - t  # Convert to forward time
-        next_t = curr_t - dt       # Move one step in forward time
+        # Convert reverse time (t) to forward time (T - t_reverse)
+        t_forward_curr = self.sde.tf - t_reverse  # Current forward time
+        t_forward_next = t_forward_curr - dt      # Next forward time
 
-        # Calculate alphas for current and next timestep
-        curr_int_b = self.sde.beta.integrate(curr_t, 0).squeeze()
-        next_int_b = self.sde.beta.integrate(next_t, 0).squeeze()
+        # Compute cumulative noise schedule (β) integrals for α calculation
+        # Corrected integration limits: integrate from 0 to t_forward_curr (not curr_t to 0)
+        int_b_curr = self.sde.beta.integrate(t_forward_curr, self.sde.beta.t0).squeeze()
+        int_b_next = self.sde.beta.integrate(t_forward_next, self.sde.beta.t0).squeeze()
 
-        alpha_curr = jnp.exp(-0.5 * curr_int_b)
-        alpha_next = jnp.exp(-0.5 * next_int_b)
+        # Compute α (signal rate) and β (noise variance) for current/next steps
+        alpha_curr = jnp.exp(-0.5 * int_b_curr)        # α_t = exp(-0.5 ∫₀^t β(s) ds)
+        alpha_next = jnp.exp(-0.5 * int_b_next)
+        beta_curr = 1.0 - alpha_curr**2               # β_t = 1 - α_t² (noise variance)
 
-        # Get noise prediction (ε)
-        eps = noise_pred(position, t)  # Model predicts noise directly
+        # Predict noise using the FORWARD time (t_forward_curr)
+        eps = noise_pred(position, t_forward_curr)  # Key fix: Pass forward time to noise predictor
 
-        # Predict x0 using predicted noise
-        sigma_curr = jnp.sqrt(1 - alpha_curr**2)
-        pred_x0 = (position - sigma_curr * eps) / alpha_curr
+        # Estimate x₀ from x_t and predicted noise
+        pred_x0 = (position - jnp.sqrt(beta_curr) * eps) / alpha_curr
 
-        # Calculate sigma_t for next step (η controls stochasticity)
+        # Compute stochasticity term (σ) for next step
         sigma_next = self.eta * jnp.sqrt(1 - alpha_next**2)
 
-        # Sample noise if there is stochasticity (η > 0)
-        _, rng_key_next = jax.random.split(rng_key)
+        # Sample noise if η > 0 (stochastic DDIM)
         noise = jax.random.normal(rng_key, position.shape)
+        _, rng_key_next = jax.random.split(rng_key)
 
-        # DDIM update step using predicted noise and random noise when η > 0
-        x_next = (
-            alpha_next * pred_x0 +
-            jnp.sqrt(1 - alpha_next**2 - sigma_next**2) * eps +
-            sigma_next * noise
+        # DDIM update rule (reverse process)
+        position_next = (
+            alpha_next * pred_x0 +  # Data estimate term
+            jnp.sqrt(1 - alpha_next**2 - sigma_next**2) * eps +  # Direction adjustment
+            sigma_next * noise  # Stochastic noise (if η > 0)
         )
 
         return DDIMState(
-            position=x_next,
+            position=position_next,
             rng_key=rng_key_next,
-            t=t + dt,
+            t=t_reverse + dt,  # Advance reverse time by dt
             dt=dt
         )
