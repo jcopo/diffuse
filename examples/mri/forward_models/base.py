@@ -136,7 +136,7 @@ class baseMask:
 
     def grad_logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
         meas_x = self.measure_from_mask(design, theta)
-        return (
-            self.restore_from_mask(design, jnp.zeros_like(theta), (y - meas_x))
-            / self.sigma_prob
-        ) * 2
+        diff = y - meas_x
+        restored = self.restore_from_mask(design, jnp.zeros_like(theta), diff)
+        norm_diff = jnp.linalg.norm(diff)
+        return restored #/ norm_diff

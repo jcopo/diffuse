@@ -25,6 +25,8 @@ from examples.mri.evals import WMHExperiment
 from examples.mri.forward_models import maskRadial, maskSpiral
 from examples.mri.logger import MRILogger, ExperimentLogger
 from examples.mri.utils import get_first_item, load_checkpoint, load_best_model_checkpoint, get_sharding
+os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
+
 
 import sys
 
@@ -54,6 +56,7 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
 
     n_t = config['inference']['n_t']
     tf = config['sde']['tf']
+    n_t = 30
     dt = tf / n_t
 
     beta = LinearSchedule(
@@ -142,7 +145,10 @@ def main(
     devices = jax.devices()
     n_samples = config['inference']['n_samples']
     n_samples_cntrst = config['inference']['n_samples_cntrst']
+    n_samples = 20
+    n_samples_cntrst = 19
     n_loop_opt = config['inference']['n_loop_opt']
+    n_loop_opt = 1
     n_opt_steps = n_t * n_loop_opt + (n_loop_opt - 1)
 
     # Conditional Denoiser
@@ -152,8 +158,8 @@ def main(
     # integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
     #nn_score = sde.score_to_noise(nn_score)
     resample = False
-    denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
-    # denoiser = CondTweedie(integrator, sde, nn_score, mask, resample)
+    # denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
+    denoiser = CondTweedie(integrator, sde, nn_score, mask, resample)
 
     # init design and measurement
     xi = mask.init_design(key)

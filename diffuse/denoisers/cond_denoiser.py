@@ -259,16 +259,25 @@ class CondDenoiser:
     def posterior_logpdf(
         self, rng_key: PRNGKeyArray, y_meas: Array, design_mask: Array
     ):
-        # will be called backward in time
-        # with t = tf - t, t from 0 to tf
         def _posterior_logpdf(x, t):
             tf = self.sde.tf
             y_t = self.y_noiser(
                 design_mask, rng_key, SDEState(y_meas, 0), t
             ).position
-            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t)/2)
-            #guidance = jax.grad(self.forward_model.logprob_y)(x, y_t, design) #/ alpha_t
-            guidance = self.forward_model.grad_logprob_y(x, y_t, design_mask) / alpha_t
+
+            # Compute residual term (y - AE[X_0|X_t])
+            residual = self.forward_model.measure_from_mask(design_mask, x)
+
+            # Define vector-Jacobian product function
+            def vjp_score(v):
+                # Compute VJP of score function
+                _, vjp_fn = jax.vjp(lambda x: self.score(x, t), x)
+                # Add identity matrix (I + ∇score)
+                return v + vjp_fn(v)[0]
+
+            # Apply VJP with the residual
+            guidance = vjp_score(residual)
+
             return guidance + self.score(x, t)
 
         return _posterior_logpdf

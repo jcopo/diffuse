@@ -129,16 +129,21 @@ class CondTweedie:
 
             # Apply Tweedie's formula to get denoised prediction
             denoised = self.sde.tweedie(SDEState(x, t), self.score).position
-            # Compute measurement likelihood gradient using denoised prediction
-            guidance = self.forward_model.grad_logprob_y(
-                denoised, y_meas, design_mask
-            )
 
-            # Return score + guidance
-            return self.score(x, t) + guidance
+            # Compute residual: (y - AE[X_0|X_t])
+            v = self.forward_model.grad_logprob_y(denoised, y_meas, design_mask)
+
+            # Compute (I + ∇score)ᵀv using forward-mode autodiff
+            def score_fn(x_):
+                return self.score(x_, t)
+
+            score_val, tangents = jax.jvp(score_fn, (x,), (v,))
+
+            guidance = (v - tangents) #* alpha_t
+
+            return guidance + score_val
 
         return _posterior_logpdf
-
 
     def pooled_posterior_logpdf(
         self,
@@ -166,6 +171,44 @@ class CondTweedie:
             past_contribution = self.posterior_logpdf(rng_key2, y_past, mask_history)
 
             return guidance.mean(axis=0) + past_contribution(x, t)
+
+        return _pooled_posterior_logpdf
+
+
+    def __pooled_posterior_logpdf(
+        self,
+        rng_key: PRNGKeyArray,
+        y_cntrst: Array,
+        y_past: Array,
+        design: Array,
+        mask_history: Array,
+    ):
+        rng_key1, rng_key2 = jax.random.split(rng_key)
+        mask = self.forward_model.make(design)
+
+        def _pooled_posterior_logpdf(x, t):
+
+            # Apply Tweedie's formula
+            denoised = self.sde.tweedie(SDEState(x, t), self.score).position
+
+            # Compute guidance using denoised prediction for contrast samples
+            residual = jax.vmap(
+                self.forward_model.grad_logprob_y,
+                in_axes=(None, 0, None)
+            )(denoised, y_cntrst, mask)
+
+            # Compute (I + ∇score)ᵀv using forward-mode autodiff
+            def score_fn(x_):
+                return self.score(x_, t)
+            score_val, tangents = jax.vmap(lambda a,b: jax.jvp(score_fn, (a,), (b,)), in_axes=(None, 0))(x, residual)
+            guidance = (residual - tangents) #* alpha_t
+
+            # Apply VJP with the residual
+            #guidance = jax.vmap(vjp_score)(residual)
+
+            # Add past contribution using Tweedie
+            past_contribution = self.posterior_logpdf(rng_key2, y_past, mask_history)
+            return guidance.mean(axis=0) + score_val.mean(axis=0) + past_contribution(x, t)
 
         return _pooled_posterior_logpdf
 
