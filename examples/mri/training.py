@@ -11,7 +11,7 @@ import optax
 from envyaml import EnvYAML
 from tqdm import tqdm
 
-from diffuse.diffusion.score_matching import score_match_loss, weight_zoo
+from diffuse.diffusion.score_matching import score_match_loss, weight_fun, noise_match_loss
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.neural_network import model_zoo
 from examples.mri.brats.create_dataset import (
@@ -65,20 +65,12 @@ def train(config, train_val_loaders, parallel=False):
     )
     sde = SDE(beta, tf=config["sde"]["tf"])
 
-    # Configuring the UNet
-    if config["score_model"] == "UNet":
-        score_net = model_zoo[config["score_model"]](
-            dt=config["unet"]["dt_embedding"],
-            dim=config["unet"]["embedding_dim"],
-            upsampling=config["unet"]["upsampling"],
-            dim_mults=config["unet"]["dim_mults"],
-        )
-    elif config["score_model"] == "UNett":
-        score_net = model_zoo[config["score_model"]](
-            dim=config["unet"]["embedding_dim"]
-        )
-    else:
-        raise ValueError(f"Score model {config['score_model']} not found")
+    score_net = model_zoo[config["score_model"]](
+        dt=config["unet"]["dt_embedding"],
+        dim=config["unet"]["embedding_dim"],
+        upsampling=config["unet"]["upsampling"],
+        dim_mults=config["unet"]["dim_mults"],
+    )
 
     # Initializing the UNet
     key, subkey = jax.random.split(key)
@@ -89,16 +81,12 @@ def train(config, train_val_loaders, parallel=False):
     )
 
     # Configuring the loss function
-    if config["training"]["loss_weight"] == "None":
-        lmbda = None
+    if config["training"]["loss"] == "score_matching":
+        lmbda = jax.vmap(partial(weight_fun, sde=sde))
+        loss = partial(score_match_loss, network=score_net, lmbda=lmbda)
 
-    elif config["training"]["loss_weight"] == "weight_fun":
-        lmbda = jax.vmap(partial(weight_zoo["weight_fun"], sde=sde))
-
-    else:
-        raise ValueError(f"Loss weight {config['training']['loss_weight']} not found")
-
-    loss = partial(score_match_loss, network=score_net, lmbda=lmbda)
+    elif config["training"]["loss"] == "noise_matching":
+        loss = partial(noise_match_loss, network=score_net)
 
     # Defining the training step
     def step(key, params, opt_state, ema_state, data, optimizer, ema_kernel, sde, cfg):
