@@ -117,7 +117,7 @@ class MRILogger:
 
         # Plot contrastive samples only for non-random experiments
         if not self.random and getattr(optimal_state, 'cntrst_denoiser_state', None) is not None:
-            plot_contrastive = partial(self.experiment.plot_samples, logging_path=self.contrastive_path) if self.save_plots else self.experiment.plot_samples
+            plot_contrastive = partial(self.experiment.plot_samples, task=self.config['task'], logging_path=self.contrastive_path) if self.save_plots else partial(self.experiment.plot_samples, task=self.config['task'])
             jax.experimental.io_callback(
                 plot_contrastive,
                 None,
