@@ -13,7 +13,7 @@ from diffuse.denoisers.cond_denoiser import CondDenoiser
 from diffuse.denoisers.cond_tweedie import CondTweedie
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.integrator.stochastic import EulerMaruyama
-from diffuse.integrator.deterministic import DPMpp2sIntegrator, Euler
+from diffuse.integrator.deterministic import DPMpp2sIntegrator, Euler, DDIMIntegrator
 from diffuse.neural_network.unet import UNet
 from diffuse.neural_network.unett import UNet as Unet
 from examples.mri.brats.create_dataset import get_dataloader as get_brats_dataloader
@@ -140,7 +140,7 @@ def main(
         save_plots=save_plots,
         experiment_name=experiment_name
     ) if logging else None
-
+    devices = jax.devices()
     n_samples = config['inference']['n_samples']
     n_samples_cntrst = config['inference']['n_samples_cntrst']
     n_loop_opt = config['inference']['n_loop_opt']
@@ -148,6 +148,7 @@ def main(
 
     # Conditional Denoiser
     integrator = EulerMaruyama(sde)
+    integrator = DDIMIntegrator(sde)
     # integrator = Euler(sde)
     # integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
     resample = True
@@ -178,10 +179,19 @@ def main(
 
         # Minimal debug print just for step tracking
         jax.debug.print("Processing step {n}", n=n_meas)
+        jax.debug.print("design start: {}", exp_state.design)
 
         optimal_state, _ = experiment_optimizer.get_design(
             exp_state, subkey, measurement_state, n_steps=n_opt_steps
         )
+        jax.debug.print("design optimal: {}", optimal_state.design)
+        if logger and len(devices) == 1:
+            logger.log(
+                ground_truth,
+                optimal_state,
+                measurement_state,
+                n_meas
+            )
 
         # make new measurement
         new_measurement = mask.measure(optimal_state.design, ground_truth)
@@ -240,7 +250,7 @@ if __name__ == "__main__":
     parser.add_argument("--plot", action="store_true")
     parser.add_argument("--space", type=str, default="runs")
     parser.add_argument("--config", type=str, default="examples/mri/configs/config_fastMRI_inference.yaml")
-        
+
     args = parser.parse_args()
     sys.stdout.reconfigure(line_buffering=True)
     # Load configuration
