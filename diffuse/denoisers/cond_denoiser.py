@@ -155,6 +155,7 @@ class CondDenoiser:
         t = integrator_state.t
         tf = self.sde.tf
 
+        weights = weights.reshape((-1,))
         # resample if necessary
         if self._resample:
             position = integrator_state_next.position
