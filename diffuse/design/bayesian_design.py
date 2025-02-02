@@ -119,8 +119,6 @@ class ExperimentOptimizer:
     ):
         def step(state, tup):
             rng_key, idx = tup
-            tf = self.denoiser.sde.tf
-            t = state.denoiser_state.integrator_state.t
             state = jax.lax.cond((idx % n_steps) == 0, lambda: restart_state(state, rng_key, self.denoiser), lambda: state)
             state = self.step(state, rng_key, measurement_state)
             return state, state.design
@@ -229,7 +227,7 @@ class ExperimentRandom:
         denoiser_state = self.denoiser.init(design, rng_key, dt)
         return BEDState(denoiser_state=denoiser_state, cntrst_denoiser_state=None, design=design, opt_state=None)
 
-    def get_design(self, state: BEDState, rng_key: PRNGKeyArray, measurement_state: MeasurementState, n_steps: int):
+    def get_design(self, state: BEDState, rng_key: PRNGKeyArray, measurement_state: MeasurementState, n_steps: int, **kwargs):
         n_particles = jax.device_count() * 5
         design = self.mask.init_design(rng_key)
         cond_denoiser_state, _ = self.denoiser.generate(rng_key, self.mask, measurement_state, design, n_steps, n_particles)
