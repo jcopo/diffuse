@@ -34,10 +34,13 @@ class MRILogger:
         self.save_plots = save_plots
 
         if random:
-            experiment_name += "/random"
-
+            if experiment_name == "":
+                experiment_name = "random"
+            else:
+                experiment_name += "/random"
         self.dir_path = os.path.join(space, experiment_name)
         self.theta_path = os.path.join(self.dir_path, "theta")
+        self.contrastive_path = os.path.join(self.dir_path, "contrastive")
         self.contrastive_path = os.path.join(self.dir_path, "contrastive")
         self.metrics_file = os.path.join(self.dir_path, "metrics.csv")
 

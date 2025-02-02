@@ -56,7 +56,7 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
 
     n_t = config['inference']['n_t']
 
-    n_t = 50
+    n_t = 70
     tf = config['sde']['tf']
 
     dt = tf / n_t
@@ -75,18 +75,16 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
     else:
         raise ValueError(f"Score model {config['score_model']} not found")
 
-    # _, params, _, _, _ = load_checkpoint(config) # load the ema params
     _, params, _ = load_best_model_checkpoint(config)
-    # sharding, replicated_sharding = get_sharding()
-    # params = jax.device_put(params, replicated_sharding)
-    def nn_score(x, t):
-        # x = jax.device_put(x, sharding)
-        # t = jax.device_put(t, sharding)
-        score_value = score_net.apply(params, x, t)
-        # score_value = jax.device_get(score_value)
-        return score_value
 
+    def nn_score(x, t):
+        score_value = score_net.apply(params, x, t)
+        return score_value
     sde = SDE(beta=beta, tf=tf)
+
+    if config['training']['loss'] == "noise_matching":
+        nn_score = sde.noise_to_score(nn_score)
+
     shape = ground_truth.shape
 
     # Get mask configuration
@@ -147,7 +145,7 @@ def main(
     devices = jax.devices()
     n_samples = 40 # config['inference']['n_samples']
     n_samples_cntrst = 40 # config['inference']['n_samples_cntrst']
-    n_loop_opt = 2 # config['inference']['n_loop_opt']
+    n_loop_opt = 1 # config['inference']['n_loop_opt']
     n_opt_steps = n_t * n_loop_opt + (n_loop_opt - 1)
 
     # Conditional Denoiser
@@ -155,9 +153,7 @@ def main(
     integrator = DDIMIntegrator(sde)
     # integrator = Euler(sde)
     # integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
-    #nn_score = sde.score_to_noise(nn_score)
     resample = False
-    # denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
 
     # denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
     denoiser = CondTweedie(integrator, sde, nn_score, mask, resample)
@@ -224,8 +220,8 @@ def main(
                 for step in range(num_measurements):
                     print(f"\nLogging step {step}")
                     # Get the states for this step
-                    step_state = jax.tree_map(lambda x: x[step], optimal_states)
-                    step_measurement = jax.tree_map(lambda x: x[step], measurement_states)
+                    step_state = jax.tree.map(lambda x: x[step], optimal_states)
+                    step_measurement = jax.tree.map(lambda x: x[step], measurement_states)
                     logger.log(ground_truth, step_state, step_measurement, step)
                     plt.close('all')
                 print("\n==== Logging Complete ====")
