@@ -115,16 +115,18 @@ class ExperimentOptimizer:
         rng_key: PRNGKeyArray,
         measurement_state: MeasurementState,
         n_steps: int,
+        n_loop_opt: int,
     ):
-        def step(state, rng_key):
+        def step(state, tup):
+            rng_key, idx = tup
             tf = self.denoiser.sde.tf
             t = state.denoiser_state.integrator_state.t
-            state = jax.lax.cond(t >= tf, lambda: restart_state(state, rng_key, self.denoiser), lambda: state)
+            state = jax.lax.cond((idx % n_steps) == 0, lambda: restart_state(state, rng_key, self.denoiser), lambda: state)
             state = self.step(state, rng_key, measurement_state)
             return state, state.design
 
-        keys = jax.random.split(rng_key, n_steps)
-        return jax.lax.scan(step, state, keys)
+        keys = jax.random.split(rng_key, n_loop_opt)
+        return jax.lax.scan(step, state, (keys, jnp.arange(n_loop_opt)))
 
 
 def restart_state(state, rng_key, denoiser):

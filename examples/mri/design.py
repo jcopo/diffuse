@@ -8,7 +8,7 @@ from envyaml import EnvYAML
 from jaxtyping import PRNGKeyArray
 import matplotlib.pyplot as plt
 
-from diffuse.bayesian_design import ExperimentOptimizer, ExperimentRandom
+from diffuse.design.bayesian_design import ExperimentOptimizer, ExperimentRandom
 from diffuse.denoisers.cond_denoiser import CondDenoiser
 from diffuse.denoisers.cond_tweedie import CondTweedie
 from diffuse.diffusion.sde import SDE, LinearSchedule
@@ -82,7 +82,7 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
         return score_value
     sde = SDE(beta=beta, tf=tf)
 
-    if config['training']['loss'] == "noise_matching":
+    if config.get('training', {}).get('loss') == "noise_matching":
         nn_score = sde.noise_to_score(nn_score)
 
     shape = ground_truth.shape
@@ -143,10 +143,10 @@ def main(
         experiment_name=experiment_name
     ) if logging else None
     devices = jax.devices()
-    n_samples = 40 # config['inference']['n_samples']
-    n_samples_cntrst = 40 # config['inference']['n_samples_cntrst']
-    n_loop_opt = 1 # config['inference']['n_loop_opt']
-    n_opt_steps = n_t * n_loop_opt + (n_loop_opt - 1)
+    n_samples = config['inference']['n_samples']
+    n_samples_cntrst = config['inference']['n_samples_cntrst']
+    n_loop_opt = config['inference']['n_loop_opt']
+    n_opt_steps = n_t * n_loop_opt
 
     # Conditional Denoiser
     # integrator = EulerMaruyama(sde)
@@ -185,7 +185,7 @@ def main(
         # jax.debug.print("design start: {}", exp_state.design)
 
         optimal_state, _ = experiment_optimizer.get_design(
-            exp_state, subkey, measurement_state, n_steps=n_opt_steps
+            exp_state, subkey, measurement_state, n_steps=n_t, n_loop_opt=n_opt_steps
         )
         # jax.debug.print("design optimal: {}", optimal_state.design)
         if logger and len(devices) == 1:
