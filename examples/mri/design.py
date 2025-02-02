@@ -55,8 +55,6 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
     ground_truth = jax.random.choice(key, xs)
 
     n_t = config['inference']['n_t']
-
-    n_t = 100
     tf = config['sde']['tf']
     n_t = 30
     dt = tf / n_t
@@ -145,9 +143,9 @@ def main(
         experiment_name=experiment_name
     ) if logging else None
     devices = jax.devices()
-    n_samples = 48 # config['inference']['n_samples']
-    n_samples_cntrst = 48 # config['inference']['n_samples_cntrst']
-    n_loop_opt = 3 # config['inference']['n_loop_opt']
+    n_samples = config['inference']['n_samples']
+    n_samples_cntrst = config['inference']['n_samples_cntrst']
+    n_loop_opt = config['inference']['n_loop_opt']
     n_opt_steps = n_t * n_loop_opt + (n_loop_opt - 1)
 
     # Conditional Denoiser
@@ -159,8 +157,7 @@ def main(
     resample = False
     # denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
     denoiser = CondTweedie(integrator, sde, nn_score, mask, resample)
-    # denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
-    denoiser = CondTweedie(integrator, sde, nn_score, mask, resample)
+    print(denoiser)
 
     # init design and measurement
     xi = mask.init_design(key)

@@ -265,18 +265,9 @@ class CondDenoiser:
                 design_mask, rng_key, SDEState(y_meas, 0), t
             ).position
 
-            # Compute residual term (y - AE[X_0|X_t])
-            residual = self.forward_model.measure_from_mask(design_mask, x)
-
-            # Define vector-Jacobian product function
-            def vjp_score(v):
-                # Compute VJP of score function
-                _, vjp_fn = jax.vjp(lambda x: self.score(x, t), x)
-                # Add identity matrix (I + ∇score)
-                return v + vjp_fn(v)[0]
-
-            # Apply VJP with the residual
-            guidance = vjp_score(residual)
+            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t)/2)
+            #guidance = jax.grad(self.forward_model.logprob_y)(x, y_t, design) #/ alpha_t
+            guidance = self.forward_model.grad_logprob_y(x, y_t, design_mask) / alpha_t
 
             return guidance + self.score(x, t)
 

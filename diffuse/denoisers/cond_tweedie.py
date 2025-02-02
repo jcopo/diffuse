@@ -166,7 +166,7 @@ class CondTweedie:
 
         return _posterior_logpdf
 
-    def pooled_posterior_logpdf(
+    def _pooled_posterior_logpdf(
         self,
         rng_key: PRNGKeyArray,
         y_cntrst: Array,
@@ -196,7 +196,7 @@ class CondTweedie:
         return _pooled_posterior_logpdf
 
 
-    def __pooled_posterior_logpdf(
+    def pooled_posterior_logpdf(
         self,
         rng_key: PRNGKeyArray,
         y_cntrst: Array,
@@ -216,12 +216,13 @@ class CondTweedie:
             residual = jax.vmap(
                 self.forward_model.grad_logprob_y,
                 in_axes=(None, 0, None)
-            )(denoised, y_cntrst, mask)
+            )(denoised, y_cntrst, mask).mean(axis=0)
 
             # Compute (I + ∇score)ᵀv using forward-mode autodiff
             def score_fn(x_):
                 return self.score(x_, t)
-            score_val, tangents = jax.vmap(lambda a,b: jax.jvp(score_fn, (a,), (b,)), in_axes=(None, 0))(x, residual)
+
+            score_val, tangents = jax.jvp(score_fn, (x,), (residual,))
             guidance = (residual - tangents) #* alpha_t
 
             # Apply VJP with the residual
@@ -229,7 +230,7 @@ class CondTweedie:
 
             # Add past contribution using Tweedie
             past_contribution = self.posterior_logpdf(rng_key2, y_past, mask_history)
-            return guidance.mean(axis=0) + score_val.mean(axis=0) + past_contribution(x, t)
+            return guidance +  past_contribution(x, t)
 
         return _pooled_posterior_logpdf
 
