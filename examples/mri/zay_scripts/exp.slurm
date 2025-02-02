@@ -3,7 +3,7 @@
 #SBATCH --job-name=exp_knee
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:4
 #SBATCH --cpus-per-task=24
 #SBATCH --hint=nomultithread
 #SBATCH --time=00:30:00

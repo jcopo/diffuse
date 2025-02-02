@@ -8,7 +8,7 @@ import jax.numpy as jnp
 from typing import Protocol
 from jaxtyping import Array
 from diffuse.base_forward_model import ForwardModel, MeasurementState
-from diffuse.bayesian_design import BEDState
+from diffuse.design.bayesian_design import BEDState
 
 class ExperimentLogger(Protocol):
     def log(self, mask, ground_truth, optimal_state, measurement_state, iteration):
