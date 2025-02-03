@@ -1,5 +1,6 @@
 import einops
 import jax
+import jax.experimental
 import jax.numpy as jnp
 from jaxtyping import Array
 

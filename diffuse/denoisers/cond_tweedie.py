@@ -134,12 +134,32 @@ class CondTweedie:
             lambda x: x.reshape((-1, *x.shape[2:])) if len(x.shape) > 0 else x,
             state_next
         )
+        forward_time = self.sde.tf - state_next.integrator_state.t
+        state_forward = state_next.integrator_state._replace(t=forward_time)
+
+        denoised = jax.vmap(self.sde.tweedie, in_axes=(0, None))(state_forward, self.score).position
+        log_weights = self.forward_model.logprob_y(denoised, measurement_state.y, measurement_state.mask_history)
+
+        ######### DEBUG #########
+        # t = state_next.integrator_state.t
+        # from diffuse.utils.plotting import plot_lines
+        # abs_denoised = jnp.abs(denoised[..., 0] + 1j * denoised[..., 1])
+        # jax.experimental.io_callback(plot_lines, None, abs_denoised, t[0])
+        # diff = self.forward_model.measure_from_mask(measurement_state.mask_history, denoised) - measurement_state.y
+        # abs_diff = jnp.abs(diff[..., 0] + 1j * diff[..., 1])
+        # jax.experimental.io_callback(plot_lines, None, abs_diff, t[0])
+        ######### DEBUG #########
 
         integrator_state_next = state_next.integrator_state
-        integrator_state, weights = state.integrator_state, state.weights
+        _norm = jax.scipy.special.logsumexp(log_weights, axis=0)
 
-        weights = weights.reshape((-1,))
-        return CondDenoiserState(integrator_state_next, weights)
+        log_weights = log_weights.reshape((-1,)) - _norm
+
+        if self._resample:
+            position, log_weights = self._resampling(integrator_state_next.position, log_weights, rng_key)
+            integrator_state_next = integrator_state_next._replace(position=position)
+
+        return CondDenoiserState(integrator_state_next, log_weights)
 
 
     def posterior_logpdf(
@@ -254,7 +274,6 @@ class CondTweedie:
         self, position: Array, log_weights: Array, rng_key: PRNGKeyArray
     ) -> Tuple[Array, Array]:
         """Resample particles based on weights if effective sample size is in target range"""
-        _norm = jax.scipy.special.logsumexp(log_weights, axis=0)
         #weights = jnp.exp(log_weights - _norm)
         weights = jax.nn.softmax(log_weights, axis=0)
 
@@ -267,8 +286,7 @@ class CondTweedie:
         return jax.lax.cond(
             (ess_val < 0.5 * n_particles), #& (ess_val > 0.2 * n_particles),
             #(ess_val < 0.4 * n_particles) & (ess_val > 0.2 * n_particles),
-            #lambda x: (x[idx], _normalize_log_weights(log_weights[idx])),
-            lambda x: (x, _normalize_log_weights(log_weights)),
+            lambda x: (x[idx], _normalize_log_weights(log_weights[idx])),
             lambda x: (x, _normalize_log_weights(log_weights)),
             position,
         )
