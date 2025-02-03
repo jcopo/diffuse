@@ -197,9 +197,8 @@ def main(
             )
 
         # make new measurement
-        new_measurement = mask.measure(optimal_state.design, ground_truth)
         measurement_state = mask.update_measurement(
-            measurement_state, new_measurement, optimal_state.design
+            measurement_state, ground_truth, optimal_state.design
         )
 
         exp_state = experiment_optimizer.init(subkey, n_samples, n_samples_cntrst, dt)

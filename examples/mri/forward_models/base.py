@@ -111,14 +111,12 @@ class baseMask:
         return hist_mask * inv_mask + new_mask
 
     def update_measurement(
-        self, measurement_state: MeasurementState, new_measurement: Array, design: Array
+        self, measurement_state: MeasurementState, ground_truth: Array, design: Array
     ) -> MeasurementState:
-        y = measurement_state.y
-        inv_mask = 1 - self.make(design)
-        joint_y = jnp.einsum("ij,ijk->ijk", inv_mask, y) + new_measurement
         mask_history = self.supp_mask(
             design, measurement_state.mask_history
         )
+        joint_y = self.measure_from_mask(mask_history, ground_truth)
         return MeasurementState(y=joint_y, mask_history=mask_history)
 
     def logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
