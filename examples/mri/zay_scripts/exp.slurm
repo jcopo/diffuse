@@ -9,9 +9,9 @@
 #SBATCH --time=01:00:00
 #SBATCH --output=slurm_logs/%j_exp_knee.out
 #SBATCH --error=slurm_logs/%j_exp_knee.err
-#SBATCH -C h100
-#SBATCH --qos=qos_gpu_h100-dev
-#SBATCH -A hlp@h100
+#SBATCH -C a100
+#SBATCH --qos=qos_gpu_a100-t3
+#SBATCH -A hlp@a100
 
 # Set data model (0=WMH, 1=BRATS, 2=fastMRI, 3=brainFastMRI)
 data_model_index=4
