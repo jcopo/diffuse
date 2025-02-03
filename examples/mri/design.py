@@ -28,6 +28,10 @@ from examples.mri.utils import get_first_item, load_checkpoint, load_best_model_
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 
 
+from lpips_j.lpips import LPIPS
+from functools import partial
+
+
 import sys
 
 # get user from environment variable
@@ -130,6 +134,10 @@ def main(
 
     # Initialize experiment components
     sde, mask, ground_truth, dt, n_t, nn_score, experiment = initialize_experiment(key, config)
+    lpips = LPIPS()
+    abs_ground_truth = jnp.abs(ground_truth[..., 0] + 1j * ground_truth[..., 1])[..., None]
+    params_lpips = lpips.init(key, abs_ground_truth, abs_ground_truth)
+    lpips_fn = partial(lpips.apply, params_lpips)
 
     # Initialize logger
     logger = MRILogger(
@@ -140,12 +148,13 @@ def main(
         space=space,
         random=random,
         save_plots=save_plots,
-        experiment_name=experiment_name
+        experiment_name=experiment_name,
+        lpips_fn=lpips_fn
     ) if logging else None
     devices = jax.devices()
-    n_samples = 40 # config['inference']['n_samples']
-    n_samples_cntrst = 40 # config['inference']['n_samples_cntrst']
-    n_loop_opt = 2 # config['inference']['n_loop_opt']
+    n_samples = 10 # config['inference']['n_samples']
+    n_samples_cntrst = 10 # config['inference']['n_samples_cntrst']
+    n_loop_opt = 1 # config['inference']['n_loop_opt']
     n_opt_steps = n_t * n_loop_opt
 
     # Conditional Denoiser

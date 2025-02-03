@@ -3,7 +3,7 @@ score_model: "UNet"
 path_dataset: "${WORK}/diffuse/data/BRATS"
 
 # Model paths
-model_dir: "/lustre/fsn1/projects/rech/hlp/uha64uw/diffuse/data/BRATS/models_with_val_very_small/"
+model_dir: "/lustre/fsn1/projects/rech/hlp/uha64uw/diffuse/data/BRATS/models_with_val_very_small_new/"
 
 training:
     n_epochs: 4000

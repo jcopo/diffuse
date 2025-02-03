@@ -17,7 +17,7 @@ class ExperimentLogger(Protocol):
 class MRILogger:
     """Handles logging and plotting for MRI experiments."""
 
-    def __init__(self, config, rng_key, experiment:Experiment, prefix="", space="runs", random=False, save_plots=True, experiment_name: str = ""):
+    def __init__(self, config, rng_key, experiment:Experiment, prefix="", space="runs", random=False, save_plots=True, experiment_name: str = "", lpips_fn=None):
         """
         Initialize the logger with experiment configuration.
 
@@ -44,6 +44,8 @@ class MRILogger:
         self.contrastive_path = os.path.join(self.dir_path, "contrastive")
         self.metrics_file = os.path.join(self.dir_path, "metrics.csv")
 
+        self.lpips_fn = lpips_fn
+
         print("Saving to \n \n", self.dir_path)
         # Create directories
         os.makedirs(self.theta_path, exist_ok=True)
@@ -53,18 +55,18 @@ class MRILogger:
         with open(self.metrics_file, "w", newline="") as f:
             writer = csv.writer(f)
             if self.config['task'] == "anomaly":
-                writer.writerow(["Iteration", "PSNR", "SSIM", "DICE", "IoU", "K-space"])
+                writer.writerow(["Iteration", "PSNR", "SSIM", "LPIPS", "DICE", "IoU", "K-space"])
             else:
-                writer.writerow(["Iteration", "PSNR", "SSIM", "K-space"])
+                writer.writerow(["Iteration", "PSNR", "SSIM", "LPIPS", "K-space"])
 
-    def metrics_logger(self, iteration, psnr_score, ssim_score, kspace_percent, segmentation_metrics):
+    def metrics_logger(self, iteration, psnr_score, ssim_score, lpips_score, kspace_percent, segmentation_metrics):
         """Log metrics to CSV file."""
         with open(self.metrics_file, "a", newline="") as f:
             writer = csv.writer(f)
             if self.config['task'] == "anomaly":
-                writer.writerow([iteration, float(psnr_score), float(ssim_score), float(segmentation_metrics['DICE']), float(segmentation_metrics['IoU']), float(kspace_percent)])
+                writer.writerow([iteration, float(psnr_score), float(ssim_score), float(lpips_score), float(segmentation_metrics['DICE']), float(segmentation_metrics['IoU']), float(kspace_percent)])
             else:
-                writer.writerow([iteration, float(psnr_score), float(ssim_score), float(kspace_percent)])
+                writer.writerow([iteration, float(psnr_score), float(ssim_score), float(lpips_score), float(kspace_percent)])
 
     def log(self, ground_truth: Array, optimal_state: BEDState, measurement_state: MeasurementState, iteration: int):
         """
@@ -85,8 +87,8 @@ class MRILogger:
         jax.debug.print("current_weights: {}", jnp.exp(current_weights))
 
         # Calculate metrics for current iteration
-        psnr_score, ssim_score, segmentation_metrics = self.experiment.evaluate_metrics(
-            ground_truth, current_samples, current_weights, task=self.config['task']
+        psnr_score, ssim_score, lpips_score, segmentation_metrics = self.experiment.evaluate_metrics(
+            ground_truth, current_samples, current_weights, task=self.config['task'], lpips_fn=self.lpips_fn
         )
 
         # Calculate k-space usage percentage
@@ -97,13 +99,13 @@ class MRILogger:
         # Replace multiple print statements with a single combined print
         if self.config['task'] == "anomaly":
             jax.debug.print(
-                "Iteration {} | PSNR: {} | SSIM: {} | DICE: {} | IoU: {} | K-space: {}%",
-                iteration, psnr_score, ssim_score, segmentation_metrics['DICE'], segmentation_metrics['IoU'], kspace_percent
+                "Iteration {} | PSNR: {} | SSIM: {} | LPIPS: {} | DICE: {} | IoU: {} | K-space: {}%",
+                iteration, psnr_score, ssim_score, lpips_score, segmentation_metrics['DICE'], segmentation_metrics['IoU'], kspace_percent
             )
         else:
             jax.debug.print(
-                "Iteration {} | PSNR: {} | SSIM: {} | K-space: {}%",
-                iteration, psnr_score, ssim_score, kspace_percent
+                "Iteration {} | PSNR: {} | SSIM: {} | LPIPS: {} | K-space: {}%",
+                iteration, psnr_score, ssim_score, lpips_score, kspace_percent
             )
 
         plot_samples = partial(self.experiment.plot_samples, task=self.config['task'], logging_path=self.theta_path) if self.save_plots else partial(self.experiment.plot_samples, task=self.config['task'])
@@ -138,6 +140,7 @@ class MRILogger:
             iteration,
             psnr_score,
             ssim_score,
+            lpips_score,
             kspace_percent,
             segmentation_metrics
         )
