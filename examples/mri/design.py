@@ -152,9 +152,9 @@ def main(
         lpips_fn=lpips_fn
     ) if logging else None
     devices = jax.devices()
-    n_samples = 10 # config['inference']['n_samples']
-    n_samples_cntrst = 10 # config['inference']['n_samples_cntrst']
-    n_loop_opt = 1 # config['inference']['n_loop_opt']
+    n_samples = 40 # config['inference']['n_samples']
+    n_samples_cntrst = 40 # config['inference']['n_samples_cntrst']
+    n_loop_opt = 2 # config['inference']['n_loop_opt']
     n_opt_steps = n_t * n_loop_opt
 
     # Conditional Denoiser

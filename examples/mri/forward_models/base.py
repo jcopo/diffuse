@@ -8,16 +8,16 @@ from diffuse.base_forward_model import MeasurementState
 
 
 PARAMS_SIZE_LINE = {
-    "kneeFastMRI": {"minval": 0.0, "maxval": 20},
-    "brainFastMRI": {"minval": 0.0, "maxval": 20},
-    "WMH": {"minval": 0.0, "maxval": 10},
+    "kneeFastMRI": {"minval": 20.0, "maxval": 400},
+    "brainFastMRI": {"minval": 20.0, "maxval": 400},
+    "WMH": {"minval": 5.0, "maxval": 120},
     "BRATS": {"minval": 0.0, "maxval": 15},
 }
 
-PARAMS_WIDTH = {
-    "kneeFastMRI": 1,
-    "brainFastMRI": 1,
-    "WMH": 0.5,
+PARAMS_SIGMA_RADIAL = {
+    "kneeFastMRI": .1,
+    "brainFastMRI": .5,
+    "WMH": .2,
     "BRATS": 0.8,
 }
 
@@ -40,6 +40,13 @@ PARAMS_KMAX = {
     "brainFastMRI": {'minval': 3, 'maxval': 6},
     "WMH": {'minval': 3, 'maxval': 6},
     "BRATS": {'minval': 0.5, 'maxval': 1},
+}
+
+PARAMS_SIGMA_RDM = {
+    "kneeFastMRI": 0.1,
+    "brainFastMRI": 0.1,
+    "WMH": 0.1,
+    "BRATS": 0.1,
 }
 
 def slice_fourier(mri_slice):

@@ -1,4 +1,4 @@
-from examples.mri.forward_models.base import baseMask, PARAMS_SIZE_LINE, PARAMS_WIDTH
+from examples.mri.forward_models.base import baseMask, PARAMS_SIZE_LINE, PARAMS_SIGMA_RADIAL
 from dataclasses import dataclass
 from functools import partial
 
@@ -7,30 +7,26 @@ import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray
 
 
-@partial(jax.vmap, in_axes=(0, 0, None, None))
-def generate_line(angle_rad, size_line, img_shape, width):
-    y, x = jnp.mgrid[: img_shape[0], : img_shape[1]]
+@partial(jax.vmap, in_axes=(0, 0, None, None, None))
+def generate_line(angle, size, shape, width, sigma):
+    H, W = shape
 
-    center_x = img_shape[1] // 2
-    center_y = img_shape[0] // 2
+    xs = jnp.linspace(-W / 2, W / 2, W)
+    ys = jnp.linspace(-H / 2, H / 2, H)
+    grid_y, grid_x = jnp.meshgrid(ys, xs, indexing='ij')
 
-    x = x - center_x
-    y = y - center_y
+    cos_a = jnp.cos(angle)
+    sin_a = jnp.sin(angle)
 
-    distance = jnp.abs(x * jnp.cos(angle_rad) + y * jnp.sin(angle_rad))
+    x_rot = grid_x * cos_a + grid_y * sin_a
+    y_rot = -grid_x * sin_a + grid_y * cos_a
 
-    sharpness = 300.0
-    line_image = jax.nn.sigmoid(-sharpness * (distance - width))
+    sigma = .1
+    mask_x = jax.nn.sigmoid((size / 2 - jnp.abs(x_rot)) / sigma)
+    mask_y = jax.nn.sigmoid((width / 2 - jnp.abs(y_rot)) / sigma)
 
-    y_circle, x_circle = jnp.ogrid[
-        -center_y : img_shape[0] - center_y, -center_x : img_shape[1] - center_x
-    ]
-    circle_mask = jax.nn.sigmoid(
-        -sharpness * ((x_circle * x_circle + y_circle * y_circle) - size_line**2)
-    )
-
-    line_image = line_image * circle_mask
-    return line_image
+    mask = mask_x * mask_y
+    return mask
 
 
 @dataclass
@@ -42,18 +38,20 @@ class maskRadial(baseMask):
 
     def init_design(self, key: PRNGKeyArray) -> Array:
         angles = jax.random.uniform(
-            key, shape=(self.num_lines,), minval=0.0, maxval=2 * jnp.pi
+            key, shape=(self.num_lines,), minval=0.0, maxval=2*jnp.pi
         )
+
         size_line = jax.random.uniform(
-            key, shape=(self.num_lines,), **PARAMS_SIZE_LINE[self.data_model] #minval=0.0, maxval=10
+            key, shape=(self.num_lines,), **PARAMS_SIZE_LINE[self.data_model]
         )
 
         return jnp.stack([angles, size_line], axis=-1)
 
     def make(self, xi: Array) -> Array:
-        angle_rad = xi[:, 0] ** 2
-        size_line = xi[:, 1] ** 2
-        lines = generate_line(angle_rad, size_line, self.img_shape[:-1], PARAMS_WIDTH[self.data_model])
+        angle_rad = xi[:, 0]
+        size_line = xi[:, 1]
+
+        lines = generate_line(angle_rad, size_line, self.img_shape[:-1], 1, PARAMS_SIGMA_RADIAL[self.data_model])
 
         hist_lines = jnp.zeros(self.img_shape[:-1])
         for line in lines:
