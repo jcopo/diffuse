@@ -138,7 +138,11 @@ class CondTweedie:
         state_forward = state_next.integrator_state._replace(t=forward_time)
 
         denoised = jax.vmap(self.sde.tweedie, in_axes=(0, None))(state_forward, self.score).position
-        log_weights = self.forward_model.logprob_y(denoised, measurement_state.y, measurement_state.mask_history)
+        diff = self.forward_model.measure_from_mask(measurement_state.mask_history, denoised) - measurement_state.y
+        abs_diff = jnp.abs(diff[..., 0] + 1j * diff[..., 1])
+        log_weights = jax.scipy.stats.norm.logpdf(abs_diff, 0, self.forward_model.sigma_prob).sum(axis=(-1,-2))
+        #import pdb; pdb.set_trace()
+        #log_weights = self.forward_model.logprob_y(denoised, measurement_state.y, measurement_state.mask_history)
 
         ######### DEBUG #########
         # t = state_next.integrator_state.t
