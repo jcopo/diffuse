@@ -190,7 +190,7 @@ class CondTweedie:
 
         return _posterior_logpdf
 
-    def _pooled_posterior_logpdf(
+    def pooled_posterior_logpdf(
         self,
         rng_key: PRNGKeyArray,
         y_cntrst: Array,
@@ -220,7 +220,7 @@ class CondTweedie:
         return _pooled_posterior_logpdf
 
 
-    def pooled_posterior_logpdf(
+    def _pooled_posterior_logpdf(
         self,
         rng_key: PRNGKeyArray,
         y_cntrst: Array,
@@ -288,7 +288,7 @@ class CondTweedie:
 
         # jax.debug.print("ess_val: {}", ess_val/n_particles)
         return jax.lax.cond(
-            (ess_val < 0.5 * n_particles), #& (ess_val > 0.2 * n_particles),
+            (ess_val < 0.5 * n_particles) & (ess_val > 0.2 * n_particles),
             #(ess_val < 0.4 * n_particles) & (ess_val > 0.2 * n_particles),
             lambda x: (x[idx], _normalize_log_weights(log_weights[idx])),
             lambda x: (x, _normalize_log_weights(log_weights)),

@@ -7,6 +7,7 @@ from jaxtyping import Array
 from diffuse.base_forward_model import MeasurementState
 
 
+######## RADIAL ########
 PARAMS_SIZE_LINE = {
     "kneeFastMRI": {"minval": 20.0, "maxval": 400},
     "brainFastMRI": {"minval": 20.0, "maxval": 400},
@@ -21,6 +22,29 @@ PARAMS_SIGMA_RADIAL = {
     "BRATS": 0.8,
 }
 
+######## RANDOM ########
+PARAMS_SIGMA_RDM = {
+    "kneeFastMRI": .1,
+    "brainFastMRI": .1,
+    "WMH": .1,
+    "BRATS": .1,
+}
+
+PARAMS_SPARSITY = {
+    "kneeFastMRI": 0.005,
+    "brainFastMRI": 0.005,
+    "WMH": 0.05,
+    "BRATS": 0.005,
+}
+
+######## VERTICAL ########
+PARAMS_SIGMA_VERTICAL = {
+    "kneeFastMRI": 10.,
+    "brainFastMRI": .1,
+    "WMH": .1,
+    "BRATS": .1,
+}
+######## SPIRAL ########
 PARAMS_SIGMA = {
     "kneeFastMRI": 5,
     "brainFastMRI": 5,
@@ -42,12 +66,7 @@ PARAMS_KMAX = {
     "BRATS": {'minval': 0.5, 'maxval': 1},
 }
 
-PARAMS_SIGMA_RDM = {
-    "kneeFastMRI": 0.1,
-    "brainFastMRI": 0.1,
-    "WMH": 0.1,
-    "BRATS": 0.1,
-}
+
 
 def slice_fourier(mri_slice):
     mri_slice = mri_slice[..., 0] + 1j * mri_slice[..., 1]

@@ -25,14 +25,14 @@ class BratsDataset(Dataset):
 
     def __getitem__(self, idx):
         data = h5py.File(self.file_list[idx], "r")
-        vol = data["image"][..., -1]
-        mask = data["mask"].sum(axis=-1)
-
-        vol_scale_factor = np.percentile(vol, 99)
-        vol /= vol_scale_factor
-        vol = np.stack([vol, mask], axis=-1)
-        return vol
-
+        vol = np.array(data["image"])[..., -1]
+        mask = np.array(data["mask"]).sum(axis=-1)
+        vol_ksp = np.fft.fft2(vol, norm="ortho")
+        vol_xsp = np.fft.ifft2(vol_ksp, norm="ortho")
+        vol_xsp_scale_factor = np.percentile(np.abs(vol_xsp), 99)
+        vol_xsp /= vol_xsp_scale_factor
+        vol_xsp = np.stack([np.real(vol_xsp), np.imag(vol_xsp), mask], axis=-1)
+        return vol_xsp
 
 def get_dataloader(cfg, train: bool = True):
     folder = "train_data" if train else "val_data"

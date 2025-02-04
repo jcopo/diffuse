@@ -22,7 +22,7 @@ from examples.mri.fastMRI.create_dataset import get_dataloader as get_fastmri_da
 from examples.mri.brainFastMRI.create_dataset import get_dataloader as get_brainfastmri_dataloader
 from examples.mri.kneeFastMRI.create_dataset import get_dataloader as get_kneefastmri_dataloader
 from examples.mri.evals import WMHExperiment
-from examples.mri.forward_models import maskRadial, maskSpiral
+from examples.mri.forward_models import maskRadial, maskSpiral, maskVertical, maskRandom
 from examples.mri.logger import MRILogger, ExperimentLogger
 from examples.mri.utils import get_first_item, load_checkpoint, load_best_model_checkpoint, get_sharding
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
@@ -59,8 +59,6 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
     ground_truth = jax.random.choice(key, xs)
 
     n_t = config['inference']['n_t']
-
-    n_t = 80
     tf = config['sde']['tf']
 
     dt = tf / n_t
@@ -94,13 +92,22 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
     # Get mask configuration
     if config['mask']['mask_type'] == 'spiral':
         mask = maskSpiral(img_shape=shape, task=config['task'], num_spiral=config['mask']['num_spirals'], data_model=config['dataset'])
-    else:  # radial
+        
+    elif config['mask']['mask_type'] == 'radial':
         mask = maskRadial(
-            num_lines=config['mask']['num_lines'],
+            num_lines= config['mask']['num_lines'],
             img_shape=shape,
             task=config['task'],
             data_model=config['dataset']
         )
+
+    elif config['mask']['mask_type'] == 'vertical':
+        mask = maskVertical(num_lines=30, 
+                            img_shape=shape,
+                            task=config['task'],
+                            data_model=config['dataset']
+                        )
+        # mask = maskRandom(img_shape=shape, task=config['task'], data_model=config['dataset'])
 
     # Initialize experiment
     experiment = WMHExperiment(mask=mask)
@@ -152,9 +159,9 @@ def main(
         lpips_fn=lpips_fn
     ) if logging else None
     devices = jax.devices()
-    n_samples = 40 # config['inference']['n_samples']
-    n_samples_cntrst = 40 # config['inference']['n_samples_cntrst']
-    n_loop_opt = 2 # config['inference']['n_loop_opt']
+    n_samples = config['inference']['n_samples']
+    n_samples_cntrst = config['inference']['n_samples_cntrst']
+    n_loop_opt = config['inference']['n_loop_opt']
     n_opt_steps = n_t * n_loop_opt
 
     # Conditional Denoiser
@@ -168,8 +175,11 @@ def main(
     denoiser = CondTweedie(integrator, sde, nn_score, mask, resample)
 
     # init design and measurement
+
     xi = mask.init_design(key)
     measurement_state = mask.init_measurement(xi)
+
+    # measurement_state = mask.init_measurement(ground_truth) # uncoment for centered rectangle
 
     # ExperimentOptimizer
     optimizer = optax.chain(
@@ -191,12 +201,12 @@ def main(
 
         # Minimal debug print just for step tracking
         jax.debug.print("Processing step {n}", n=n_meas)
-        # jax.debug.print("design start: {}", exp_state.design)
+        jax.debug.print("design start: {}", exp_state.design)
 
         optimal_state, _ = experiment_optimizer.get_design(
             exp_state, subkey, measurement_state, n_steps=n_t, n_loop_opt=n_opt_steps
         )
-        # jax.debug.print("design optimal: {}", optimal_state.design)
+        jax.debug.print("design optimal: {}", optimal_state.design)
         if logger and len(devices) == 1:
             logger.log(
                 ground_truth,

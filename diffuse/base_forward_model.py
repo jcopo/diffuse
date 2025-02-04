@@ -1,11 +1,10 @@
 from typing import Protocol, NamedTuple
 from jaxtyping import Array, PRNGKeyArray
-
+import jax
 
 class MeasurementState(NamedTuple):
     y: Array
     mask_history: Array
-
 
 class ForwardModel(Protocol):
     def measure(self, design: Array, theta: Array) -> Array: ...

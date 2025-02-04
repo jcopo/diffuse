@@ -8,7 +8,7 @@ from jaxtyping import Array, PRNGKeyArray
 
 
 @partial(jax.vmap, in_axes=(0, 0, None, None, None))
-def generate_line(angle, size, shape, width, sigma):
+def generate_line_soft(angle, size, shape, width, sigma):
     H, W = shape
 
     xs = jnp.linspace(-W / 2, W / 2, W)
@@ -27,6 +27,26 @@ def generate_line(angle, size, shape, width, sigma):
 
     mask = mask_x * mask_y
     return mask
+
+@partial(jax.vmap, in_axes=(0, 0, None))
+def generate_line_hard(angle, size, shape):
+    H, W = shape
+
+    xs = jnp.linspace(-W / 2, W / 2, W)
+    ys = jnp.linspace(-H / 2, H / 2, H)
+    grid_y, grid_x = jnp.meshgrid(ys, xs, indexing='ij')
+
+    cos_a = jnp.cos(angle)
+    sin_a = jnp.sin(angle)
+
+    x_rot = grid_x * cos_a + grid_y * sin_a
+    y_rot = -grid_x * sin_a + grid_y * cos_a
+
+    # Use a small threshold instead of exact equality
+    epsilon = 0.5  # Half pixel width
+    mask = (jnp.abs(x_rot) <= size / 2) & (jnp.abs(y_rot) <= epsilon)
+    return mask.astype(jnp.float32)
+
 
 
 @dataclass
@@ -48,10 +68,13 @@ class maskRadial(baseMask):
         return jnp.stack([angles, size_line], axis=-1)
 
     def make(self, xi: Array) -> Array:
+        # xi = jax.nn.softplus(xi)
         angle_rad = xi[:, 0]
         size_line = xi[:, 1]
 
-        lines = generate_line(angle_rad, size_line, self.img_shape[:-1], 1, PARAMS_SIGMA_RADIAL[self.data_model])
+        lines_soft = generate_line_soft(angle_rad, size_line, self.img_shape[:-1], 1, PARAMS_SIGMA_RADIAL[self.data_model])
+        lines_hard = generate_line_hard(angle_rad, size_line, self.img_shape[:-1])
+        lines = lines_soft + jax.lax.stop_gradient(lines_hard - lines_soft)
 
         hist_lines = jnp.zeros(self.img_shape[:-1])
         for line in lines:

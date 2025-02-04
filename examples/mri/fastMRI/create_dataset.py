@@ -63,21 +63,11 @@ class FastMRIDataset(Dataset):
 
 
 def get_dataloader(cfg, train: bool = True):
-    folder = "singlecoil_train" if train else "singlecoil_val"
-    path_dataset = os.path.join(cfg["path_dataset"], folder)
-    dataset = FastMRIDataset(path_dataset)
+    path_dataset_train = os.path.join(cfg["path_dataset"], "singlecoil_train")
+    path_dataset_val = os.path.join(cfg["path_dataset"], "singlecoil_val")
+    train_dataset = FastMRIDataset(path_dataset_train)
+    val_dataset = FastMRIDataset(path_dataset_val)
     if train:
-        # Get train/val split ratio from config, default to 0.8
-        train_ratio = cfg["training"].get("train_ratio", 0.8)
-
-        # Calculate split sizes
-        total_size = len(dataset)
-        train_size = int(total_size * train_ratio)
-        val_size = total_size - train_size
-
-        # Split dataset
-        train_dataset, val_dataset = data.random_split(dataset, [train_size, val_size])
-
         # Create and return both dataloaders
         train_loader = DataLoader(
             train_dataset,
@@ -101,7 +91,7 @@ def get_dataloader(cfg, train: bool = True):
 
     # If train=False, return single test dataloader as before
     return DataLoader(
-        dataset,
+        val_dataset,
         batch_size=cfg["training"]["batch_size"],
         shuffle=False,
         num_workers=cfg["training"]["num_workers"],
