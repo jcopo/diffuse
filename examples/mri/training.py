@@ -11,7 +11,7 @@ import optax
 from envyaml import EnvYAML
 from tqdm import tqdm
 
-from diffuse.diffusion.score_matching import score_match_loss, weight_fun, noise_match_loss
+from diffuse.diffusion.score_matching import score_match_loss, weight_fun, noise_match_loss, mae_noise_match_loss
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.neural_network import model_zoo
 from examples.mri.brats.create_dataset import (
@@ -87,6 +87,9 @@ def train(config, train_val_loaders, parallel=False):
 
     elif config["training"]["loss"] == "noise_matching":
         loss = partial(noise_match_loss, network=score_net)
+        
+    elif config["training"]["loss"] == "mae_noise_matching":
+        loss = partial(mae_noise_match_loss, network=score_net)
 
     # Defining the training step
     def step(key, params, opt_state, ema_state, data, optimizer, ema_kernel, sde, cfg):
