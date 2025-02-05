@@ -5,7 +5,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray
-
+from examples.mri.forward_models.base import MeasurementState
 
 @partial(jax.vmap, in_axes=(0, 0, None, None, None))
 def generate_line_soft(angle, size, shape, width, sigma):
@@ -47,7 +47,21 @@ def generate_line_hard(angle, size, shape):
     mask = (jnp.abs(x_rot) <= size / 2) & (jnp.abs(y_rot) <= epsilon)
     return mask.astype(jnp.float32)
 
-
+def generate_centered_circle(shape, radius_frac):
+    H, W = shape
+    # Calculate radius based on area percentage
+    total_area = H * W
+    circle_area = total_area * radius_frac
+    radius = jnp.sqrt(circle_area / jnp.pi)
+    
+    # Create grid
+    xs = jnp.linspace(-W/2, W/2, W)
+    ys = jnp.linspace(-H/2, H/2, H)
+    grid_y, grid_x = jnp.meshgrid(ys, xs, indexing='ij')
+    
+    # Create circle mask
+    mask = (grid_x**2 + grid_y**2) <= radius**2
+    return mask.astype(jnp.float32)
 
 @dataclass
 class maskRadial(baseMask):
@@ -66,6 +80,11 @@ class maskRadial(baseMask):
         )
 
         return jnp.stack([angles, size_line], axis=-1)
+    
+    # def init_measurement(self, ground_truth: Array) -> MeasurementState:
+        # mask = generate_centered_circle(self.img_shape[:-1], 0.01)
+        # y = self.measure_from_mask(mask, ground_truth)
+        # return MeasurementState(y=y, mask_history=mask)
 
     def make(self, xi: Array) -> Array:
         # xi = jax.nn.softplus(xi)

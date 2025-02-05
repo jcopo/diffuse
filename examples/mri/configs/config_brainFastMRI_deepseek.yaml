@@ -37,4 +37,4 @@ mask:
     mask_type: "radial"  # or "spiral"
     num_lines: 5
 
-task: "anomaly"
+task: "quality"

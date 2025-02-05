@@ -3,14 +3,14 @@ score_model: "UNet"
 path_dataset: "${WORK}/diffuse/data/kneeFastMRI"
 
 # Model paths
-model_dir: "/lustre/fsn1/projects/rech/hlp/uha64uw/diffuse/data/kneeFastMRI/models_with_val_deepseek/"
+model_dir: "/lustre/fsn1/projects/rech/hlp/uha64uw/diffuse/data/kneeFastMRI/models_with_val_deepseek_mae/"
 
 training:
     n_epochs: 4000
     train_ratio: 0.8
     batch_size: 32
     nt_samples: 32
-    loss: "noise_matching"
+    loss: "mae_noise_matching"
     num_workers: 0
     lr: 2.0e-4
 

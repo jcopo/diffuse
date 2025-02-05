@@ -13,7 +13,7 @@ from diffuse.denoisers.cond_denoiser import CondDenoiser
 from diffuse.denoisers.cond_tweedie import CondTweedie
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.integrator.stochastic import EulerMaruyama
-from diffuse.integrator.deterministic import DPMpp2sIntegrator, Euler, DDIMIntegrator
+from diffuse.integrator.deterministic import DPMpp2sIntegrator, Euler, DDIMIntegrator, HeunIntegrator
 from diffuse.neural_network.unet import UNet
 from diffuse.neural_network.unett import UNet as Unet
 from examples.mri.brats.create_dataset import get_dataloader as get_brats_dataloader
@@ -168,7 +168,8 @@ def main(
     # integrator = EulerMaruyama(sde)
     # integrator = DDIMIntegrator(sde)
     # integrator = Euler(sde)
-    integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
+    # integrator = DPMpp2sIntegrator(sde=sde, stochastic_churn_rate=.3)
+    integrator = HeunIntegrator(sde=sde, stochastic_churn_rate=.3)
     resample = True
     
     if isinstance(integrator, DDIMIntegrator):
@@ -179,6 +180,8 @@ def main(
         print("Using EulerIntegrator")
     elif isinstance(integrator, DPMpp2sIntegrator):
         print("Using DPMpp2sIntegrator")
+    elif isinstance(integrator, HeunIntegrator):
+        print("Using HeunIntegrator")
 
     # denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
     denoiser = CondTweedie(integrator, sde, nn_score, mask, resample)

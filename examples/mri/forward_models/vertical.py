@@ -52,10 +52,10 @@ class maskVertical(baseMask):
         )
         return x_positions
     
-    def init_measurement(self, ground_truth: Array) -> MeasurementState:
-        mask = generate_centered_rectangle(self.img_shape[:-1], 0.05)
-        y = self.measure_from_mask(mask, ground_truth)
-        return MeasurementState(y=y, mask_history=mask)
+    # def init_measurement(self, ground_truth: Array) -> MeasurementState:
+        # mask = generate_centered_rectangle(self.img_shape[:-1], 0.05)
+        # y = self.measure_from_mask(mask, ground_truth)
+        # return MeasurementState(y=y, mask_history=mask)
 
     def make(self, xi: Array) -> Array:
         xi = jax.nn.sigmoid(xi)
