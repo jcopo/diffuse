@@ -15,6 +15,9 @@ from diffuse.diffusion.sde import SDE, SDEState
 from diffuse.base_forward_model import ForwardModel, MeasurementState
 from diffuse.utils.plotting import sigle_plot, plot_lines
 
+def is_nan(x):
+    return jnp.isnan(x).any()
+
 def _vmapper(fn, type):
     def _set_axes(path, value):
         # Vectorize only particles and rng_key fields
@@ -141,7 +144,9 @@ class CondTweedie:
         denoised = jax.vmap(self.sde.tweedie, in_axes=(0, None))(state_forward, self.score).position
         diff = self.forward_model.measure_from_mask(measurement_state.mask_history, denoised) - measurement_state.y
         abs_diff = jnp.abs(diff[..., 0] + 1j * diff[..., 1])
-        log_weights = jax.scipy.stats.norm.logpdf(abs_diff, 0, self.forward_model.sigma_prob).sum(axis=(-1,-2))
+        log_weights = jax.scipy.stats.norm.logpdf(abs_diff, 0, self.forward_model.sigma_prob)
+        log_weights = einops.einsum(measurement_state.mask_history, log_weights, "..., b ... -> b")
+
         #import pdb; pdb.set_trace()
         #log_weights = self.forward_model.logprob_y(denoised, measurement_state.y, measurement_state.mask_history)
 
@@ -178,7 +183,6 @@ class CondTweedie:
             # Compute residual: (y - AE[X_0|X_t])
             v = self.forward_model.grad_logprob_y(denoised, y_meas, design_mask)
 
-            guidance = v
             if self.pooled_jvp:
                 # Compute score and guidance in one JVP operation
                 def score_fn(x_):
@@ -186,6 +190,9 @@ class CondTweedie:
 
                 score_val, tangents = jax.jvp(score_fn, (x,), (v,))
                 guidance = (v - tangents)  # Exact Hessian term
+            else:
+                guidance = v
+                score_val = self.score(x, t)
 
             # Apply scaled guidance
             return score_val + guidance
@@ -261,22 +268,6 @@ class CondTweedie:
             return guidance + past_contribution(x, t)
 
         return _pooled_posterior_logpdf
-
-    def y_noiser(
-        self, mask: Array, key: PRNGKeyArray, state: SDEState, ts: float
-    ) -> SDEState:
-        r"""
-        Generate y^{(t)} = \sqrt{\bar{\alpha}_t} y + \sqrt{1-\bar{\alpha}_t} A_\xi \epsilon
-        """
-        y, t = state
-
-        int_b = self.sde.beta.integrate(ts, t)
-        alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
-
-        rndm = jax.random.normal(key, y.shape)
-        res = alpha * y + jnp.sqrt(beta) * einops.einsum(mask, rndm, "... , ... c -> ... c")
-        #self.forward_model.measure_from_mask(    mask, rndm)
-        return SDEState(res, ts)
 
     def _resampling(
         self, position: Array, log_weights: Array, rng_key: PRNGKeyArray
