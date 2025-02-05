@@ -178,12 +178,14 @@ class CondTweedie:
             # Compute residual: (y - AE[X_0|X_t])
             v = self.forward_model.grad_logprob_y(denoised, y_meas, design_mask)
 
-            # Compute score and guidance in one JVP operation
-            def score_fn(x_):
-                return self.score(x_, t)
+            guidance = v
+            if self.pooled_jvp:
+                # Compute score and guidance in one JVP operation
+                def score_fn(x_):
+                    return self.score(x_, t)
 
-            score_val, tangents = jax.jvp(score_fn, (x,), (v,))
-            guidance = (v - tangents)  # Exact Hessian term
+                score_val, tangents = jax.jvp(score_fn, (x,), (v,))
+                guidance = (v - tangents)  # Exact Hessian term
 
             # Apply scaled guidance
             return score_val + guidance
