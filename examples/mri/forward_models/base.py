@@ -10,13 +10,15 @@ from diffuse.base_forward_model import MeasurementState
 ######## RADIAL ########
 PARAMS_SIZE_LINE = {
     "kneeFastMRI": {"minval": 20.0, "maxval": 400},
+    "fastMRI": {"minval": 20.0, "maxval": 400},
     "brainFastMRI": {"minval": 20.0, "maxval": 400},
     "WMH": {"minval": 5.0, "maxval": 120},
-    "BRATS": {"minval": 0.0, "maxval": 15},
+    "BRATS": {"minval": 0.0, "maxval": 180},
 }
 
 PARAMS_SIGMA_RADIAL = {
     "kneeFastMRI": .1,
+    "fastMRI": .1,
     "brainFastMRI": .5,
     "WMH": .2,
     "BRATS": 0.8,
@@ -25,6 +27,7 @@ PARAMS_SIGMA_RADIAL = {
 ######## RANDOM ########
 PARAMS_SIGMA_RDM = {
     "kneeFastMRI": .1,
+    "fastMRI": .1,
     "brainFastMRI": .1,
     "WMH": .1,
     "BRATS": .1,
@@ -32,6 +35,7 @@ PARAMS_SIGMA_RDM = {
 
 PARAMS_SPARSITY = {
     "kneeFastMRI": 0.005,
+    "fastMRI": 0.005,
     "brainFastMRI": 0.005,
     "WMH": 0.05,
     "BRATS": 0.005,
@@ -39,7 +43,8 @@ PARAMS_SPARSITY = {
 
 ######## VERTICAL ########
 PARAMS_SIGMA_VERTICAL = {
-    "kneeFastMRI": 10.,
+    "kneeFastMRI": .1,
+    "fastMRI": .1,
     "brainFastMRI": .1,
     "WMH": .1,
     "BRATS": .1,
@@ -47,6 +52,7 @@ PARAMS_SIGMA_VERTICAL = {
 ######## SPIRAL ########
 PARAMS_SIGMA = {
     "kneeFastMRI": 5,
+    "fastMRI": 5,
     "brainFastMRI": 5,
     "WMH": 1.5,
     "BRATS": 2,
@@ -54,6 +60,7 @@ PARAMS_SIGMA = {
 
 PARAMS_FOV = {
     "kneeFastMRI": {'minval': 2.5, 'maxval': 3.5},
+    "fastMRI": {'minval': 2.5, 'maxval': 3.5},
     "brainFastMRI": {'minval': 2.5, 'maxval': 3.5},
     "WMH": {'minval': 2.5, 'maxval': 3.5},
     "BRATS": {'minval': 0.5, 'maxval': 0.6},
@@ -61,6 +68,7 @@ PARAMS_FOV = {
 
 PARAMS_KMAX = {
     "kneeFastMRI": {'minval': 3, 'maxval': 6},
+    "fastMRI": {'minval': 3, 'maxval': 6},
     "brainFastMRI": {'minval': 3, 'maxval': 6},
     "WMH": {'minval': 3, 'maxval': 6},
     "BRATS": {'minval': 0.5, 'maxval': 1},

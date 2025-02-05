@@ -171,26 +171,25 @@ class CondTweedie:
     ):
         # Using Tweedie's formula for posterior sampling
         def _posterior_logpdf(x, t):
-
             # Apply Tweedie's formula to get denoised prediction
             denoised = self.sde.tweedie(SDEState(x, t), self.score).position
-
+            
             # Compute residual: (y - AE[X_0|X_t])
             v = self.forward_model.grad_logprob_y(denoised, y_meas, design_mask)
-
-            # Compute (I + ∇score)ᵀv using forward-mode autodiff
+            
+            # Compute score and guidance in one JVP operation
             def score_fn(x_):
                 return self.score(x_, t)
 
             score_val, tangents = jax.jvp(score_fn, (x,), (v,))
-
-            guidance = (v - tangents) #* alpha_t
-
-            return guidance + score_val
-
+            guidance = (v - tangents)  # Exact Hessian term
+            
+            # Apply scaled guidance
+            return score_val + guidance
+        
         return _posterior_logpdf
 
-    def pooled_posterior_logpdf(
+    def _pooled_posterior_logpdf(
         self,
         rng_key: PRNGKeyArray,
         y_cntrst: Array,
@@ -220,7 +219,7 @@ class CondTweedie:
         return _pooled_posterior_logpdf
 
 
-    def _pooled_posterior_logpdf(
+    def pooled_posterior_logpdf(
         self,
         rng_key: PRNGKeyArray,
         y_cntrst: Array,
@@ -254,7 +253,7 @@ class CondTweedie:
 
             # Add past contribution using Tweedie
             past_contribution = self.posterior_logpdf(rng_key2, y_past, mask_history)
-            return guidance +  past_contribution(x, t)
+            return guidance + past_contribution(x, t)
 
         return _pooled_posterior_logpdf
 

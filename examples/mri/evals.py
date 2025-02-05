@@ -105,8 +105,8 @@ class WMHExperiment(Experiment):
 
         max_val = jnp.maximum(jnp.max(abs_ground_truth), jnp.max(abs_theta_infered))
         psnr_array = jax.vmap(dm_pix.psnr, in_axes=(None, 0))(abs_ground_truth, abs_theta_infered)
-        psnr_score = jnp.sum(psnr_array * weights_infered)
-        #psnr_score = jnp.max(psnr_array)
+        #psnr_score = jnp.sum(psnr_array * weights_infered)
+        psnr_score = jnp.max(psnr_array)
 
         # More lenient SSIM parameters
         ssim = partial(dm_pix.ssim,
@@ -116,15 +116,15 @@ class WMHExperiment(Experiment):
                       k1=0.05,           # Default is usually 0.01
                       k2=0.1)           # Default is usually 0.03
         ssim_array = jax.vmap(ssim, in_axes=(None, 0))(abs_ground_truth, abs_theta_infered)
-        ssim_score = jnp.sum(ssim_array * weights_infered)
-        # ssim_score = jnp.max(ssim_array)
+        #ssim_score = jnp.sum(ssim_array * weights_infered)
+        ssim_score = jnp.max(ssim_array)
 
         tmp = jnp.expand_dims(abs_ground_truth, axis=0)
         tmp = jnp.tile(tmp, (abs_theta_infered.shape[0], 1, 1, 1))
         lpips_score = lpips_fn(tmp, abs_theta_infered)
         lpips_score = jnp.squeeze(lpips_score, axis=(1,2,3))
-        lpips_score = jnp.sum(lpips_score * weights_infered)    
-        # lpips_score = jnp.min(lpips_score)
+        # lpips_score = jnp.sum(lpips_score * weights_infered)    
+        lpips_score = jnp.min(lpips_score)
         # Save the magnitude images - fixed callback usage
         # save_path = "/lustre/fswork/projects/rech/hlp/uha64uw/tmp_res/magnitude_images.npz"
         # def save_callback(gt, pred):

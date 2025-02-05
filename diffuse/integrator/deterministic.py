@@ -55,8 +55,8 @@ class DPMpp2sIntegrator:
 
     def next_churn_noise_level(self, integrator_state: EulerState) -> float:
         """Compute the next churn noise level"""
-        _, _, t, dt = integrator_state
-        t = self.sde.tf - t
+        _, _, t_reverse, dt = integrator_state
+        t_forward_curr = self.sde.tf - t_reverse
         n_steps = self.sde.tf / dt
         churn_rate = jnp.where(
             self.stochastic_churn_rate / n_steps - jnp.sqrt(2) + 1 > 0,
@@ -64,33 +64,32 @@ class DPMpp2sIntegrator:
             self.stochastic_churn_rate / n_steps,
         )
         churn_rate = jnp.where(
-            t > self.churn_min, jnp.where(t < self.churn_max, churn_rate, 0), 0
+            t_forward_curr > self.churn_min, jnp.where(t_forward_curr < self.churn_max, churn_rate, 0), 0
         )
-        return t * (1 + churn_rate)
+        return self.sde.tf - t_forward_curr * (1 + churn_rate)
 
     def apply_stochastic_churn(self, integrator_state: EulerState) -> EulerState:
         """Apply stochastic churn to the sample"""
-        position, rng_key, noise_level, dt = integrator_state
-        noise_level = self.sde.tf - noise_level
-        next_noise_level = self.next_churn_noise_level(integrator_state)
-        current_int_b, next_int_b = (
-            self.sde.beta.integrate(noise_level, self.sde.beta.t0),
-            self.sde.beta.integrate(next_noise_level, self.sde.beta.t0),
+        position, rng_key, t_reverse, dt = integrator_state
+        t_forward_curr = self.sde.tf - t_reverse
+        t_forward_prev = self.sde.tf - self.next_churn_noise_level(integrator_state)
+        int_b_curr, int_b_prev = (
+            self.sde.beta.integrate(t_forward_curr, self.sde.beta.t0),
+            self.sde.beta.integrate(t_forward_prev, self.sde.beta.t0),
         )
-        current_beta, next_beta = (
-            jnp.sqrt(1 - jnp.exp(-current_int_b)),
-            jnp.sqrt(1 - jnp.exp(-next_int_b)),
+        beta_curr, beta_prev = (
+            jnp.sqrt(1 - jnp.exp(-int_b_curr)),
+            jnp.sqrt(1 - jnp.exp(-int_b_prev)),
         )
         extra_noise_stddev = (
-            jnp.sqrt(next_beta**2 - current_beta**2) * self.noise_inflation_factor
+            jnp.sqrt(beta_prev**2 - beta_curr**2) * self.noise_inflation_factor
         )
         new_position = (
             position + jax.random.normal(rng_key, position.shape) * extra_noise_stddev
         )
         _, rng_key_next = jax.random.split(rng_key)
-
         return EulerState(
-            new_position, rng_key_next, self.sde.tf - next_noise_level, dt
+            new_position, rng_key_next, self.sde.tf - t_forward_prev, dt
         )
 
     def __call__(self, integrator_state: EulerState, score: Callable) -> EulerState:
@@ -101,55 +100,62 @@ class DPMpp2sIntegrator:
             lambda x: x,
             integrator_state,
         )
-        position, rng_key, t, dt = integrator_state
+        position, rng_key, t_reverse, dt = integrator_state
         t0 = self.sde.beta.t0
-        current_t = t + dt
-        mid_t = (t + current_t) / 2
+        t_forward_curr = self.sde.tf - t_reverse
 
-        prev_int_b, current_int_b, mid_int_b = (
-            self.sde.beta.integrate(self.sde.tf - t, t0),
-            self.sde.beta.integrate(self.sde.tf - current_t, t0),
-            self.sde.beta.integrate(self.sde.tf - mid_t, t0),
+        t_forward_next = t_forward_curr - dt
+        t_forward_mid = jnp.sqrt(t_forward_curr * t_forward_next)# (t_forward_curr + t_forward_next) / 2
+
+        int_b_curr, int_b_next, int_b_mid = (
+            self.sde.beta.integrate(t_forward_curr, t0),
+            self.sde.beta.integrate(t_forward_next, t0),
+            self.sde.beta.integrate(t_forward_mid, t0),
         )
-        prev_alpha, current_alpha, mid_alpha = (
-            jnp.exp(-0.5 * prev_int_b),
-            jnp.exp(-0.5 * current_int_b),
-            jnp.exp(-0.5 * mid_int_b),
+        alpha_curr, alpha_next, alpha_mid = (
+            jnp.exp(-0.5 * int_b_curr),
+            jnp.exp(-0.5 * int_b_next),
+            jnp.exp(-0.5 * int_b_mid),
         )
-        prev_beta, current_beta, mid_beta = (
-            jnp.sqrt(1 - jnp.exp(-prev_int_b)),
-            jnp.sqrt(1 - jnp.exp(-current_int_b)),
-            jnp.sqrt(1 - jnp.exp(-mid_int_b)),
+        sigma_curr, sigma_next, sigma_mid = (
+            jnp.sqrt(1 - jnp.exp(-int_b_curr)),
+            jnp.sqrt(1 - jnp.exp(-int_b_next)),
+            jnp.sqrt(1 - jnp.exp(-int_b_mid)),
         )
 
-        prev_log_scale = jnp.log(prev_alpha / prev_beta)
-        current_log_scale = jnp.log(current_alpha / current_beta)
-        mid_log_scale = jnp.log(mid_alpha / mid_beta)
+        log_scale_curr, log_scale_next, log_scale_mid = (
+            jnp.log(alpha_curr / sigma_curr),
+            jnp.log(alpha_next / sigma_next),
+            jnp.log(alpha_mid / sigma_mid),
+        )
 
-        h = current_log_scale - prev_log_scale
-        r = (mid_log_scale - prev_log_scale) / h
+        h = log_scale_next - log_scale_curr
+        r = (log_scale_mid - log_scale_curr) / h
 
-        prev_tweedie = self.sde.tweedie(SDEState(position, self.sde.tf - t), score)
+        noise_pred = self.sde.score_to_noise(score)
+        # pred_x0_curr = (position - sigma_curr * noise_pred(position, t_forward_curr)) / alpha_curr
+        pred_x0_curr = self.sde.tweedie(SDEState(position, t_forward_curr), score).position
         u = (
-            jnp.sqrt(mid_beta) / jnp.sqrt(prev_beta) * position
-            + mid_alpha * (jnp.exp(-h * r) - 1) * prev_tweedie.position
+            sigma_mid / sigma_curr * position
+            - alpha_mid * (jnp.exp(-h * r) - 1) * pred_x0_curr
         )
 
-        mid_tweedie = self.sde.tweedie(SDEState(u, self.sde.tf - mid_t), score)
-        D = (1 - 1 / (2 * r)) * prev_tweedie.position + (
+        # pred_x0_mid = (u - sigma_mid * noise_pred(u, t_forward_mid)) / alpha_mid
+        pred_x0_mid = self.sde.tweedie(SDEState(u, t_forward_mid), score).position
+        D = (1 - 1 / (2 * r)) * pred_x0_curr + (
             1 / (2 * r)
-        ) * mid_tweedie.position
+        ) * pred_x0_mid
 
         next_position = (
-            jnp.sqrt(current_beta) / jnp.sqrt(prev_beta) * position
-            - current_alpha * (jnp.exp(-h) - 1) * D
+            sigma_next / sigma_curr * position
+            - alpha_next * (jnp.exp(-h) - 1) * D
         )
 
         _, rng_key_next = jax.random.split(rng_key)
-        next_state = EulerState(next_position, rng_key_next, current_t, dt)
+        next_state = EulerState(next_position, rng_key_next, t_reverse + dt, dt)
 
         next_state = jax.lax.cond(
-            (self.sde.tf - current_t) < 1e-5,
+            t_forward_next < 1e-5,
             lambda x, y: self.euler_step(x, rng_key_next, score),
             lambda x, y: y,
             integrator_state,

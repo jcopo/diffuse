@@ -166,10 +166,19 @@ def main(
 
     # Conditional Denoiser
     # integrator = EulerMaruyama(sde)
-    integrator = DDIMIntegrator(sde)
+    # integrator = DDIMIntegrator(sde)
     # integrator = Euler(sde)
-    # integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
+    integrator = DPMpp2sIntegrator(sde)#, stochastic_churn_rate=0.1, churn_min=0.05, churn_max=1.95, noise_inflation_factor=.3)
     resample = True
+    
+    if isinstance(integrator, DDIMIntegrator):
+        print("Using DDIMIntegrator")
+    elif isinstance(integrator, EulerMaruyama):
+        print("Using EulerMaruyamaIntegrator")
+    elif isinstance(integrator, Euler):
+        print("Using EulerIntegrator")
+    elif isinstance(integrator, DPMpp2sIntegrator):
+        print("Using DPMpp2sIntegrator")
 
     # denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
     denoiser = CondTweedie(integrator, sde, nn_score, mask, resample)
