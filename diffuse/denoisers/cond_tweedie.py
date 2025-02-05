@@ -70,6 +70,7 @@ class CondTweedie:
     score: Callable[[Array, float], Array]  # x -> t -> score(x, t)
     forward_model: ForwardModel
     _resample: bool = False
+    pooled_jvp: bool = False
 
     def init(
         self, position: Array, rng_key: PRNGKeyArray, dt: float
@@ -173,20 +174,20 @@ class CondTweedie:
         def _posterior_logpdf(x, t):
             # Apply Tweedie's formula to get denoised prediction
             denoised = self.sde.tweedie(SDEState(x, t), self.score).position
-            
+
             # Compute residual: (y - AE[X_0|X_t])
             v = self.forward_model.grad_logprob_y(denoised, y_meas, design_mask)
-            
+
             # Compute score and guidance in one JVP operation
             def score_fn(x_):
                 return self.score(x_, t)
 
             score_val, tangents = jax.jvp(score_fn, (x,), (v,))
             guidance = (v - tangents)  # Exact Hessian term
-            
+
             # Apply scaled guidance
             return score_val + guidance
-        
+
         return _posterior_logpdf
 
     def _pooled_posterior_logpdf(
@@ -241,12 +242,14 @@ class CondTweedie:
                 in_axes=(None, 0, None)
             )(denoised, y_cntrst, mask).mean(axis=0)
 
-            # Compute (I + ∇score)ᵀv using forward-mode autodiff
-            def score_fn(x_):
-                return self.score(x_, t)
+            guidance = residual
+            if self.pooled_jvp:
+                # Compute (I + ∇score)ᵀv using forward-mode autodiff
+                def score_fn(x_):
+                    return self.score(x_, t)
 
-            score_val, tangents = jax.jvp(score_fn, (x,), (residual,))
-            guidance = (residual - tangents) #* alpha_t
+                score_val, tangents = jax.jvp(score_fn, (x,), (residual,))
+                guidance = (residual - tangents) #* alpha_t
 
             # Apply VJP with the residual
             #guidance = jax.vmap(vjp_score)(residual)

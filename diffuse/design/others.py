@@ -3,25 +3,18 @@ from diffuse.design.bayesian_design import BEDState, MeasurementState
 from diffuse.denoisers.cond_denoiser import CondDenoiser
 from diffuse.base_forward_model import ForwardModel
 from jaxtyping import Array, PRNGKeyArray
+from dataclasses import dataclass
+import jax
 
+@dataclass
 class ADSOptimizer:
     """Implements fastMRI-style mask optimization strategies in JAX"""
-
-    def __init__(
-        self,
-        denoiser: CondDenoiser,
-        mask: ForwardModel,
-        strategy: str = "column_entropy",
-        sigma: float = 1.0,
-        n_center: int = 10,
-        **kwargs
-    ):
-        self.denoiser = denoiser
-        self.mask = mask
-        self.strategy = strategy
-        self.sigma = sigma
-        self.n_center = n_center
-        self.optimizer = None  # Explicitly set instead of parent class
+    denoiser: CondDenoiser
+    mask: ForwardModel
+    strategy: str = "column_entropy"
+    sigma: float = 1.0
+    n_center: int = 10
+    optimizer: None = None  # Explicitly set instead of parent class
 
     def _compute_selection_metric(self, particles: Array) -> Array:
         """Compute selection metric based on strategy"""
