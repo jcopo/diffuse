@@ -1,9 +1,8 @@
-from jax import Array, random
 import jax.numpy as jnp
-from jax.random import PRNGKeyArray
-from diffuse.design.base import BEDState, MeasurementState
-from diffuse.denoisers import CondDenoiser
-from diffuse.forward import ForwardModel
+from diffuse.design.bayesian_design import BEDState, MeasurementState
+from diffuse.denoisers.cond_denoiser import CondDenoiser
+from diffuse.base_forward_model import ForwardModel
+from jaxtyping import Array, PRNGKeyArray
 
 class ADSOptimizer:
     """Implements fastMRI-style mask optimization strategies in JAX"""
