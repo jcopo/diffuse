@@ -99,7 +99,7 @@ class ExperimentOptimizer:
         score_likelihood = self.denoiser.pooled_posterior_logpdf(
             key_t, y_cntrst, y, design, mask_history
         )
-        cntrst_denoiser_state = self.denoiser.batch_step(rng_key, cntrst_denoiser_state, score_likelihood, measurement_state)
+        cntrst_denoiser_state = self.denoiser.batch_step_pooled(rng_key, cntrst_denoiser_state, score_likelihood, measurement_state)
         denoiser_state, cntrst_denoiser_state = _fix_time(denoiser_state, cntrst_denoiser_state)
 
         return BEDState(

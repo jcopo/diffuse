@@ -228,6 +228,36 @@ class CondTweedie:
 
         return _pooled_posterior_logpdf
 
+    def batch_step_pooled(
+        self, rng_key: PRNGKeyArray, state: CondDenoiserState, score: Callable[[Array, float], Array], measurement_state: MeasurementState
+    ) -> CondDenoiserState:
+        r"""
+        batch step for conditional diffusion
+        """
+        # Shard the state across devices
+        num_devices = jax.device_count()
+        state = jax.tree_map(
+            lambda x: x.reshape((num_devices, -1, *x.shape[1:])) if len(x.shape) > 0 else x,
+            state
+        )
+
+        # vmap over position, rng_key, weights
+        state_next = _vmapper(self.step, state)(state, score)
+
+        # Reshape back to original dimensions
+        state_next = jax.tree_map(
+            lambda x: x.reshape((-1, *x.shape[2:])) if len(x.shape) > 0 else x,
+            state_next
+        )
+        integrator_state_next = state_next.integrator_state
+        log_weights = state_next.weights
+
+        denoised = integrator_state_next.position
+        abs_denoised = jnp.abs(denoised[..., 0] + 1j * denoised[..., 1])
+        jax.experimental.io_callback(plot_lines, None, abs_denoised, integrator_state_next.t[0])
+
+
+        return CondDenoiserState(integrator_state_next, log_weights)
 
     def pooled_posterior_logpdf(
         self,

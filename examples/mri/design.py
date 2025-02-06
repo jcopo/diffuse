@@ -92,7 +92,7 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
     # Get mask configuration
     if config['mask']['mask_type'] == 'spiral':
         mask = maskSpiral(img_shape=shape, task=config['task'], num_spiral=config['mask']['num_spirals'], data_model=config['dataset'])
-        
+
     elif config['mask']['mask_type'] == 'radial':
         mask = maskRadial(
             num_lines= config['mask']['num_lines'],
@@ -102,7 +102,7 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
         )
 
     elif config['mask']['mask_type'] == 'vertical':
-        mask = maskVertical(num_lines=30, 
+        mask = maskVertical(num_lines=30,
                             img_shape=shape,
                             task=config['task'],
                             data_model=config['dataset']
@@ -171,7 +171,7 @@ def main(
     # integrator = DPMpp2sIntegrator(sde=sde, stochastic_churn_rate=.3)
     integrator = HeunIntegrator(sde=sde, stochastic_churn_rate=.3)
     resample = True
-    
+
     if isinstance(integrator, DDIMIntegrator):
         print("Using DDIMIntegrator")
     elif isinstance(integrator, EulerMaruyama):
@@ -193,9 +193,17 @@ def main(
 
     # measurement_state = mask.init_measurement(ground_truth) # uncoment for centered rectangle
 
+    schedule = optax.exponential_decay(
+        init_value=config['inference']['lr'],
+        transition_steps=n_opt_steps,
+        decay_rate=0.98,
+        transition_begin=int(n_opt_steps * 0.25),
+        staircase=False,
+    )
+
     # ExperimentOptimizer
     optimizer = optax.chain(
-        optax.adam(learning_rate=config['inference']['lr']),
+        optax.adam(learning_rate=schedule),
         optax.scale(-1)
     )
     experiment_optimizer = ExperimentOptimizer(
