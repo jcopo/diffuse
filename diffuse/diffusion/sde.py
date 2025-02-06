@@ -177,5 +177,5 @@ class SDE:
             int_b = self.beta.integrate(t, self.beta.t0).squeeze()
             beta = 1 - jnp.exp(-int_b)  # β_t = 1 - α_t
             noise = noise_fn(x, t)
-            return -noise / (jnp.sqrt(beta) + 1e-8)
+            return -noise / (jnp.sqrt(beta) + 1e-6)  # Correct equivalence: score = -ε / √β
         return score_fn

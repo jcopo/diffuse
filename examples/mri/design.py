@@ -84,7 +84,7 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
         return score_value
     sde = SDE(beta=beta, tf=tf)
 
-    if config.get('training', {}).get('loss') == "noise_matching":
+    if config.get('training', {}).get('loss') in ["noise_matching", "mae_noise_matching"]:
         nn_score = sde.noise_to_score(nn_score)
 
     shape = ground_truth.shape

@@ -9,17 +9,17 @@
 #SBATCH --time=02:00:00
 #SBATCH --output=slurm_logs/%j_exp_brain.out
 #SBATCH --error=slurm_logs/%j_exp_brain.err
-#SBATCH -C h100
-#SBATCH --qos=qos_gpu_h100-t3
-#SBATCH -A hlp@h100
+#SBATCH -C a100
+#SBATCH --qos=qos_gpu_a100-t3
+#SBATCH -A hlp@a100
 
 # Set data model (0=WMH, 1=BRATS, 2=fastMRI, 3=brainFastMRI)
-data_model_index=2
+data_model_index=3
 data_model_array=("WMH" "BRATS" "fastMRI" "brainFastMRI" "kneeFastMRI")
 data_model=${data_model_array[$data_model_index]}
 
 # Set model folder name
-name_model_folder="models_with_val_very_small"
+name_model_folder="models_with_val_deepseek"
 
 # Construct config path
 config_path="/lustre/fsn1/projects/rech/hlp/uha64uw/diffuse/data/${data_model}/${name_model_folder}/config_${data_model}.yaml"

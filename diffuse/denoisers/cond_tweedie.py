@@ -190,9 +190,17 @@ class CondTweedie:
 
                 score_val, tangents = jax.jvp(score_fn, (x,), (v,))
                 guidance = (v - tangents)  # Exact Hessian term
+            
             else:
                 guidance = v
                 score_val = self.score(x, t)
+                # eps = 1e-3  # Small perturbation
+                # x_plus = x + eps * v
+                # x_minus = x - eps * v
+                # score_plus = self.score(x_plus, t)
+                # score_minus = self.score(x_minus, t)
+                # hessian_approx = (score_plus - score_minus) / (2 * eps)
+                # guidance = v - hessian_approx
 
             # Apply scaled guidance
             return score_val + guidance
@@ -292,6 +300,14 @@ class CondTweedie:
 
             # Apply VJP with the residual
             #guidance = jax.vmap(vjp_score)(residual)
+            # else:
+                # eps = 1e-3  # Small perturbation
+                # x_plus = x + eps * residual
+                # x_minus = x - eps * residual
+                # score_plus = self.score(x_plus, t)
+                # score_minus = self.score(x_minus, t)
+                # hessian_approx = (score_plus - score_minus) / (2 * eps)
+                # guidance = residual - hessian_approx
 
             # Add past contribution using Tweedie
             past_contribution = self.posterior_logpdf(rng_key2, y_past, mask_history)
