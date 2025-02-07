@@ -91,7 +91,7 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
 
     # Get mask configuration
     if config['mask']['mask_type'] == 'spiral':
-        mask = maskSpiral(num_spiral=config['mask']['num_spirals'], img_shape=shape, task=config['task'], num_samples=8000, sigma=1., data_model=config['dataset'])
+        mask = maskSpiral(img_shape=shape, task=config['task'], num_samples=8000, sigma=1., data_model=config['dataset'])
 
     elif config['mask']['mask_type'] == 'radial':
         mask = maskRadial(
@@ -102,12 +102,11 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
         )
 
     elif config['mask']['mask_type'] == 'vertical':
-        mask = maskVertical(num_lines=30,
+        mask = maskVertical(num_lines=10, # config['mask']['num_lines'],
                             img_shape=shape,
                             task=config['task'],
                             data_model=config['dataset']
                         )
-        # mask = maskRandom(img_shape=shape, task=config['task'], data_model=config['dataset'])
 
     # Initialize experiment
     experiment = WMHExperiment(mask=mask)
@@ -168,8 +167,8 @@ def main(
     # integrator = EulerMaruyama(sde)
     # integrator = DDIMIntegrator(sde)
     # integrator = Euler(sde)
-    # integrator = DPMpp2sIntegrator(sde=sde, stochastic_churn_rate=1., churn_min=1., churn_max=1.0, noise_inflation_factor=1.001)
-    integrator = HeunIntegrator(sde=sde, stochastic_churn_rate=1., churn_min=1., churn_max=1.0, noise_inflation_factor=1.001)
+    integrator = DPMpp2sIntegrator(sde=sde, stochastic_churn_rate=1., churn_min=1., churn_max=2., noise_inflation_factor=1.001)
+    # integrator = HeunIntegrator(sde=sde, stochastic_churn_rate=1., churn_min=1., churn_max=2., noise_inflation_factor=1.001)
     resample = True
 
     print(f'Using {integrator.__class__.__name__} as integrator') 
@@ -180,9 +179,11 @@ def main(
     # init design and measurement
 
     xi = mask.init_design(key)
-    measurement_state = mask.init_measurement(xi)
 
-    # measurement_state = mask.init_measurement(ground_truth) # uncoment for centered rectangle
+    if config['mask']['mask_type'] == 'vertical':
+        measurement_state = mask.init_measurement(ground_truth)
+    else:
+        measurement_state = mask.init_measurement(xi)
 
     schedule = optax.exponential_decay(
         init_value=config['inference']['lr'],
@@ -217,7 +218,7 @@ def main(
         optimal_state, history = experiment_optimizer.get_design(
             exp_state, subkey, measurement_state, n_steps=n_t, n_loop_opt=n_opt_steps
         )
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         jax.debug.print("design optimal: {}", optimal_state.design)
         if logger and len(devices) == 1:
             logger.log(

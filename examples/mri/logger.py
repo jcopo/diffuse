@@ -146,8 +146,10 @@ class MRILogger:
         )
 
         # Plot history using io_callback
+        plot_history = partial(self.experiment.plot_history, logging_path=self.dir_path) if self.save_plots else self.experiment.plot_history
         jax.experimental.io_callback(
-            self.experiment.plot_history,
+            plot_history,
             None,
+            iteration,
             history
         )

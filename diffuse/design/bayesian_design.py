@@ -111,6 +111,7 @@ class ExperimentOptimizer:
             design, opt_state, y_cntrst, val_eig = calculate_and_apply_gradient(
                 thetas, cntrst_thetas, design, self.mask, self.optimizer, opt_state
             )
+            design = self.mask.projection_design(design)
             return (design, opt_state), (y_cntrst, val_eig)
 
         # Condition for multiple optimization steps

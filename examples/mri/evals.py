@@ -78,14 +78,17 @@ class Experiment(Protocol):
 class WMHExperiment(Experiment):
     mask: ForwardModel
 
-    def plot_history(self, history):
+    def plot_history(self, n_meas, history, logging_path=None):
         """Plot the history array."""
         fig, ax = plt.subplots(1, 1)
         ax.plot(history[-1])
         ax.set_xlabel('Iteration')
         ax.set_ylabel('Value')
         ax.set_title('History')
-        plt.show()
+        if logging_path:
+            plt.savefig(f"{logging_path}/{n_meas}_history.png", bbox_inches="tight")
+        else:
+            plt.show()
         plt.close()
 
 

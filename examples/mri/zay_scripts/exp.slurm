@@ -6,7 +6,7 @@
 #SBATCH --gres=gpu:4
 #SBATCH --cpus-per-task=24
 #SBATCH --hint=nomultithread
-#SBATCH --time=02:00:00
+#SBATCH --time=01:00:00
 #SBATCH --output=slurm_logs/%j_exp_knees.out
 #SBATCH --error=slurm_logs/%j_exp_knees.err
 #SBATCH -C h100
