@@ -1,19 +1,30 @@
-import jax.numpy as jnp
-from diffuse.design.bayesian_design import BEDState, MeasurementState
-from diffuse.denoisers.cond_denoiser import CondDenoiser
-from diffuse.base_forward_model import ForwardModel
-from jaxtyping import Array, PRNGKeyArray
+# pylint: disable=assignment-from-no-return
 from dataclasses import dataclass
+from typing import Tuple
+
 import jax
+import jax.numpy as jnp
+from jaxtyping import Array, PRNGKeyArray
+
+from diffuse.base_forward_model import ForwardModel
+from diffuse.denoisers.cond_denoiser import CondDenoiser
+from diffuse.design.bayesian_design import BEDState, MeasurementState
+
 
 @dataclass
 class ADSOptimizer:
     """Implements fastMRI-style mask optimization strategies in JAX"""
     denoiser: CondDenoiser
     mask: ForwardModel
+    base_shape: Tuple[int, ...]
     strategy: str = "column_entropy"
     sigma: float = 1.0
     n_center: int = 10
+
+    def init(self, rng_key: PRNGKeyArray, n_samples: int, n_samples_cntrst: int, dt: float):
+        design = self.mask.init_design(rng_key)
+        denoiser_state = self.denoiser.init(design, rng_key, dt)
+        return BEDState(denoiser_state=denoiser_state, cntrst_denoiser_state=None, design=design, opt_state=None)
 
     def _compute_selection_metric(self, particles: Array) -> Array:
         """Compute selection metric based on strategy"""
@@ -30,7 +41,7 @@ class ADSOptimizer:
     def _update_design(self, state: BEDState, particles: Array) -> Array:
         """Update mask based on posterior particles"""
         # Convert to k-space
-        kspace_particles = jnp.fft.fft2(particles, axes=(-3, -2))
+        kspace_particles = self.mask.measure(state.design, particles)
 
         # Compute metric and prevent reselection
         metric = self._compute_selection_metric(kspace_particles)
@@ -61,33 +72,20 @@ class ADSOptimizer:
         new_mask = state.design.at[:, :, selected, :].set(1)
         return new_mask
 
-    def step(
+    def get_design(
         self,
         state: BEDState,
         rng_key: PRNGKeyArray,
         measurement_state: MeasurementState,
+        n_steps: int,
     ) -> BEDState:
+        n_particles = jax.device_count() * 5
         # Get posterior samples from denoiser state
         particles = state.denoiser_state.integrator_state.position
 
         # Update mask design
         new_design = self._update_design(state, particles)
 
-        # Update measurement state with new mask
-        new_measurement_state = measurement_state._replace(
-            mask_history=jnp.concatenate([
-                measurement_state.mask_history,
-                new_design[None]
-            ], axis=0)
-        )
+        cond_denoiser_state, _ = self.denoiser.generate(rng_key, measurement_state, n_steps, n_particles)
 
-        # Run standard denoising step with updated mask
-        return super().step(
-            state._replace(design=new_design),
-            rng_key,
-            new_measurement_state
-        )
-
-    def get_design(self, *args, **kwargs):
-        """Disable optimization steps, use pure mask selection"""
-        return super().get_design(*args, **kwargs)
+        return BEDState(denoiser_state=cond_denoiser_state, cntrst_denoiser_state=cond_denoiser_state, design=new_design, opt_state=None), _

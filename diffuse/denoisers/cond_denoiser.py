@@ -93,7 +93,7 @@ class CondDenoiser:
         )
         return CondDenoiserState(integrator_state, weights)
 
-    def generate(self, rng_key: PRNGKeyArray, forward_model: ForwardModel, measurement_state: MeasurementState, design: Array, n_steps: int, n_particles: int):
+    def generate(self, rng_key: PRNGKeyArray, measurement_state: MeasurementState, n_steps: int, n_particles: int):
         dt = self.sde.tf / n_steps
 
         key, subkey = jax.random.split(rng_key)

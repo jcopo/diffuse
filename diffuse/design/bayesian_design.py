@@ -1,3 +1,4 @@
+# pylint: disable=assignment-from-no-return
 from typing import NamedTuple, Tuple
 from dataclasses import dataclass
 import jax
@@ -18,6 +19,7 @@ class BEDState(NamedTuple):
     design: Array
     opt_state: optax.OptState
 
+
 def _vmapper(fn, type):
     def _set_axes(path, value):
         # Vectorize only particles and rng_key fields
@@ -29,10 +31,12 @@ def _vmapper(fn, type):
     in_axes = jax.tree_util.tree_map_with_path(_set_axes, type)
     return jax.vmap(fn, in_axes=(in_axes, None))
 
+
 def _reverse_time(state, sde):
     t = state.t
     state = state._replace(t=sde.tf - t)
     return state
+
 
 @dataclass
 class ExperimentOptimizer:
@@ -78,19 +82,27 @@ class ExperimentOptimizer:
 
         # step theta
         score_likelihood = self.denoiser.posterior_logpdf(rng_key, y, mask_history)
-        denoiser_state = self.denoiser.batch_step(rng_key, denoiser_state, score_likelihood, measurement_state)
+        denoiser_state = self.denoiser.batch_step(
+            rng_key, denoiser_state, score_likelihood, measurement_state
+        )
 
         thetas = denoiser_state.integrator_state.position
         cntrst_thetas = cntrst_denoiser_state.integrator_state.position
 
         # apply tweedie to thetas and cntrst_thetas
-        cntrst_rev = _reverse_time(cntrst_denoiser_state.integrator_state, self.denoiser.sde)
+        cntrst_rev = _reverse_time(
+            cntrst_denoiser_state.integrator_state, self.denoiser.sde
+        )
         denoiser_rev = _reverse_time(denoiser_state.integrator_state, self.denoiser.sde)
-        vmapped_tweedie = _vmapper(self.denoiser.sde.tweedie, cntrst_denoiser_state.integrator_state)
+        vmapped_tweedie = _vmapper(
+            self.denoiser.sde.tweedie, cntrst_denoiser_state.integrator_state
+        )
 
-        thetas = jax.vmap(self.denoiser.sde.tweedie, in_axes=(0, None))(denoiser_rev, self.denoiser.score).position
+        thetas = jax.vmap(self.denoiser.sde.tweedie, in_axes=(0, None))(
+            denoiser_rev, self.denoiser.score
+        ).position
         cntrst_thetas = vmapped_tweedie(cntrst_rev, self.denoiser.score).position
-        #jax.experimental.io_callback(plot_lines, None, jnp.abs(thetas[..., 0] + 1j * thetas[..., 1]), denoiser_rev.t[0])
+        # jax.experimental.io_callback(plot_lines, None, jnp.abs(thetas[..., 0] + 1j * thetas[..., 1]), denoiser_rev.t[0])
         #
 
         # update design with optional multiple optimization steps
@@ -103,10 +115,15 @@ class ExperimentOptimizer:
 
         # Condition for multiple optimization steps
         design_tuple = (design, opt_state)
+
         def true_branch(x):
             (design, opt_state), y = jax.lax.scan(opt_step, x, jnp.arange(300))
             y, val_eig = y
-            return (design, opt_state), y[0], val_eig[0]  # Return just the last y_cntrst
+            return (
+                (design, opt_state),
+                y[0],
+                val_eig[0],
+            )  # Return just the last y_cntrst
 
         def false_branch(x):
             design, opt_state = x
@@ -116,7 +133,7 @@ class ExperimentOptimizer:
             return (design, opt_state), y_cntrst, val_eig
 
         design_tuple, y_cntrst, val_eig = jax.lax.cond(
-            denoiser_state.integrator_state.t[0] > 1.,
+            denoiser_state.integrator_state.t[0] > 1.0,
             true_branch,
             false_branch,
             design_tuple,
@@ -127,9 +144,13 @@ class ExperimentOptimizer:
         score_likelihood = self.denoiser.pooled_posterior_logpdf(
             key_t, y_cntrst, y, design, mask_history
         )
-        cntrst_denoiser_state = self.denoiser.batch_step_pooled(rng_key, cntrst_denoiser_state, score_likelihood, measurement_state)
-        denoiser_state, cntrst_denoiser_state = _fix_time(denoiser_state, cntrst_denoiser_state)
-        #jax.debug.print("design: {}", design)
+        cntrst_denoiser_state = self.denoiser.batch_step_pooled(
+            rng_key, cntrst_denoiser_state, score_likelihood, measurement_state
+        )
+        denoiser_state, cntrst_denoiser_state = _fix_time(
+            denoiser_state, cntrst_denoiser_state
+        )
+        # jax.debug.print("design: {}", design)
         state_next = BEDState(
             denoiser_state=denoiser_state,
             cntrst_denoiser_state=cntrst_denoiser_state,
@@ -148,7 +169,11 @@ class ExperimentOptimizer:
     ):
         def step(state, tup):
             rng_key, idx = tup
-            state = jax.lax.cond((idx % n_steps) == 0, lambda: restart_state(state, rng_key, self.denoiser), lambda: state)
+            state = jax.lax.cond(
+                (idx % n_steps) == 0,
+                lambda: restart_state(state, rng_key, self.denoiser),
+                lambda: state,
+            )
             state, val_eig = self.step(state, rng_key, measurement_state)
             return state, (state.design, val_eig)
 
@@ -165,11 +190,17 @@ def restart_state(state, rng_key, denoiser):
     base_shape = state.denoiser_state.integrator_state.position.shape[1:]
     dt = state.denoiser_state.integrator_state.dt
     rng_key, rng_key_t, rng_key_c = jax.random.split(rng_key, 3)
-    thetas, cntrst_thetas = _init_start_time(rng_key, n_thetas, n_cntrst_thetas, base_shape)
+    thetas, cntrst_thetas = _init_start_time(
+        rng_key, n_thetas, n_cntrst_thetas, base_shape
+    )
     denoiser_state = denoiser.init(thetas, rng_key_t, dt)
     cntrst_denoiser_state = denoiser.init(cntrst_thetas, rng_key_c, dt)
-    return BEDState(denoiser_state=denoiser_state, cntrst_denoiser_state=cntrst_denoiser_state, design=state.design, opt_state=state.opt_state)
-
+    return BEDState(
+        denoiser_state=denoiser_state,
+        cntrst_denoiser_state=cntrst_denoiser_state,
+        design=state.design,
+        opt_state=state.opt_state,
+    )
 
 
 def _init_start_time(
@@ -227,21 +258,22 @@ def information_gain(
     return (logprob_ref - weighted_logprobs).mean(), y_ref
 
 
-def _fix_time(denoiser_state: CondDenoiserState, cntrst_denoiser_state: CondDenoiserState):
+def _fix_time(
+    denoiser_state: CondDenoiserState, cntrst_denoiser_state: CondDenoiserState
+):
     # Create new integrator states with fixed time
     new_denoiser_integrator = denoiser_state.integrator_state._replace(
-        t=denoiser_state.integrator_state.t[0],
-        dt=denoiser_state.integrator_state.dt[0]
+        t=denoiser_state.integrator_state.t[0], dt=denoiser_state.integrator_state.dt[0]
     )
     new_cntrst_integrator = cntrst_denoiser_state.integrator_state._replace(
         t=cntrst_denoiser_state.integrator_state.t[0],
-        dt=cntrst_denoiser_state.integrator_state.dt[0]
+        dt=cntrst_denoiser_state.integrator_state.dt[0],
     )
 
     # Return new denoiser states with updated integrator states
     return (
         denoiser_state._replace(integrator_state=new_denoiser_integrator),
-        cntrst_denoiser_state._replace(integrator_state=new_cntrst_integrator)
+        cntrst_denoiser_state._replace(integrator_state=new_cntrst_integrator),
     )
 
 
@@ -251,14 +283,35 @@ class ExperimentRandom:
     mask: ForwardModel
     base_shape: Tuple[int, ...]
 
-    def init(self, rng_key: PRNGKeyArray, n_samples: int, n_samples_cntrst: int, dt: float):
+    def init(
+        self, rng_key: PRNGKeyArray, n_samples: int, n_samples_cntrst: int, dt: float
+    ):
         design = self.mask.init_design(rng_key)
         denoiser_state = self.denoiser.init(design, rng_key, dt)
-        return BEDState(denoiser_state=denoiser_state, cntrst_denoiser_state=None, design=design, opt_state=None)
+        return BEDState(
+            denoiser_state=denoiser_state,
+            cntrst_denoiser_state=None,
+            design=design,
+            opt_state=None,
+        )
 
-    def get_design(self, state: BEDState, rng_key: PRNGKeyArray, measurement_state: MeasurementState, n_steps: int, **kwargs):
+    def get_design(
+        self,
+        state: BEDState,
+        rng_key: PRNGKeyArray,
+        measurement_state: MeasurementState,
+        n_steps: int,
+        **kwargs,
+    ):
         n_particles = jax.device_count() * 5
         design = self.mask.init_design(rng_key)
-        cond_denoiser_state, _ = self.denoiser.generate(rng_key, self.mask, measurement_state, design, n_steps, n_particles)
+        cond_denoiser_state, _ = self.denoiser.generate(
+            rng_key, measurement_state, n_steps, n_particles
+        )
 
-        return BEDState(denoiser_state=cond_denoiser_state, cntrst_denoiser_state=cond_denoiser_state, design=design, opt_state=None), _
+        return BEDState(
+            denoiser_state=cond_denoiser_state,
+            cntrst_denoiser_state=cond_denoiser_state,
+            design=design,
+            opt_state=None,
+        ), _
