@@ -49,29 +49,14 @@ PARAMS_SIGMA_VERTICAL = {
     "WMH": .1,
     "BRATS": .1,
 }
+
 ######## SPIRAL ########
-PARAMS_SIGMA = {
-    "kneeFastMRI": 5,
-    "fastMRI": 5,
-    "brainFastMRI": 5,
-    "WMH": 1.5,
-    "BRATS": 2,
-}
-
-PARAMS_FOV = {
-    "kneeFastMRI": {'minval': 2.5, 'maxval': 3.5},
-    "fastMRI": {'minval': 2.5, 'maxval': 3.5},
-    "brainFastMRI": {'minval': 2.5, 'maxval': 3.5},
-    "WMH": {'minval': 2.5, 'maxval': 3.5},
-    "BRATS": {'minval': 0.5, 'maxval': 0.6},
-}
-
-PARAMS_KMAX = {
-    "kneeFastMRI": {'minval': 3, 'maxval': 6},
-    "fastMRI": {'minval': 3, 'maxval': 6},
-    "brainFastMRI": {'minval': 3, 'maxval': 6},
-    "WMH": {'minval': 3, 'maxval': 6},
-    "BRATS": {'minval': 0.5, 'maxval': 1},
+PARAMS_SPIRAL = {
+    "kneeFastMRI": {'minval': 0.0, 'maxval': 1.0},
+    "fastMRI": {'minval': 0.0, 'maxval': 1.0},
+    "brainFastMRI": {'minval': 0.0, 'maxval': 1.0},
+    "WMH": {'minval': 0.0, 'maxval': 1.0},
+    "BRATS": {'minval': 0.0, 'maxval': 1.0},
 }
 
 

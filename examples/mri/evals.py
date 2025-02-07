@@ -124,7 +124,7 @@ class WMHExperiment(Experiment):
                       max_val=max_val,
                       filter_size=13,     # Increased from 7 to 11
                       filter_sigma=2.,   # Increased from 1.02 to 1.5
-                      k1=0.05,           # Default is usually 0.01
+                      k1=0.1,           # Default is usually 0.01
                       k2=0.1)           # Default is usually 0.03
         ssim_array = jax.vmap(ssim, in_axes=(None, 0))(abs_ground_truth, abs_theta_infered)
         #ssim_score = jnp.sum(ssim_array * weights_infered)
@@ -136,16 +136,19 @@ class WMHExperiment(Experiment):
         lpips_score = jnp.squeeze(lpips_score, axis=(1,2,3))
         # lpips_score = jnp.sum(lpips_score * weights_infered)
         lpips_score = jnp.min(lpips_score)
+    
         # Save the magnitude images - fixed callback usage
-        # save_path = "/lustre/fswork/projects/rech/hlp/uha64uw/tmp_res/magnitude_images.npz"
-        # def save_callback(gt, pred):
+        
+        # def save_callback(gt, pred, ssim_score_):
+            # save_path = f"/lustre/fswork/projects/rech/hlp/uha64uw/tmp_res/magnitude_images_{ssim_score_}.npz"
             # jnp.savez(save_path, ground_truth_=gt, prediction_=pred)
 
         # jax.experimental.io_callback(
             # save_callback,
             # None,
             # abs_ground_truth,
-            # abs_theta_infered
+            # abs_theta_infered,
+            # ssim_score
         # )
 
         if task == "anomaly":

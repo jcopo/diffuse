@@ -91,7 +91,7 @@ def initialize_experiment(key: PRNGKeyArray, config: dict):
 
     # Get mask configuration
     if config['mask']['mask_type'] == 'spiral':
-        mask = maskSpiral(img_shape=shape, task=config['task'], num_spiral=config['mask']['num_spirals'], data_model=config['dataset'])
+        mask = maskSpiral(num_spiral=config['mask']['num_spirals'], img_shape=shape, task=config['task'], num_samples=8000, sigma=1., data_model=config['dataset'])
 
     elif config['mask']['mask_type'] == 'radial':
         mask = maskRadial(
@@ -168,20 +168,11 @@ def main(
     # integrator = EulerMaruyama(sde)
     # integrator = DDIMIntegrator(sde)
     # integrator = Euler(sde)
-    # integrator = DPMpp2sIntegrator(sde=sde, stochastic_churn_rate=.3)
-    integrator = HeunIntegrator(sde=sde, stochastic_churn_rate=.3)
+    # integrator = DPMpp2sIntegrator(sde=sde, stochastic_churn_rate=1., churn_min=1., churn_max=1.0, noise_inflation_factor=1.001)
+    integrator = HeunIntegrator(sde=sde, stochastic_churn_rate=1., churn_min=1., churn_max=1.0, noise_inflation_factor=1.001)
     resample = True
 
-    if isinstance(integrator, DDIMIntegrator):
-        print("Using DDIMIntegrator")
-    elif isinstance(integrator, EulerMaruyama):
-        print("Using EulerMaruyamaIntegrator")
-    elif isinstance(integrator, Euler):
-        print("Using EulerIntegrator")
-    elif isinstance(integrator, DPMpp2sIntegrator):
-        print("Using DPMpp2sIntegrator")
-    elif isinstance(integrator, HeunIntegrator):
-        print("Using HeunIntegrator")
+    print(f'Using {integrator.__class__.__name__} as integrator') 
 
     # denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
     denoiser = CondTweedie(integrator, sde, nn_score, mask, resample)

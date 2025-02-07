@@ -192,17 +192,15 @@ class CondTweedie:
                 guidance = (v - tangents)  # Exact Hessian term
             
             else:
-                guidance = v
                 score_val = self.score(x, t)
-                # eps = 1e-3  # Small perturbation
-                # x_plus = x + eps * v
-                # x_minus = x - eps * v
-                # score_plus = self.score(x_plus, t)
-                # score_minus = self.score(x_minus, t)
-                # hessian_approx = (score_plus - score_minus) / (2 * eps)
-                # guidance = v - hessian_approx
+                eps = 1e-3  # Small perturbation
+                x_plus = x + eps * v
+                x_minus = x - eps * v
+                score_plus = self.score(x_plus, t)
+                score_minus = self.score(x_minus, t)
+                hessian_approx = (score_plus - score_minus) / (2 * eps)
+                guidance = v - hessian_approx
 
-            # Apply scaled guidance
             return score_val + guidance
 
         return _posterior_logpdf
@@ -261,7 +259,7 @@ class CondTweedie:
         log_weights = state_next.weights
 
         denoised = integrator_state_next.position
-        abs_denoised = jnp.abs(denoised[..., 0] + 1j * denoised[..., 1])
+        # abs_denoised = jnp.abs(denoised[..., 0] + 1j * denoised[..., 1])
         # jax.experimental.io_callback(plot_lines, None, abs_denoised, integrator_state_next.t[0])
 
 
