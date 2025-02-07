@@ -223,15 +223,17 @@ def main(
         jax.debug.print("Processing step {n}", n=n_meas)
         jax.debug.print("design start: {}", exp_state.design)
 
-        optimal_state, _ = experiment_optimizer.get_design(
+        optimal_state, history = experiment_optimizer.get_design(
             exp_state, subkey, measurement_state, n_steps=n_t, n_loop_opt=n_opt_steps
         )
+        import pdb; pdb.set_trace()
         jax.debug.print("design optimal: {}", optimal_state.design)
         if logger and len(devices) == 1:
             logger.log(
                 ground_truth,
                 optimal_state,
                 measurement_state,
+                history,
                 n_meas
             )
 

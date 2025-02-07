@@ -78,6 +78,17 @@ class Experiment(Protocol):
 class WMHExperiment(Experiment):
     mask: ForwardModel
 
+    def plot_history(self, history):
+        """Plot the history array."""
+        fig, ax = plt.subplots(1, 1)
+        ax.plot(history[-1])
+        ax.set_xlabel('Iteration')
+        ax.set_ylabel('Value')
+        ax.set_title('History')
+        plt.show()
+        plt.close()
+
+
     def plot_measurement(self, measurement_state):
         plot_measurement(measurement_state)
 
@@ -123,7 +134,7 @@ class WMHExperiment(Experiment):
         tmp = jnp.tile(tmp, (abs_theta_infered.shape[0], 1, 1, 1))
         lpips_score = lpips_fn(tmp, abs_theta_infered)
         lpips_score = jnp.squeeze(lpips_score, axis=(1,2,3))
-        # lpips_score = jnp.sum(lpips_score * weights_infered)    
+        # lpips_score = jnp.sum(lpips_score * weights_infered)
         lpips_score = jnp.min(lpips_score)
         # Save the magnitude images - fixed callback usage
         # save_path = "/lustre/fswork/projects/rech/hlp/uha64uw/tmp_res/magnitude_images.npz"

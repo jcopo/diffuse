@@ -68,7 +68,7 @@ class MRILogger:
             else:
                 writer.writerow([iteration, float(psnr_score), float(ssim_score), float(lpips_score), float(kspace_percent)])
 
-    def log(self, ground_truth: Array, optimal_state: BEDState, measurement_state: MeasurementState, iteration: int):
+    def log(self, ground_truth: Array, optimal_state: BEDState, measurement_state: MeasurementState, history: Array, iteration: int):
         """
         Log all metrics and generate plots for the current iteration.
 
@@ -143,4 +143,11 @@ class MRILogger:
             lpips_score,
             kspace_percent,
             segmentation_metrics
+        )
+
+        # Plot history using io_callback
+        jax.experimental.io_callback(
+            self.experiment.plot_history,
+            None,
+            history
         )

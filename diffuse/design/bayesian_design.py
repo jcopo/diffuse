@@ -18,6 +18,21 @@ class BEDState(NamedTuple):
     design: Array
     opt_state: optax.OptState
 
+def _vmapper(fn, type):
+    def _set_axes(path, value):
+        # Vectorize only particles and rng_key fields
+        if any(field in str(path) for field in ["position", "rng_key", "weights"]):
+            return 0
+        return None
+
+    # Create tree with selective vectorization
+    in_axes = jax.tree_util.tree_map_with_path(_set_axes, type)
+    return jax.vmap(fn, in_axes=(in_axes, None))
+
+def _reverse_time(state, sde):
+    t = state.t
+    state = state._replace(t=sde.tf - t)
+    return state
 
 @dataclass
 class ExperimentOptimizer:
@@ -67,28 +82,41 @@ class ExperimentOptimizer:
 
         thetas = denoiser_state.integrator_state.position
         cntrst_thetas = cntrst_denoiser_state.integrator_state.position
+
+        # apply tweedie to thetas and cntrst_thetas
+        cntrst_rev = _reverse_time(cntrst_denoiser_state.integrator_state, self.denoiser.sde)
+        denoiser_rev = _reverse_time(denoiser_state.integrator_state, self.denoiser.sde)
+        vmapped_tweedie = _vmapper(self.denoiser.sde.tweedie, cntrst_denoiser_state.integrator_state)
+
+        thetas = jax.vmap(self.denoiser.sde.tweedie, in_axes=(0, None))(denoiser_rev, self.denoiser.score).position
+        cntrst_thetas = vmapped_tweedie(cntrst_rev, self.denoiser.score).position
+        #jax.experimental.io_callback(plot_lines, None, jnp.abs(thetas[..., 0] + 1j * thetas[..., 1]), denoiser_rev.t[0])
+        #
+
         # update design with optional multiple optimization steps
         def opt_step(state_tuple, _):
             design, opt_state = state_tuple
-            design, opt_state, y_cntrst = calculate_and_apply_gradient(
+            design, opt_state, y_cntrst, val_eig = calculate_and_apply_gradient(
                 thetas, cntrst_thetas, design, self.mask, self.optimizer, opt_state
             )
-            return (design, opt_state), y_cntrst
+            return (design, opt_state), (y_cntrst, val_eig)
 
         # Condition for multiple optimization steps
         design_tuple = (design, opt_state)
         def true_branch(x):
-            (design, opt_state), y = jax.lax.scan(opt_step, x, jnp.arange(100))
-            return (design, opt_state), y[0]  # Return just the last y_cntrst
+            (design, opt_state), y = jax.lax.scan(opt_step, x, jnp.arange(300))
+            y, val_eig = y
+            return (design, opt_state), y[0], val_eig[0]  # Return just the last y_cntrst
 
         def false_branch(x):
-            design, opt_state, y_cntrst = calculate_and_apply_gradient(
-                thetas, cntrst_thetas, x[0], self.mask, self.optimizer, x[1]
+            design, opt_state = x
+            design, opt_state, y_cntrst, val_eig = calculate_and_apply_gradient(
+                thetas, cntrst_thetas, design, self.mask, self.optimizer, opt_state
             )
-            return (design, opt_state), y_cntrst
+            return (design, opt_state), y_cntrst, val_eig
 
-        design_tuple, y_cntrst = jax.lax.cond(
-            denoiser_state.integrator_state.t[0] > 1.4,
+        design_tuple, y_cntrst, val_eig = jax.lax.cond(
+            denoiser_state.integrator_state.t[0] > 1.,
             true_branch,
             false_branch,
             design_tuple,
@@ -101,13 +129,14 @@ class ExperimentOptimizer:
         )
         cntrst_denoiser_state = self.denoiser.batch_step_pooled(rng_key, cntrst_denoiser_state, score_likelihood, measurement_state)
         denoiser_state, cntrst_denoiser_state = _fix_time(denoiser_state, cntrst_denoiser_state)
-
-        return BEDState(
+        #jax.debug.print("design: {}", design)
+        state_next = BEDState(
             denoiser_state=denoiser_state,
             cntrst_denoiser_state=cntrst_denoiser_state,
             design=design,
             opt_state=opt_state,
         )
+        return state_next, val_eig
 
     def get_design(
         self,
@@ -120,8 +149,8 @@ class ExperimentOptimizer:
         def step(state, tup):
             rng_key, idx = tup
             state = jax.lax.cond((idx % n_steps) == 0, lambda: restart_state(state, rng_key, self.denoiser), lambda: state)
-            state = self.step(state, rng_key, measurement_state)
-            return state, state.design
+            state, val_eig = self.step(state, rng_key, measurement_state)
+            return state, (state.design, val_eig)
 
         keys = jax.random.split(rng_key, n_loop_opt)
         return jax.lax.scan(step, state, (keys, jnp.arange(n_loop_opt)))
@@ -166,11 +195,11 @@ def calculate_and_apply_gradient(
     optx_opt: GradientTransformation,
     opt_state: optax.OptState,
 ):
-    grad_xi_score = jax.grad(information_gain, argnums=2, has_aux=True)
-    grad_xi, ys = grad_xi_score(thetas, cntrst_thetas, design, mask)
+    grad_xi_score = jax.value_and_grad(information_gain, argnums=2, has_aux=True)
+    (val_eig, ys), grad_xi = grad_xi_score(thetas, cntrst_thetas, design, mask)
     updates, new_opt_state = optx_opt.update(grad_xi, opt_state, design)
     new_design = optax.apply_updates(design, updates)
-    return new_design, new_opt_state, ys
+    return new_design, new_opt_state, ys, val_eig
 
 
 def information_gain(

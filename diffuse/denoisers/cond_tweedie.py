@@ -262,7 +262,7 @@ class CondTweedie:
 
         denoised = integrator_state_next.position
         abs_denoised = jnp.abs(denoised[..., 0] + 1j * denoised[..., 1])
-        jax.experimental.io_callback(plot_lines, None, abs_denoised, integrator_state_next.t[0])
+        # jax.experimental.io_callback(plot_lines, None, abs_denoised, integrator_state_next.t[0])
 
 
         return CondDenoiserState(integrator_state_next, log_weights)

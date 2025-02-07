@@ -14,7 +14,6 @@ class ADSOptimizer:
     strategy: str = "column_entropy"
     sigma: float = 1.0
     n_center: int = 10
-    optimizer: None = None  # Explicitly set instead of parent class
 
     def _compute_selection_metric(self, particles: Array) -> Array:
         """Compute selection metric based on strategy"""
