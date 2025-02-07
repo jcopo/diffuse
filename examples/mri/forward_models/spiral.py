@@ -9,7 +9,7 @@ from examples.mri.forward_models.base import baseMask, PARAMS_SPIRAL
 
 
 def generate_spiral_2D(
-    N=1, num_samples=1000, k_max=1.0, FOV=1.0, angle_offset=0.0, max_angle=None
+    num_samples=1000, k_max=1.0, FOV=1.0, angle_offset=0.0, max_angle=None, N=1
 ):
     theta_max = (2 * jnp.pi / N) * k_max * FOV
     if max_angle is not None:
@@ -53,7 +53,6 @@ def grid(kx, ky, size, sigma=0.3, sharpness=10.0):
 
 @dataclass
 class maskSpiral(baseMask):
-    num_spiral: int
     img_shape: tuple
     task: str
     num_samples: int
@@ -63,15 +62,16 @@ class maskSpiral(baseMask):
     
 
     def init_design(self, key: PRNGKeyArray) -> Array:
-        return jax.random.uniform(key, shape=(3,), minval=PARAMS_SPIRAL[self.data_model]['minval'], maxval=PARAMS_SPIRAL[self.data_model]['maxval'])
-
+        # return jax.random.uniform(key, shape=(3,), minval=PARAMS_SPIRAL[self.data_model]['minval'], maxval=PARAMS_SPIRAL[self.data_model]['maxval'])
+        return jax.random.uniform(key, shape=(3,), minval=2., maxval=4.)
     def make(self, xi: Array) -> Array:
+        xi  = jax.nn.sigmoid(xi)
         fov = xi[0]
         k_max = xi[1]
         angle_offset = xi[2]
 
         kx, ky = generate_spiral_2D(
-            self.num_spiral, self.num_samples, k_max, fov, angle_offset, self.max_angle
+            self.num_samples, k_max, fov, angle_offset, self.max_angle
         )
         grid_mask_soft = grid(kx, ky, self.img_shape, self.sigma)
         grid_mask_hard = grid_mask_soft > .5

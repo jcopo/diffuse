@@ -94,6 +94,9 @@ class baseMask:
     def make(self, xi: Array) -> Array:
         pass
 
+    def projection_design(self, xi: Array) -> Array:
+        return xi
+
     def measure_from_mask(self, hist_mask: Array, x: Array) -> Array:
         if self.task == "anomaly":
             f = slice_fourier(x)
