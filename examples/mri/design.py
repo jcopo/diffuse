@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from diffuse.design.bayesian_design import ExperimentOptimizer, ExperimentRandom
 from diffuse.denoisers.cond_denoiser import CondDenoiser
 from diffuse.denoisers.cond_tweedie import CondTweedie
+from diffuse.denoisers.cond_tweediepp import CondTweediePP
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.integrator.stochastic import EulerMaruyama
 from diffuse.integrator.deterministic import DPMpp2sIntegrator, Euler, DDIMIntegrator, HeunIntegrator
@@ -167,14 +168,17 @@ def main(
     # integrator = EulerMaruyama(sde)
     # integrator = DDIMIntegrator(sde)
     # integrator = Euler(sde)
-    integrator = DPMpp2sIntegrator(sde=sde, stochastic_churn_rate=1., churn_min=1., churn_max=2., noise_inflation_factor=1.001)
+    integrator = DPMpp2sIntegrator(sde=sde, stochastic_churn_rate=.3, churn_min=1., churn_max=2., noise_inflation_factor=1.001)
     # integrator = HeunIntegrator(sde=sde, stochastic_churn_rate=1., churn_min=1., churn_max=2., noise_inflation_factor=1.001)
     resample = True
 
     print(f'Using {integrator.__class__.__name__} as integrator') 
 
     # denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
-    denoiser = CondTweedie(integrator, sde, nn_score, mask, resample)
+    denoiser = CondTweedie(integrator, sde, nn_score, mask, resample, pooled_jvp=False)
+    # denoiser = CondTweediePP(integrator, sde, nn_score, mask, resample)
+
+    print(f'Using {denoiser.__class__.__name__} as denoiser')
 
     # init design and measurement
 
