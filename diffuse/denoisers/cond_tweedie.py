@@ -86,7 +86,7 @@ class CondTweedie:
         )
         return CondDenoiserState(integrator_state, weights)
 
-    def generate(self, rng_key: PRNGKeyArray, forward_model: ForwardModel, measurement_state: MeasurementState, design: Array, n_steps: int, n_particles: int):
+    def generate(self, rng_key: PRNGKeyArray, measurement_state: MeasurementState, n_steps: int, n_particles: int):
         dt = self.sde.tf / n_steps
 
         key, subkey = jax.random.split(rng_key)
@@ -153,8 +153,13 @@ class CondTweedie:
         ######### DEBUG #########
         # t = state_next.integrator_state.t
         # from diffuse.utils.plotting import plot_lines
+
         # abs_denoised = jnp.abs(denoised[..., 0] + 1j * denoised[..., 1])
+        # # abs_denoised = jnp.abs(state_next.integrator_state.position[..., 0] + 1j * state_next.integrator_state.position[..., 1])
         # jax.experimental.io_callback(plot_lines, None, abs_denoised, t[0])
+        # v = self.forward_model.grad_logprob_y(denoised, measurement_state.y, measurement_state.mask_history)
+        # abs_v = jnp.abs(v[..., 0] + 1j * v[..., 1])
+        # jax.experimental.io_callback(plot_lines, None, abs_v, t[0])
         # diff = self.forward_model.measure_from_mask(measurement_state.mask_history, denoised) - measurement_state.y
         # abs_diff = jnp.abs(diff[..., 0] + 1j * diff[..., 1])
         # jax.experimental.io_callback(plot_lines, None, abs_diff, t[0])
@@ -179,9 +184,11 @@ class CondTweedie:
         def _posterior_logpdf(x, t):
             # Apply Tweedie's formula to get denoised prediction
             denoised = self.sde.tweedie(SDEState(x, t), self.score).position
-
-            # Compute residual: (y - AE[X_0|X_t])
+            # Compute residual: A^T(y - AE[X_0|X_t])
             v = self.forward_model.grad_logprob_y(denoised, y_meas, design_mask)
+
+            int_b = self.sde.beta.integrate(t, 0.)
+            alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
 
             if self.pooled_jvp:
                 # Compute score and guidance in one JVP operation
@@ -189,8 +196,8 @@ class CondTweedie:
                     return self.score(x_, t)
 
                 score_val, tangents = jax.jvp(score_fn, (x,), (v,))
-                guidance = (v - tangents)  # Exact Hessian term
-            
+                guidance = (v + beta * tangents)/(alpha * self.forward_model.sigma_prob) # Exact Hessian term
+
             else:
                 score_val = self.score(x, t)
                 eps = 1e-3  # Small perturbation
@@ -287,6 +294,9 @@ class CondTweedie:
                 in_axes=(None, 0, None)
             )(denoised, y_cntrst, mask).mean(axis=0)
 
+            int_b = self.sde.beta.integrate(t, 0.)
+            alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
+
             guidance = residual
             if self.pooled_jvp:
                 # Compute (I + ∇score)ᵀv using forward-mode autodiff
@@ -294,7 +304,7 @@ class CondTweedie:
                     return self.score(x_, t)
 
                 score_val, tangents = jax.jvp(score_fn, (x,), (residual,))
-                guidance = (residual - tangents) #* alpha_t
+                guidance = (residual + beta * tangents)/(alpha * self.forward_model.sigma_prob) #* alpha_t
 
             # Apply VJP with the residual
             #guidance = jax.vmap(vjp_score)(residual)
