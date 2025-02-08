@@ -12,7 +12,7 @@ from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.integrator.stochastic import EulerMaruyama
 from diffuse.integrator.deterministic import DPMpp2sIntegrator
 from diffuse.denoisers.cond_denoiser import CondDenoiser
-from diffuse.bayesian_design import ExperimentOptimizer
+from diffuse.design.bayesian_design import ExperimentOptimizer
 from examples.mnist.images import SquareMask
 from diffuse.utils.plotting import plot_lines, sigle_plot
 import matplotlib.pyplot as plt
