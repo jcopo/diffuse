@@ -1,0 +1,313 @@
+from dataclasses import dataclass
+from typing import Callable, Tuple, NamedTuple
+
+import einops
+import jax
+import jax.experimental
+import jax.numpy as jnp
+import jax.scipy as jsp
+from jaxtyping import Array, PRNGKeyArray
+from blackjax.smc.resampling import stratified
+import chex
+
+from diffuse.integrator.base import Integrator, IntegratorState
+from diffuse.diffusion.sde import SDE, SDEState
+from diffuse.base_forward_model import ForwardModel, MeasurementState
+from diffuse.utils.plotting import sigle_plot, plot_lines
+
+def is_nan(x):
+    return jnp.isnan(x).any()
+
+def _vmapper(fn, type):
+    def _set_axes(path, value):
+        # Vectorize only particles and rng_key fields
+        if any(field in str(path) for field in ["position", "rng_key", "weights"]):
+            return 0
+        return None
+
+    # Create tree with selective vectorization
+    in_axes = jax.tree_util.tree_map_with_path(_set_axes, type)
+
+    return jax.pmap(
+        jax.vmap(fn, in_axes=(in_axes, None)),
+        axis_name='devices',
+        in_axes=(in_axes, None),
+        static_broadcasted_argnums=1
+    )
+
+def ess(log_weights: Array) -> float:
+    return jnp.exp(log_ess(log_weights))
+
+
+def log_ess(log_weights: Array) -> float:
+    """Compute the effective sample size.
+
+    Parameters
+    ----------
+    log_weights: 1D Array
+        log-weights of the sample
+
+    Returns
+    -------
+    log_ess: float
+        The logarithm of the effective sample size
+
+    """
+    return 2 * jsp.special.logsumexp(log_weights) - jsp.special.logsumexp(
+        2 * log_weights
+    )
+
+
+class CondDenoiserState(NamedTuple):
+    integrator_state: IntegratorState
+    weights: Array
+
+
+@dataclass
+class CondTweediePP:
+    """Conditional denoiser using Diffusion Posterior Sampling with Tweedie's formula"""
+
+    integrator: Integrator
+    # logpdf: Callable[[SDEState, Array], Array]  # x -> t -> logpdf(x, t)
+    sde: SDE
+    score: Callable[[Array, float], Array]  # x -> t -> score(x, t)
+    forward_model: ForwardModel
+    _resample: bool = False
+    pooled_jvp: bool = False
+
+    def init(
+        self, position: Array, rng_key: PRNGKeyArray, dt: float
+    ) -> CondDenoiserState:
+        n_particles = position.shape[0]
+        weights = jnp.log(jnp.ones(n_particles) / n_particles)
+        keys = jax.random.split(rng_key, n_particles)
+        integrator_state = self.integrator.init(
+            position, keys, jnp.array(0.0), jnp.array(dt)
+        )
+        return CondDenoiserState(integrator_state, weights)
+
+    def generate(self, rng_key: PRNGKeyArray, measurement_state: MeasurementState, n_steps: int, n_particles: int):
+        dt = self.sde.tf / n_steps
+
+        key, subkey = jax.random.split(rng_key)
+        cntrst_thetas = jax.random.normal(subkey, (n_particles, *measurement_state.y.shape))
+
+        key, subkey = jax.random.split(key)
+        state = self.init(cntrst_thetas, subkey, dt)
+
+
+        def body_fun(state: CondDenoiserState, key: PRNGKeyArray):
+            posterior = self.posterior_logpdf(
+                key, measurement_state.y, measurement_state.mask_history
+            )
+            state_next = self.batch_step(key, state, posterior, measurement_state)
+            return _fix_time(state_next), None# state_next.integrator_state.position
+
+        keys = jax.random.split(key, n_steps)
+        return jax.lax.scan(body_fun, state, keys)
+
+    def step(
+        self, state: CondDenoiserState, score: Callable[[Array, float], Array]
+    ) -> CondDenoiserState:
+        r"""
+        sample p(\theta_t-1 | \theta_t, \y_t-1, \xi)
+        """
+        integrator_state, weights = state
+        integrator_state_next = self.integrator(integrator_state, score)
+
+        return CondDenoiserState(integrator_state_next, weights)
+
+    def batch_step(
+        self, rng_key: PRNGKeyArray, state: CondDenoiserState, score: Callable[[Array, float], Array], measurement_state: MeasurementState
+    ) -> CondDenoiserState:
+        r"""
+        batch step for conditional diffusion
+        """
+        # Shard the state across devices
+        num_devices = jax.device_count()
+        state = jax.tree_map(
+            lambda x: x.reshape((num_devices, -1, *x.shape[1:])) if len(x.shape) > 0 else x,
+            state
+        )
+
+        # vmap over position, rng_key, weights
+        state_next = _vmapper(self.step, state)(state, score)
+
+        # Reshape back to original dimensions
+        state_next = jax.tree_map(
+            lambda x: x.reshape((-1, *x.shape[2:])) if len(x.shape) > 0 else x,
+            state_next
+        )
+        forward_time = self.sde.tf - state_next.integrator_state.t
+        state_forward = state_next.integrator_state._replace(t=forward_time)
+
+        denoised = jax.vmap(self.sde.tweedie, in_axes=(0, None))(state_forward, self.score).position
+        diff = self.forward_model.measure_from_mask(measurement_state.mask_history, denoised) - measurement_state.y
+        abs_diff = jnp.abs(diff[..., 0] + 1j * diff[..., 1])
+        log_weights = jax.scipy.stats.norm.logpdf(abs_diff, 0, self.forward_model.sigma_prob)
+        log_weights = einops.einsum(measurement_state.mask_history, log_weights, "..., b ... -> b")
+
+        #import pdb; pdb.set_trace()
+        #log_weights = self.forward_model.logprob_y(denoised, measurement_state.y, measurement_state.mask_history)
+
+        ######### DEBUG #########
+        # t = state_next.integrator_state.t
+        # from diffuse.utils.plotting import plot_lines
+        # abs_denoised = jnp.abs(denoised[..., 0] + 1j * denoised[..., 1])
+        # jax.experimental.io_callback(plot_lines, None, abs_denoised, t[0])
+        # diff = self.forward_model.measure_from_mask(measurement_state.mask_history, denoised) - measurement_state.y
+        # abs_diff = jnp.abs(diff[..., 0] + 1j * diff[..., 1])
+        # jax.experimental.io_callback(plot_lines, None, abs_diff, t[0])
+        ######### DEBUG #########
+
+        integrator_state_next = state_next.integrator_state
+        _norm = jax.scipy.special.logsumexp(log_weights, axis=0)
+
+        log_weights = log_weights.reshape((-1,)) - _norm
+
+        if self._resample:
+            position, log_weights = self._resampling(integrator_state_next.position, log_weights, rng_key)
+            integrator_state_next = integrator_state_next._replace(position=position)
+
+        return CondDenoiserState(integrator_state_next, log_weights)
+
+
+    def posterior_logpdf(
+        self, rng_key: PRNGKeyArray, y_meas: Array, design_mask: Array
+    ):
+        # Using Tweedie's formula for posterior sampling
+        def _posterior_logpdf(x, t):
+            # Compute alpha, beta
+            int_b = self.sde.beta.integrate(t, self.sde.beta.t0).squeeze()
+            alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
+            scale = beta / alpha
+
+            # Compute (A C A^T + \sigma^2 I) v efficiently
+            def tweedie_fn(x_):
+                return self.sde.tweedie(SDEState(x_, t), self.score).position
+            
+            def estimate_jvp(v):
+                eps = 1e-3
+                x_plus = x + eps * v
+                x_minus = x - eps * v
+                denoised_plus = tweedie_fn(x_plus)
+                denoised_minus = tweedie_fn(x_minus)
+                return (denoised_plus - denoised_minus) / (2 * eps)
+            
+            def efficient(v):
+                restored_v = self.forward_model.restore_from_mask(design_mask, jnp.zeros_like(x), v)
+                _, tangents = jax.jvp(tweedie_fn, (x,), (restored_v,))
+                # tangents = estimate_jvp(restored_v)
+                measured_tangents = self.forward_model.measure_from_mask(design_mask, tangents)
+                return scale * measured_tangents +  self.forward_model.sigma_prob * v
+            
+            # Compute residual: (y - AE[X_0|X_t])
+            denoised = tweedie_fn(x)
+            b = y_meas - self.forward_model.measure_from_mask(design_mask, denoised)
+
+            res, _ = jax.scipy.sparse.linalg.cg(efficient, b, maxiter=2)
+            restored_res = self.forward_model.restore_from_mask(design_mask, jnp.zeros_like(x), res)
+            _, tangents = jax.jvp(tweedie_fn, (x,), (restored_res,))
+            # tangents = estimate_jvp(restored_res)
+
+            return tangents + self.score(x, t)
+
+        return _posterior_logpdf
+
+
+    def batch_step_pooled(
+        self, rng_key: PRNGKeyArray, state: CondDenoiserState, score: Callable[[Array, float], Array], measurement_state: MeasurementState
+    ) -> CondDenoiserState:
+        r"""
+        batch step for conditional diffusion
+        """
+        # Shard the state across devices
+        num_devices = jax.device_count()
+        state = jax.tree_map(
+            lambda x: x.reshape((num_devices, -1, *x.shape[1:])) if len(x.shape) > 0 else x,
+            state
+        )
+
+        # vmap over position, rng_key, weights
+        state_next = _vmapper(self.step, state)(state, score)
+
+        # Reshape back to original dimensions
+        state_next = jax.tree_map(
+            lambda x: x.reshape((-1, *x.shape[2:])) if len(x.shape) > 0 else x,
+            state_next
+        )
+        integrator_state_next = state_next.integrator_state
+        log_weights = state_next.weights
+
+        denoised = integrator_state_next.position
+
+
+        return CondDenoiserState(integrator_state_next, log_weights)
+
+    def pooled_posterior_logpdf(
+        self,
+        rng_key: PRNGKeyArray,
+        y_cntrst: Array,
+        y_past: Array,
+        design: Array,
+        mask_history: Array,
+    ):
+        rng_key1, rng_key2 = jax.random.split(rng_key)
+        mask = self.forward_model.make(design)
+
+        def _pooled_posterior_logpdf(x, t):
+
+            # Apply Tweedie's formula
+            denoised = self.sde.tweedie(SDEState(x, t), self.score).position
+
+            # Compute guidance using denoised prediction for contrast samples
+            residual = jax.vmap(
+                self.forward_model.grad_logprob_y,
+                in_axes=(None, 0, None)
+            )(denoised, y_cntrst, mask).mean(axis=0)
+
+            guidance = residual
+            if self.pooled_jvp:
+                # Compute (I + ∇score)ᵀv using forward-mode autodiff
+                def score_fn(x_):
+                    return self.score(x_, t)
+
+                score_val, tangents = jax.jvp(score_fn, (x,), (residual,))
+                guidance = (residual - tangents) #* alpha_t
+            past_contribution = self.posterior_logpdf(rng_key2, y_past, mask_history)
+            return guidance + past_contribution(x, t)
+
+        return _pooled_posterior_logpdf
+
+    def _resampling(
+        self, position: Array, log_weights: Array, rng_key: PRNGKeyArray
+    ) -> Tuple[Array, Array]:
+        """Resample particles based on weights if effective sample size is in target range"""
+        weights = jax.nn.softmax(log_weights, axis=0)
+
+        ess_val = ess(log_weights)
+        n_particles = position.shape[0]
+        key_resample = jax.random.split(rng_key)[1]
+        idx = stratified(key_resample, weights, n_particles)
+
+        return jax.lax.cond(
+            (ess_val < 0.5 * n_particles) & (ess_val > 0.2 * n_particles),
+            #(ess_val < 0.4 * n_particles) & (ess_val > 0.2 * n_particles),
+            lambda x: (x[idx], _normalize_log_weights(log_weights[idx])),
+            lambda x: (x, _normalize_log_weights(log_weights)),
+            position,
+        )
+
+
+def _fix_time(denoiser_state: CondDenoiserState):
+    # Create new integrator states with fixed time
+    new_denoiser_integrator = denoiser_state.integrator_state._replace(
+        t=denoiser_state.integrator_state.t[0],
+        dt=denoiser_state.integrator_state.dt[0]
+    )
+
+    # Return new denoiser states with updated integrator states
+    return denoiser_state._replace(integrator_state=new_denoiser_integrator)
+
+def _normalize_log_weights(log_weights: Array) -> Array:
+    return jax.nn.log_softmax(log_weights, axis=0)
