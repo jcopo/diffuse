@@ -1,8 +1,12 @@
 from typing import Protocol, NamedTuple
-from jaxtyping import Array
+from jaxtyping import Array, PRNGKeyArray
 
 
-IntegratorState = NamedTuple
+class IntegratorState(NamedTuple):
+    position: Array
+    rng_key: PRNGKeyArray
+    t: float
+    dt: float
 
 
 class Integrator(Protocol):

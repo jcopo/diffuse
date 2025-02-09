@@ -101,7 +101,7 @@ class CondTweedie:
                 key, measurement_state.y, measurement_state.mask_history
             )
             state_next = self.batch_step(key, state, posterior, measurement_state)
-            return _fix_time(state_next), state_next.integrator_state.position
+            return _fix_time(state_next), None # state_next.integrator_state.position
 
         keys = jax.random.split(key, n_steps)
         return jax.lax.scan(body_fun, state, keys)

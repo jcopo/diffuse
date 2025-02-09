@@ -166,6 +166,7 @@ runs/*
 *.out
 
 .idea/
+.vscode/
 rsync.batch
 outputs/
 examples/mri/sandbox_local.ipynb
