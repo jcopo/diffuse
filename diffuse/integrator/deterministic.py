@@ -88,15 +88,15 @@ class HeunIntegrator:
     def init(self, position: Array, rng_key: PRNGKeyArray, t: float, dt: float) -> EulerState:
         """Initialize integrator state with position, timestep and step size"""
         return EulerState(position, rng_key, t, dt)
-    
+
     def __call__(self, integrator_state: EulerState, score: Callable) -> EulerState:
         _, rng_key, t_reverse, _ = integrator_state
         _, rng_key_next = jax.random.split(rng_key)
 
         _apply_stochastic_churn = partial(apply_stochastic_churn, stochastic_churn_rate=self.stochastic_churn_rate,
-                                          churn_min=self.churn_min, 
-                                          churn_max=self.churn_max, 
-                                          noise_inflation_factor=self.noise_inflation_factor, 
+                                          churn_min=self.churn_min,
+                                          churn_max=self.churn_max,
+                                          noise_inflation_factor=self.noise_inflation_factor,
                                           sde=self.sde)
         integrator_state = jax.lax.cond(
             self.stochastic_churn_rate > 0,
@@ -109,10 +109,10 @@ class HeunIntegrator:
 
         drift_curr = self.sde.reverse_drift_ode(integrator_state, score)
         integrator_state_next = EulerState(position_churned + drift_curr * (t_reverse_next - t_reverse_churned), rng_key_next, t_reverse_next, dt)
-        
+
         drift_next = self.sde.reverse_drift_ode(integrator_state_next, score)
         position_next = position_churned + (drift_curr + drift_next) * (t_reverse_next - t_reverse_churned) / 2
-        
+
 
         integrator_state_next_tmp = EulerState(position_next, rng_key_next, t_reverse_next, dt)
 
@@ -141,15 +141,15 @@ class DPMpp2sIntegrator:
         """Initialize integrator state with position, timestep and step size"""
         return EulerState(position, rng_key, t, dt)
 
-    def __call__(self, integrator_state: EulerState, score: Callable) -> EulerState:       
+    def __call__(self, integrator_state: EulerState, score: Callable) -> EulerState:
         """Perform one DPM++-2S integration step"""
         position, _, t_reverse, _ = integrator_state
         t_forward = self.sde.tf - t_reverse
 
         _apply_stochastic_churn = partial(apply_stochastic_churn, stochastic_churn_rate=self.stochastic_churn_rate,
-                                          churn_min=self.churn_min, 
-                                          churn_max=self.churn_max, 
-                                          noise_inflation_factor=self.noise_inflation_factor, 
+                                          churn_min=self.churn_min,
+                                          churn_max=self.churn_max,
+                                          noise_inflation_factor=self.noise_inflation_factor,
                                           sde=self.sde)
         integrator_state = jax.lax.cond(
             self.stochastic_churn_rate > 0,
@@ -163,6 +163,9 @@ class DPMpp2sIntegrator:
         t_forward_churned = self.sde.tf - t_reverse_churned
 
         t_forward_next = t_forward - dt
+        t_backward_next = t_reverse + dt
+        t_forward_next = jnp.where(t_forward_next < 1e-5, 1e-5, t_forward_next)
+        t_backward_next = jnp.where(t_backward_next > self.sde.tf - 1e-5, self.sde.tf - 1e-5, t_backward_next)
         t_forward_mid = jnp.sqrt(t_forward_churned * t_forward_next)# (t_forward_curr + t_forward_next) / 2
 
         int_b_churned, int_b_next, int_b_mid = (
@@ -207,16 +210,29 @@ class DPMpp2sIntegrator:
         )
 
         _, rng_key_next = jax.random.split(rng_key)
-        next_state = EulerState(next_position, rng_key_next, t_reverse + dt, dt)
+        next_state = EulerState(next_position, rng_key_next, t_backward_next, dt)
+
 
         next_state = jax.lax.cond(
-            t_forward_next < 1e-5,
-            lambda x, y: self.euler_step(x, rng_key_next, score),
+            jnp.abs(t_forward - dt) < 1e-5,
+            # lambda x, y: self.euler_step(x._replace(t=self.sde.tf - dt - 1e-5), rng_key_next, score),
+            lambda x, y: self.tweedie_step(x, rng_key_next, score),
             lambda x, y: y,
             EulerState(position, rng_key_next, t_reverse, dt),
             next_state,
         )
         return next_state
+
+    def tweedie_step(
+        self, integrator_state: EulerState, rng_key_next: PRNGKeyArray, score: Callable
+    ) -> EulerState:
+        """Perform one Tweedie integration step"""
+        position, _, t, dt = integrator_state
+        # Convert EulerState to SDEState for tweedie
+        sde_state = SDEState(position=position, t=self.sde.tf - t+dt)
+        # Get result and convert back to EulerState
+        result = self.sde.tweedie(sde_state, score)
+        return EulerState(position=result.position, rng_key=rng_key_next, t=t + dt, dt=dt)
 
     def euler_step(
         self, integrator_state: EulerState, rng_key_next: PRNGKeyArray, score: Callable

@@ -151,18 +151,19 @@ class CondTweedie:
         #log_weights = self.forward_model.logprob_y(denoised, measurement_state.y, measurement_state.mask_history)
 
         ######### DEBUG #########
-        # t = state_next.integrator_state.t
-        # from diffuse.utils.plotting import plot_lines
+        t = state_next.integrator_state.t
+        from diffuse.utils.plotting import plot_lines
 
-        # abs_denoised = jnp.abs(denoised[..., 0] + 1j * denoised[..., 1])
-        # # abs_denoised = jnp.abs(state_next.integrator_state.position[..., 0] + 1j * state_next.integrator_state.position[..., 1])
-        # jax.experimental.io_callback(plot_lines, None, abs_denoised, t[0])
-        # v = self.forward_model.grad_logprob_y(denoised, measurement_state.y, measurement_state.mask_history)
-        # abs_v = jnp.abs(v[..., 0] + 1j * v[..., 1])
-        # jax.experimental.io_callback(plot_lines, None, abs_v, t[0])
-        # diff = self.forward_model.measure_from_mask(measurement_state.mask_history, denoised) - measurement_state.y
-        # abs_diff = jnp.abs(diff[..., 0] + 1j * diff[..., 1])
-        # jax.experimental.io_callback(plot_lines, None, abs_diff, t[0])
+        abs_denoised = jnp.abs(denoised[..., 0] + 1j * denoised[..., 1])
+        state_denoised = jnp.abs(state_next.integrator_state.position[..., 0] + 1j * state_next.integrator_state.position[..., 1])
+        jax.experimental.io_callback(plot_lines, None, state_denoised, t[0])
+        jax.experimental.io_callback(plot_lines, None, abs_denoised, t[0])
+        v = self.forward_model.grad_logprob_y(denoised, measurement_state.y, measurement_state.mask_history)
+        abs_v = jnp.abs(v[..., 0] + 1j * v[..., 1])
+        jax.experimental.io_callback(plot_lines, None, abs_v, t[0])
+        diff = self.forward_model.measure_from_mask(measurement_state.mask_history, denoised) - measurement_state.y
+        abs_diff = jnp.abs(diff[..., 0] + 1j * diff[..., 1])
+        jax.experimental.io_callback(plot_lines, None, abs_diff, t[0])
         ######### DEBUG #########
 
         integrator_state_next = state_next.integrator_state
@@ -187,7 +188,8 @@ class CondTweedie:
             # Compute residual: A^T(y - AE[X_0|X_t])
             v = self.forward_model.grad_logprob_y(denoised, y_meas, design_mask)
 
-            int_b = self.sde.beta.integrate(t, 0.)
+            tf = self.sde.tf
+            int_b = self.sde.beta.integrate(tf - t, 0.)
             alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
 
             if self.pooled_jvp:
@@ -196,7 +198,11 @@ class CondTweedie:
                     return self.score(x_, t)
 
                 score_val, tangents = jax.jvp(score_fn, (x,), (v,))
+                #guidance = (v +  tangents)/( self.forward_model.sigma_prob) # Exact Hessian term
                 guidance = (v + beta * tangents)/(alpha * self.forward_model.sigma_prob) # Exact Hessian term
+                jax.debug.print("alpha: {}", alpha)
+                jax.debug.print("int_b: {}", int_b)
+                jax.debug.print("t: {}", t)
 
             else:
                 score_val = self.score(x, t)
