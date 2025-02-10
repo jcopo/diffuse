@@ -172,11 +172,11 @@ def main(
     integrator = HeunIntegrator(sde=sde, stochastic_churn_rate=1., churn_min=1., churn_max=2., noise_inflation_factor=1.001)
     resample = True
 
-    print(f'Using {integrator.__class__.__name__} as integrator') 
+    print(f'Using {integrator.__class__.__name__} as integrator')
 
     # denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
-    # denoiser = CondTweedie(integrator, sde, nn_score, mask, resample, pooled_jvp=False)
-    denoiser = CondTweediePP(integrator, sde, nn_score, mask, resample)
+    denoiser = CondTweedie(integrator, sde, nn_score, mask, resample)
+    # denoiser = CondTweediePP(integrator, sde, nn_score, mask, resample)
 
     print(f'Using {denoiser.__class__.__name__} as denoiser')
 

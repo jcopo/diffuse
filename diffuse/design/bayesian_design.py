@@ -20,19 +20,6 @@ class BEDState(NamedTuple):
     design: Array
     opt_state: optax.OptState
 
-
-def _vmapper(fn, type):
-    def _set_axes(path, value):
-        # Vectorize only particles and rng_key fields
-        if any(field in str(path) for field in ["position", "rng_key", "weights"]):
-            return 0
-        return None
-
-    # Create tree with selective vectorization
-    in_axes = jax.tree_util.tree_map_with_path(_set_axes, type)
-    return jax.vmap(fn, in_axes=(in_axes, None))
-
-
 def _reverse_time(state, sde):
     t = state.t
     state = state._replace(t=sde.tf - t)
@@ -198,7 +185,8 @@ def restart_state(state, rng_key, denoiser):
         rng_key, n_thetas, n_cntrst_thetas, base_shape
     )
     denoiser_state = denoiser.init(thetas, rng_key_t, dt)
-    cntrst_denoiser_state = denoiser.init(cntrst_thetas, rng_key_c, dt)
+
+    cntrst_denoiser_state = denoiser.init(cntrst_thetas, rng_key_c, dt[0])
     return BEDState(
         denoiser_state=denoiser_state,
         cntrst_denoiser_state=cntrst_denoiser_state,
