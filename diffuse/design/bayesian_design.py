@@ -11,6 +11,7 @@ from diffuse.denoisers.cond_denoiser import CondDenoiser, CondDenoiserState
 from diffuse.base_forward_model import ForwardModel, MeasurementState
 from diffuse.integrator.base import IntegratorState
 from diffuse.utils.plotting import plot_lines
+from diffuse.utils.mapping import pmapper
 
 
 class BEDState(NamedTuple):
@@ -94,14 +95,17 @@ class ExperimentOptimizer:
             cntrst_denoiser_state.integrator_state, self.denoiser.sde
         )
         denoiser_rev = _reverse_time(denoiser_state.integrator_state, self.denoiser.sde)
-        vmapped_tweedie = _vmapper(
-            self.denoiser.sde.tweedie, cntrst_denoiser_state.integrator_state
-        )
+        # vmapped_tweedie = _vmapper(
+        #     self.denoiser.sde.tweedie, cntrst_denoiser_state.integrator_state
+        # )
 
-        thetas = jax.vmap(self.denoiser.sde.tweedie, in_axes=(0, None))(
-            denoiser_rev, self.denoiser.score
-        ).position
-        cntrst_thetas = vmapped_tweedie(cntrst_rev, self.denoiser.score).position
+        thetas = pmapper(self.denoiser.sde.tweedie, denoiser_rev, score=self.denoiser.score).position
+        # thetas = jax.vmap(self.denoiser.sde.tweedie, in_axes=(0, None))(
+        #     denoiser_rev, self.denoiser.score
+        # ).position
+
+        cntrst_thetas = pmapper(self.denoiser.sde.tweedie, cntrst_rev, score=self.denoiser.score).position
+        # cntrst_thetas = vmapped_tweedie(cntrst_rev, self.denoiser.score).position
         # jax.experimental.io_callback(plot_lines, None, jnp.abs(thetas[..., 0] + 1j * thetas[..., 1]), denoiser_rev.t[0])
         #
 
@@ -145,12 +149,11 @@ class ExperimentOptimizer:
         score_likelihood = self.denoiser.pooled_posterior_logpdf(
             key_t, y_cntrst, y, design, mask_history
         )
+
         cntrst_denoiser_state = self.denoiser.batch_step_pooled(
             rng_key, cntrst_denoiser_state, score_likelihood, measurement_state
         )
-        denoiser_state, cntrst_denoiser_state = _fix_time(
-            denoiser_state, cntrst_denoiser_state
-        )
+
         # jax.debug.print("design: {}", design)
         state_next = BEDState(
             denoiser_state=denoiser_state,

@@ -208,7 +208,7 @@ class CondTweediePP:
         batch step for conditional diffusion
         """
 
-        state_next: CondDenoiserState = pmapper(self.step, state, score)
+        state_next: CondDenoiserState = pmapper(self.step, state, score=score)
 
         integrator_state_next = state_next.integrator_state
         log_weights = state_next.weights
