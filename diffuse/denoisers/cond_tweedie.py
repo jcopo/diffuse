@@ -14,6 +14,7 @@ from diffuse.integrator.base import Integrator, IntegratorState
 from diffuse.diffusion.sde import SDE, SDEState
 from diffuse.base_forward_model import ForwardModel, MeasurementState
 from diffuse.utils.plotting import sigle_plot, plot_lines
+from diffuse.utils.mapping import pmapper
 
 def is_nan(x):
     return jnp.isnan(x).any()
@@ -73,7 +74,7 @@ class CondTweedie:
     score: Callable[[Array, float], Array]  # x -> t -> score(x, t)
     forward_model: ForwardModel
     _resample: bool = False
-    pooled_jvp: bool = False
+    pooled_jvp: bool = True
 
     def init(
         self, position: Array, rng_key: PRNGKeyArray, dt: float
@@ -82,7 +83,7 @@ class CondTweedie:
         weights = jnp.log(jnp.ones(n_particles) / n_particles)
         keys = jax.random.split(rng_key, n_particles)
         integrator_state = self.integrator.init(
-            position, keys, jnp.array(0.0), jnp.array(dt)
+            position, keys, jnp.zeros(n_particles), dt + jnp.zeros(n_particles)
         )
         return CondDenoiserState(integrator_state, weights)
 
@@ -123,48 +124,22 @@ class CondTweedie:
         r"""
         batch step for conditional diffusion
         """
-        # Shard the state across devices
-        num_devices = jax.device_count()
-        state = jax.tree_map(
-            lambda x: x.reshape((num_devices, -1, *x.shape[1:])) if len(x.shape) > 0 else x,
-            state
-        )
 
-        # vmap over position, rng_key, weights
-        state_next = _vmapper(self.step, state)(state, score)
+        state_next: CondDenoiserState = pmapper(self.step, state, score=score)
 
-        # Reshape back to original dimensions
-        state_next = jax.tree_map(
-            lambda x: x.reshape((-1, *x.shape[2:])) if len(x.shape) > 0 else x,
-            state_next
-        )
         forward_time = self.sde.tf - state_next.integrator_state.t
         state_forward = state_next.integrator_state._replace(t=forward_time)
 
-        denoised = jax.vmap(self.sde.tweedie, in_axes=(0, None))(state_forward, self.score).position
+        denoised_state: IntegratorState = pmapper(
+            self.sde.tweedie, state_forward, score=self.score, batch_size=16
+        )
+
+        denoised = denoised_state.position
+
         diff = self.forward_model.measure_from_mask(measurement_state.mask_history, denoised) - measurement_state.y
         abs_diff = jnp.abs(diff[..., 0] + 1j * diff[..., 1])
         log_weights = jax.scipy.stats.norm.logpdf(abs_diff, 0, self.forward_model.sigma_prob)
         log_weights = einops.einsum(measurement_state.mask_history, log_weights, "..., b ... -> b")
-
-        #import pdb; pdb.set_trace()
-        #log_weights = self.forward_model.logprob_y(denoised, measurement_state.y, measurement_state.mask_history)
-
-        ######### DEBUG #########
-        t = state_next.integrator_state.t
-        from diffuse.utils.plotting import plot_lines
-
-        abs_denoised = jnp.abs(denoised[..., 0] + 1j * denoised[..., 1])
-        state_denoised = jnp.abs(state_next.integrator_state.position[..., 0] + 1j * state_next.integrator_state.position[..., 1])
-        jax.experimental.io_callback(plot_lines, None, state_denoised, t[0])
-        jax.experimental.io_callback(plot_lines, None, abs_denoised, t[0])
-        v = self.forward_model.grad_logprob_y(denoised, measurement_state.y, measurement_state.mask_history)
-        abs_v = jnp.abs(v[..., 0] + 1j * v[..., 1])
-        jax.experimental.io_callback(plot_lines, None, abs_v, t[0])
-        diff = self.forward_model.measure_from_mask(measurement_state.mask_history, denoised) - measurement_state.y
-        abs_diff = jnp.abs(diff[..., 0] + 1j * diff[..., 1])
-        jax.experimental.io_callback(plot_lines, None, abs_diff, t[0])
-        ######### DEBUG #########
 
         integrator_state_next = state_next.integrator_state
         _norm = jax.scipy.special.logsumexp(log_weights, axis=0)
@@ -192,60 +167,17 @@ class CondTweedie:
             int_b = self.sde.beta.integrate(tf - t, 0.)
             alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
 
-            if self.pooled_jvp:
-                # Compute score and guidance in one JVP operation
-                def score_fn(x_):
-                    return self.score(x_, t)
+            # Compute score and guidance in one JVP operation
+            def score_fn(x_):
+                return self.score(x_, t)
 
-                score_val, tangents = jax.jvp(score_fn, (x,), (v,))
-                #guidance = (v +  tangents)/( self.forward_model.sigma_prob) # Exact Hessian term
-                guidance = (v + beta * tangents)/(alpha * self.forward_model.sigma_prob) # Exact Hessian term
-                jax.debug.print("alpha: {}", alpha)
-                jax.debug.print("int_b: {}", int_b)
-                jax.debug.print("t: {}", t)
-
-            else:
-                score_val = self.score(x, t)
-                eps = 1e-3  # Small perturbation
-                x_plus = x + eps * v
-                x_minus = x - eps * v
-                score_plus = self.score(x_plus, t)
-                score_minus = self.score(x_minus, t)
-                hessian_approx = (score_plus - score_minus) / (2 * eps)
-                guidance = v - hessian_approx
+            score_val, tangents = jax.jvp(score_fn, (x,), (v,))
+            _norm = jnp.linalg.norm(v)
+            guidance = (v + beta * tangents)/(alpha * 0.2 * _norm * self.forward_model.sigma_prob) # Exact Hessian term
 
             return score_val + guidance
 
         return _posterior_logpdf
-
-    def _pooled_posterior_logpdf(
-        self,
-        rng_key: PRNGKeyArray,
-        y_cntrst: Array,
-        y_past: Array,
-        design: Array,
-        mask_history: Array,
-    ):
-        rng_key1, rng_key2 = jax.random.split(rng_key)
-        mask = self.forward_model.make(design)
-
-        def _pooled_posterior_logpdf(x, t):
-
-            # Apply Tweedie's formula
-            denoised = self.sde.tweedie(SDEState(x, t), self.score).position
-
-            # Compute guidance using denoised prediction for contrast samples
-            guidance = jax.vmap(
-                self.forward_model.grad_logprob_y,
-                in_axes=(None, 0, None)
-            )(denoised, y_cntrst, mask)
-
-            # Add past contribution using Tweedie
-            past_contribution = self.posterior_logpdf(rng_key2, y_past, mask_history)
-
-            return guidance.mean(axis=0) + past_contribution(x, t)
-
-        return _pooled_posterior_logpdf
 
     def batch_step_pooled(
         self, rng_key: PRNGKeyArray, state: CondDenoiserState, score: Callable[[Array, float], Array], measurement_state: MeasurementState
@@ -253,28 +185,10 @@ class CondTweedie:
         r"""
         batch step for conditional diffusion
         """
-        # Shard the state across devices
-        num_devices = jax.device_count()
-        state = jax.tree_map(
-            lambda x: x.reshape((num_devices, -1, *x.shape[1:])) if len(x.shape) > 0 else x,
-            state
-        )
+        state_next: CondDenoiserState = pmapper(self.step, state, score=score)
 
-        # vmap over position, rng_key, weights
-        state_next = _vmapper(self.step, state)(state, score)
-
-        # Reshape back to original dimensions
-        state_next = jax.tree_map(
-            lambda x: x.reshape((-1, *x.shape[2:])) if len(x.shape) > 0 else x,
-            state_next
-        )
         integrator_state_next = state_next.integrator_state
         log_weights = state_next.weights
-
-        denoised = integrator_state_next.position
-        # abs_denoised = jnp.abs(denoised[..., 0] + 1j * denoised[..., 1])
-        # jax.experimental.io_callback(plot_lines, None, abs_denoised, integrator_state_next.t[0])
-
 
         return CondDenoiserState(integrator_state_next, log_weights)
 
@@ -303,27 +217,14 @@ class CondTweedie:
             int_b = self.sde.beta.integrate(t, 0.)
             alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
 
-            guidance = residual
-            if self.pooled_jvp:
-                # Compute (I + ∇score)ᵀv using forward-mode autodiff
-                def score_fn(x_):
-                    return self.score(x_, t)
+            # Compute (I + ∇score)ᵀv using forward-mode autodiff
+            def score_fn(x_):
+                return self.score(x_, t)
 
-                score_val, tangents = jax.jvp(score_fn, (x,), (residual,))
-                guidance = (residual + beta * tangents)/(alpha * self.forward_model.sigma_prob) #* alpha_t
+            _, tangents = jax.jvp(score_fn, (x,), (residual,))
+            _norm = jnp.linalg.norm(residual)
+            guidance = (residual + beta * tangents)/(alpha * 0.2 * _norm * self.forward_model.sigma_prob) #* alpha_t
 
-            # Apply VJP with the residual
-            #guidance = jax.vmap(vjp_score)(residual)
-            # else:
-                # eps = 1e-3  # Small perturbation
-                # x_plus = x + eps * residual
-                # x_minus = x - eps * residual
-                # score_plus = self.score(x_plus, t)
-                # score_minus = self.score(x_minus, t)
-                # hessian_approx = (score_plus - score_minus) / (2 * eps)
-                # guidance = residual - hessian_approx
-
-            # Add past contribution using Tweedie
             past_contribution = self.posterior_logpdf(rng_key2, y_past, mask_history)
             return guidance + past_contribution(x, t)
 

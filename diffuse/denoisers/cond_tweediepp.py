@@ -187,7 +187,7 @@ class CondTweediePP:
             denoised = (x + beta * score_val) / alpha
             b = y_meas - self.forward_model.measure_from_mask(design_mask, denoised)
 
-            res, _ = jax.scipy.sparse.linalg.cg(efficient, b, maxiter=2)
+            res, _ = jax.scipy.sparse.linalg.gmres(efficient, b, maxiter=10)
             restored_res = self.forward_model.restore_from_mask(
                 design_mask, jnp.zeros_like(x), res
             )
