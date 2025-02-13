@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Callable, Optional
+from typing import Callable, Optional, NamedTuple
 from jaxtyping import Array, PRNGKeyArray
 from diffuse.integrator.base import IntegratorState
 import jax.numpy as jnp
@@ -13,12 +13,13 @@ import einops
 from diffuse.denoisers.utils import ess, normalize_log_weights
 from blackjax.smc.resampling import stratified
 from typing import Tuple
-from diffuse.denoisers.base import DenoiserState, BaseDenoiser
+from diffuse.denoisers.base import BaseDenoiser
 
 
-class CondDenoiserState(DenoiserState):
+class CondDenoiserState(NamedTuple):
     """Conditional denoiser state"""
 
+    integrator_state: IntegratorState
     log_weights: Array = jnp.array([])
 
 
@@ -77,10 +78,8 @@ class CondDenoiser(BaseDenoiser):
         r"""
         sample p(\theta_t-1 | \theta_t, \y_t-1, \xi)
         """
-        integrator_state, log_weights = state
-        integrator_state_next = self.integrator(integrator_state, score)
-
-        return CondDenoiserState(integrator_state_next, log_weights)
+        integrator_state_next = self.integrator(state.integrator_state, score)
+        return CondDenoiserState(integrator_state_next, state.log_weights)
 
     def batch_step(
         self,
@@ -131,9 +130,8 @@ class CondDenoiser(BaseDenoiser):
             state_next.integrator_state.position, log_weights, rng_key
         )
 
-        integrator_state_next = IntegratorState(position, forward_time)
-        state_next = CondDenoiserState(integrator_state_next, log_weights)
-        return state_next
+        integrator_state_next = state_next.integrator_state._replace(position=position)
+        return CondDenoiserState(integrator_state_next, log_weights)
 
     def _resample(
         self, position: Array, log_weights: Array, rng_key: PRNGKeyArray

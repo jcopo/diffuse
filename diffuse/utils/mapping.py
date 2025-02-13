@@ -1,7 +1,9 @@
 import jax
 from jaxtyping import PyTree
 from functools import partial
+from typing import TypeVar
 
+T = TypeVar('T', bound=PyTree)
 
 def pmap_reshaping(x: PyTree) -> PyTree:
     num_devices = jax.device_count()
@@ -17,7 +19,7 @@ def pmap_unshaping(x: PyTree):
     )
 
 
-def pmapper(fn, x: PyTree, batch_size: int = None, **kwargs):
+def pmapper(fn, x: T, batch_size: int = None, **kwargs) -> T:
     fn = partial(fn, **kwargs)
     mapped_fn = lambda x_: jax.lax.map(f=fn, xs=x_, batch_size=batch_size)
     pmapped_fn = jax.pmap(mapped_fn, axis_name="devices", in_axes=(0,))

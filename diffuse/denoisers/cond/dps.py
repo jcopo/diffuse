@@ -32,7 +32,7 @@ class DPSDenoiser(CondDenoiser):
                 return self.score(x_, t)
 
             score_val, tangents = jax.jvp(score_fn, (x,), (v,))
-            scale = 1.0
+            scale = 1 / (jnp.linalg.norm(v) + 1e-3)
             guidance = (
                 scale
                 * (v + beta * tangents)

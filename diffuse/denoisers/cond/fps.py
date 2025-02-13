@@ -9,7 +9,6 @@ from jaxtyping import Array, PRNGKeyArray
 from diffuse.diffusion.sde import SDEState
 from diffuse.base_forward_model import MeasurementState
 from diffuse.denoisers.cond import CondDenoiser, CondDenoiserState
-from diffuse.integrator.base import IntegratorState
 
 
 @dataclass
@@ -32,20 +31,18 @@ class FPSDenoiser(CondDenoiser):
         alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t))
         logsprobs = self.forward_model.logprob_y_t(position, y_noised, mask, alpha_t)
 
-        position, log_weights = self.resample(position, logsprobs, rng_key)
+        position, log_weights = self._resample(position, logsprobs, rng_key)
 
-        integrator_state_next = IntegratorState(position, t)
-        state_next = CondDenoiserState(integrator_state_next, log_weights)
-        return state_next
+        integrator_state_next = state_next.integrator_state._replace(position=position)
+        return CondDenoiserState(integrator_state_next, log_weights)
 
     def posterior_logpdf(
         self, rng_key: PRNGKeyArray, y_meas: Array, design_mask: Array
     ):
         def _posterior_logpdf(x, t):
-            tf = self.sde.tf
             y_t = self.y_noiser(design_mask, rng_key, SDEState(y_meas, 0), t).position
 
-            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t) / 2)
+            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, t) / 2)
             guidance = self.forward_model.grad_logprob_y(x, y_t, design_mask) / alpha_t
 
             return guidance + self.score(x, t)
@@ -68,8 +65,7 @@ class FPSDenoiser(CondDenoiser):
 
         def _pooled_posterior_logpdf(x, t):
             y_t = vec_noiser(mask, rng_key1, SDEState(y_cntrst, 0), t).position
-            tf = self.sde.tf
-            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t) / 2)
+            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, t) / 2)
             guidance: Array = (
                 jax.vmap(self.forward_model.grad_logprob_y, in_axes=(None, 0, None))(
                     x, y_t, mask
@@ -93,6 +89,7 @@ class FPSDenoiser(CondDenoiser):
         alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
 
         rndm = jax.random.normal(key, y.shape)
+
         res = alpha * y + jnp.sqrt(beta) * einops.einsum(
             mask, rndm, "... , ... c -> ... c"
         )

@@ -5,11 +5,11 @@ from typing import Callable, NamedTuple, Union
 
 import jax
 import jax.numpy as jnp
-from jaxtyping import PRNGKeyArray, PyTreeDef, Array
+from jaxtyping import PRNGKeyArray, Array
 
 
 class SDEState(NamedTuple):
-    position: PyTreeDef
+    position: Array
     t: float
 
 
@@ -74,7 +74,7 @@ class SDE:
     beta: Schedule
     tf: float
 
-    def score(self, state: SDEState, state_0: SDEState) -> PyTreeDef:
+    def score(self, state: SDEState, state_0: SDEState) -> Array:
         """
         Close form for the Gaussian thingy \nabla \log p(x_t | x_{t_0})
         """
@@ -121,11 +121,11 @@ class SDE:
 
         return (SDEState(res, ts), noise) if return_noise else SDEState(res, ts)
 
-    def drift(self, state: SDEState) -> PyTreeDef:
+    def drift(self, state: SDEState) -> Array:
         x, t = state.position, state.t
         return -0.5 * self.beta(t) * x
 
-    def diffusion(self, state: SDEState) -> PyTreeDef:
+    def diffusion(self, state: SDEState) -> Array:
         t = state.t
         return jnp.sqrt(self.beta(t))
 

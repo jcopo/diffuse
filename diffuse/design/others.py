@@ -7,7 +7,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray
 
 from diffuse.base_forward_model import ForwardModel
-from diffuse.denoisers.cond_denoiser import CondDenoiser
+from diffuse.denoisers.cond import CondDenoiser
 from diffuse.design.bayesian_design import BEDState, MeasurementState
 
 

@@ -7,12 +7,9 @@ import optax
 from optax import GradientTransformation
 from jaxtyping import PRNGKeyArray, Array
 
-from diffuse.denoisers.cond_denoiser import CondDenoiser, CondDenoiserState
+from diffuse.denoisers.cond import CondDenoiser, CondDenoiserState
 from diffuse.base_forward_model import ForwardModel, MeasurementState
-from diffuse.integrator.base import IntegratorState
-from diffuse.utils.plotting import plot_lines
 from diffuse.utils.mapping import pmapper
-
 
 class BEDState(NamedTuple):
     denoiser_state: CondDenoiserState
