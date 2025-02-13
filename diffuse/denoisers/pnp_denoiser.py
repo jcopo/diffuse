@@ -1,12 +1,9 @@
 from dataclasses import dataclass
 from typing import Callable, Tuple, NamedTuple
 
-import einops
-import jax
-import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray
 
-from diffuse.integrator.base import Integrator, IntegratorState
+from diffuse.integrator.base import Integrator
 from diffuse.diffusion.sde import SDE, SDEState
 from diffuse.base_forward_model import ForwardModel, MeasurementState
 
@@ -73,20 +70,13 @@ class PnPDenoiser:
         pass
 
     def y_noiser(
-        self,
-        mask: Array,
-        key: PRNGKeyArray,
-        state: SDEState,
-        ts: float
+        self, mask: Array, key: PRNGKeyArray, state: SDEState, ts: float
     ) -> SDEState:
         """Add noise to measurements"""
         pass
 
     def _resampling(
-        self,
-        position: Array,
-        log_weights: Array,
-        rng_key: PRNGKeyArray
+        self, position: Array, log_weights: Array, rng_key: PRNGKeyArray
     ) -> Tuple[Array, Array]:
         """Resample particles based on weights"""
         pass

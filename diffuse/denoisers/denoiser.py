@@ -1,20 +1,18 @@
 from dataclasses import dataclass
-from typing import Callable, Tuple, NamedTuple
+from typing import Callable, Tuple
 
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray
 
-from diffuse.integrator.base import Integrator, IntegratorState
+from diffuse.integrator.base import Integrator
 from diffuse.diffusion.sde import SDE
 
-
-class DenoiserState(NamedTuple):
-    integrator_state: IntegratorState
+from diffuse.denoisers.base import DenoiserState, BaseDenoiser
 
 
 @dataclass
-class Denoiser:
+class Denoiser(BaseDenoiser):
     """Denoiser"""
 
     integrator: Integrator
