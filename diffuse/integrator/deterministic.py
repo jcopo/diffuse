@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Iterable
 from functools import partial
 import jax
 import jax.numpy as jnp
@@ -12,8 +12,8 @@ from diffuse.diffusion.sde import SDE, SDEState
 class EulerState(IntegratorState):
     position: Array
     rng_key: PRNGKeyArray
-    t: float
-    dt: float
+    t: Array
+    iteration: int
 
 
 @dataclass
@@ -23,18 +23,21 @@ class Euler:
     sde: SDE
 
     def init(
-        self, position: Array, rng_key: PRNGKeyArray, t: float, dt: float
+        self, position: Array, rng_key: PRNGKeyArray, t: float,
     ) -> EulerState:
         """Initialize integrator state with position, timestep and step size"""
-        return EulerState(position, rng_key, t, dt)
+        return EulerState(position, rng_key, t, 0)
 
     def __call__(self, integrator_state: EulerState, score: Callable) -> EulerState:
         """Perform one Euler integration step: dx = drift*dt"""
-        position, rng_key, t, dt = integrator_state
-        drift = self.sde.reverse_drift_ode(integrator_state, score)
-        dx = drift * dt
+        position, rng_key, t_iter, iteration = integrator_state
+        t_current, t_next = t_iter[iteration], t_iter[iteration+1]
+
+        drift = self.sde.reverse_drift_ode(position, t_current, score)
+        dx = drift * (t_next - t_current)
         _, rng_key_next = jax.random.split(rng_key)
-        return EulerState(position + dx, rng_key_next, t + dt, dt)
+
+        return EulerState(position + dx, rng_key_next, t_iter, iteration+1)
 
 
 def next_churn_noise_level(integrator_state: EulerState, stochastic_churn_rate: float, churn_min: float, churn_max: float, sde: SDE) -> float:
@@ -105,7 +108,9 @@ class HeunIntegrator:
             integrator_state,
         )
         position_churned, rng_key, t_reverse_churned, dt = integrator_state
-        t_reverse_next = t_reverse + dt
+        t_reverse_next = jnp.clip(t_reverse + dt, 0, self.sde.tf)
+        jax.debug.print("t_reverse_next: {t_reverse_next}", t_reverse_next=t_reverse_next)
+        jax.debug.print("t_reverse_churned: {t_reverse_churned}", t_reverse_churned=t_reverse_churned)
 
         drift_curr = self.sde.reverse_drift_ode(integrator_state, score)
         integrator_state_next = EulerState(position_churned + drift_curr * (t_reverse_next - t_reverse_churned), rng_key_next, t_reverse_next, dt)
@@ -244,14 +249,6 @@ class DPMpp2sIntegrator:
         return EulerState(position + dx, rng_key_next, t + dt, dt)
 
 
-class DDIMState(IntegratorState):
-    """DDIM integrator state"""
-    position: Array
-    rng_key: PRNGKeyArray
-    t: float
-    dt: float
-
-
 @dataclass
 class DDIMIntegrator:
     """
@@ -265,24 +262,25 @@ class DDIMIntegrator:
         self,
         position: Array,
         rng_key: PRNGKeyArray,
-        t: float,
-        dt: float
-    ) -> DDIMState:
+        t: Array,
+    ) -> EulerState:
         """Initialize integrator state with position, time, and timestep"""
-        return DDIMState(position=position, rng_key=rng_key, t=t, dt=dt)
+        return EulerState(position, rng_key, t, 0)
 
     def __call__(
         self,
-        integrator_state: DDIMState,
+        integrator_state: EulerState,
         score: Callable
-    ) -> DDIMState:
+    ) -> EulerState:
         """Perform one DDIM step from t to t+dt in the REVERSE process"""
-        position, rng_key, t_reverse, dt = integrator_state
+        position, rng_key, t_iter, iteration = integrator_state
         noise_pred = self.sde.score_to_noise(score)
 
+        t_reverse_curr, t_reverse_next = t_iter[iteration], t_iter[iteration+1]
+
         # Convert reverse time (t) to forward time (T - t_reverse)
-        t_forward_curr = self.sde.tf - t_reverse  # Current forward time
-        t_forward_next = t_forward_curr - dt      # Next forward time
+        t_forward_curr = self.sde.tf - t_reverse_curr  # Current forward time
+        t_forward_next = self.sde.tf - t_reverse_next      # Next forward time
 
         # Compute cumulative noise schedule (β) integrals for α calculation
         # Corrected integration limits: integrate from 0 to t_forward_curr (not curr_t to 0)
@@ -314,9 +312,4 @@ class DDIMIntegrator:
             sigma_next * noise  # Stochastic noise (if η > 0)
         )
 
-        return DDIMState(
-            position=position_next,
-            rng_key=rng_key_next,
-            t=t_reverse + dt,  # Advance reverse time by dt
-            dt=dt
-        )
+        return EulerState(position_next, rng_key_next, t_iter, iteration+1)

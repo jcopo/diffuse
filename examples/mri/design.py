@@ -9,9 +9,7 @@ from jaxtyping import PRNGKeyArray
 import matplotlib.pyplot as plt
 
 from diffuse.design.bayesian_design import ExperimentOptimizer, ExperimentRandom
-from diffuse.denoisers.cond_denoiser import CondDenoiser
-from diffuse.denoisers.cond_tweedie import CondTweedie
-from diffuse.denoisers.cond_tweediepp import CondTweediePP
+from diffuse.denoisers.cond import FPSDenoiser, TMPDenoiser, DPSDenoiser
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.integrator.stochastic import EulerMaruyama
 from diffuse.integrator.deterministic import DPMpp2sIntegrator, Euler, DDIMIntegrator, HeunIntegrator
@@ -174,9 +172,9 @@ def main(
 
     print(f'Using {integrator.__class__.__name__} as integrator')
 
-    # denoiser = CondDenoiser(integrator, sde, nn_score, mask, resample)
-    denoiser = CondTweedie(integrator, sde, nn_score, mask, resample)
-    # denoiser = CondTweediePP(integrator, sde, nn_score, mask, resample)
+    # denoiser = TMPDenoiser(integrator, sde, nn_score, mask, resample)
+    # denoiser = DPSDenoiser(integrator, sde, nn_score, mask, resample)
+    denoiser = FPSDenoiser(integrator, sde, nn_score, mask, resample)
 
     print(f'Using {denoiser.__class__.__name__} as denoiser')
 

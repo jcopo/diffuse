@@ -159,5 +159,4 @@ class baseMask:
         meas_x = self.measure_from_mask(design, theta)
         diff = y - meas_x
         restored = self.restore_from_mask(design, jnp.zeros_like(theta), diff)
-        norm_diff = jnp.linalg.norm(diff)
-        return restored #/ norm_diff
+        return restored
