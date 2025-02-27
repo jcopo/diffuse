@@ -21,7 +21,7 @@ from einops import rearrange
 from typing import Any, Sequence, Tuple, Optional, Union
 
 import math
-from jaxtyping import ArrayLike
+from jaxtyping import ArrayLike, PRNGKeyArray
 
 
 class PixelShuffle(nn.Module):
@@ -350,6 +350,14 @@ class UNet(nn.Module):
     resnet_block_groups: int = 8
     learnt_variance: bool = False
     dtype: Any = jnp.float32
+    sample_size: int = 320
+    channel_size: int = 2
+
+    def init_weights(self, key: PRNGKeyArray):
+        sample_shape = (1, self.sample_size, self.sample_size, self.channel_size)
+        sample = jnp.zeros(sample_shape, dtype=self.dtype)
+        time = jnp.zeros((1,), dtype=jnp.float32)
+        return self.init(key, sample, time)
 
     @nn.compact
     def __call__(self, x, time):

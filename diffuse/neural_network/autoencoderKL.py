@@ -144,8 +144,8 @@ class AutoencoderKL(nn.Module):
         )
 
     def init_weights(self, rng: PRNGKeyArray):
-        # init input tensors
-        sample_shape = (1, self.in_channels, self.sample_size, self.sample_size)
+        # Update sample shape to channels-last format (NHWC)
+        sample_shape = (1, self.sample_size, self.sample_size, self.in_channels)
         sample = jnp.zeros(sample_shape, dtype=jnp.float32)
 
         params_rng, dropout_rng, gaussian_rng = jax.random.split(rng, 3)
@@ -154,7 +154,6 @@ class AutoencoderKL(nn.Module):
         return self.init(rngs, sample)
 
     def encode(self, sample: ArrayLike, deterministic: bool = True):
-        sample = jnp.transpose(sample, (0, 2, 3, 1))
         hidden_states = self.encoder(sample, deterministic=deterministic)
         moments = self.quant_conv(hidden_states)
         posterior = FlaxDiagonalGaussianDistribution(moments)
@@ -163,18 +162,17 @@ class AutoencoderKL(nn.Module):
 
     def decode(self, latents: ArrayLike, deterministic: bool = True):
         if latents.shape[-1] != self.latent_channels:
-            latents = jnp.transpose(latents, (0, 2, 3, 1))
+            raise ValueError(f"Expected {self.latent_channels} channels, got {latents.shape[-1]}")
 
         hidden_states = self.post_quant_conv(latents)
         hidden_states = self.decoder(hidden_states, deterministic=deterministic)
-
-        hidden_states = jnp.transpose(hidden_states, (0, 3, 1, 2))
 
         return hidden_states
 
     def __call__(
         self, sample: ArrayLike, deterministic: bool = True, training: bool = True
     ):
+
         posterior = self.encode(sample, deterministic=deterministic)
         rng = self.make_rng("gaussian")
         hidden_states = posterior.sample(rng)
@@ -186,12 +184,3 @@ class AutoencoderKL(nn.Module):
 
         else:
             return sample
-
-
-def ELBO(rngs: PRNGKeyArray, nn_params: PyTreeDef, x: ArrayLike, autoencoder: Callable):
-    posterior, sample = autoencoder.apply(nn_params, x, rngs=rngs)
-
-    kl_value = posterior.kl()
-    mse_value = einops.reduce((sample - x) ** 2, "t ... -> t ", "mean")
-
-    return jnp.mean(kl_value + mse_value)

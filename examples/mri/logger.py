@@ -10,14 +10,27 @@ from jaxtyping import Array
 from diffuse.base_forward_model import ForwardModel, MeasurementState
 from diffuse.design.bayesian_design import BEDState
 
+
 class ExperimentLogger(Protocol):
     def log(self, mask, ground_truth, optimal_state, measurement_state, iteration):
         pass
 
+
 class MRILogger:
     """Handles logging and plotting for MRI experiments."""
 
-    def __init__(self, config, rng_key, experiment:Experiment, prefix="", space="runs", random=False, save_plots=True, experiment_name: str = "", lpips_fn=None):
+    def __init__(
+        self,
+        config,
+        rng_key,
+        experiment: Experiment,
+        prefix="",
+        space="runs",
+        random=False,
+        save_plots=True,
+        experiment_name: str = "",
+        lpips_fn=None,
+    ):
         """
         Initialize the logger with experiment configuration.
 
@@ -54,21 +67,56 @@ class MRILogger:
         # Initialize metrics CSV file with headers
         with open(self.metrics_file, "w", newline="") as f:
             writer = csv.writer(f)
-            if self.config['task'] == "anomaly":
-                writer.writerow(["Iteration", "PSNR", "SSIM", "LPIPS", "DICE", "IoU", "K-space"])
+            if self.config["task"] == "anomaly":
+                writer.writerow(
+                    ["Iteration", "PSNR", "SSIM", "LPIPS", "DICE", "IoU", "K-space"]
+                )
             else:
                 writer.writerow(["Iteration", "PSNR", "SSIM", "LPIPS", "K-space"])
 
-    def metrics_logger(self, iteration, psnr_score, ssim_score, lpips_score, kspace_percent, segmentation_metrics):
+    def metrics_logger(
+        self,
+        iteration,
+        psnr_score,
+        ssim_score,
+        lpips_score,
+        kspace_percent,
+        segmentation_metrics,
+    ):
         """Log metrics to CSV file."""
         with open(self.metrics_file, "a", newline="") as f:
             writer = csv.writer(f)
-            if self.config['task'] == "anomaly":
-                writer.writerow([iteration, float(psnr_score), float(ssim_score), float(lpips_score), float(segmentation_metrics['DICE']), float(segmentation_metrics['IoU']), float(kspace_percent)])
+            if self.config["task"] == "anomaly":
+                writer.writerow(
+                    [
+                        iteration,
+                        float(psnr_score),
+                        float(ssim_score),
+                        float(lpips_score),
+                        float(segmentation_metrics["DICE"]),
+                        float(segmentation_metrics["IoU"]),
+                        float(kspace_percent),
+                    ]
+                )
             else:
-                writer.writerow([iteration, float(psnr_score), float(ssim_score), float(lpips_score), float(kspace_percent)])
+                writer.writerow(
+                    [
+                        iteration,
+                        float(psnr_score),
+                        float(ssim_score),
+                        float(lpips_score),
+                        float(kspace_percent),
+                    ]
+                )
 
-    def log(self, ground_truth: Array, optimal_state: BEDState, measurement_state: MeasurementState, history: Array, iteration: int):
+    def log(
+        self,
+        ground_truth: Array,
+        optimal_state: BEDState,
+        measurement_state: MeasurementState,
+        history: Array,
+        iteration: int,
+    ):
         """
         Log all metrics and generate plots for the current iteration.
 
@@ -79,7 +127,7 @@ class MRILogger:
             iteration: Current iteration number
         """
         # Plot measurement state using io_callback
-        #jax.experimental.io_callback( self.experiment.plot_measurement, None, measurement_state)
+        # jax.experimental.io_callback( self.experiment.plot_measurement, None, measurement_state)
 
         # Get current samples and weights
         current_samples = optimal_state.denoiser_state.integrator_state.position
@@ -87,8 +135,14 @@ class MRILogger:
         jax.debug.print("current_weights: {}", jnp.exp(current_weights))
 
         # Calculate metrics for current iteration
-        psnr_score, ssim_score, lpips_score, segmentation_metrics = self.experiment.evaluate_metrics(
-            ground_truth, current_samples, current_weights, task=self.config['task'], lpips_fn=self.lpips_fn
+        psnr_score, ssim_score, lpips_score, segmentation_metrics = (
+            self.experiment.evaluate_metrics(
+                ground_truth,
+                current_samples,
+                current_weights,
+                task=self.config["task"],
+                lpips_fn=self.lpips_fn,
+            )
         )
 
         # Calculate k-space usage percentage
@@ -97,18 +151,36 @@ class MRILogger:
         kspace_percent = (used_points / total_points) * 100
 
         # Replace multiple print statements with a single combined print
-        if self.config['task'] == "anomaly":
+        if self.config["task"] == "anomaly":
             jax.debug.print(
                 "Iteration {} | PSNR: {} | SSIM: {} | LPIPS: {} | DICE: {} | IoU: {} | K-space: {}%",
-                iteration, psnr_score, ssim_score, lpips_score, segmentation_metrics['DICE'], segmentation_metrics['IoU'], kspace_percent
+                iteration,
+                psnr_score,
+                ssim_score,
+                lpips_score,
+                segmentation_metrics["DICE"],
+                segmentation_metrics["IoU"],
+                kspace_percent,
             )
         else:
             jax.debug.print(
                 "Iteration {} | PSNR: {} | SSIM: {} | LPIPS: {} | K-space: {}%",
-                iteration, psnr_score, ssim_score, lpips_score, kspace_percent
+                iteration,
+                psnr_score,
+                ssim_score,
+                lpips_score,
+                kspace_percent,
             )
 
-        plot_samples = partial(self.experiment.plot_samples, task=self.config['task'], logging_path=self.theta_path) if self.save_plots else partial(self.experiment.plot_samples, task=self.config['task'])
+        plot_samples = (
+            partial(
+                self.experiment.plot_samples,
+                task=self.config["task"],
+                logging_path=self.theta_path,
+            )
+            if self.save_plots
+            else partial(self.experiment.plot_samples, task=self.config["task"])
+        )
         # Plot theta samples using io_callback
         jax.experimental.io_callback(
             plot_samples,
@@ -121,8 +193,19 @@ class MRILogger:
         )
 
         # Plot contrastive samples only for non-random experiments
-        if not self.random and getattr(optimal_state, 'cntrst_denoiser_state', None) is not None:
-            plot_contrastive = partial(self.experiment.plot_samples, task=self.config['task'], logging_path=self.contrastive_path) if self.save_plots else partial(self.experiment.plot_samples, task=self.config['task'])
+        if (
+            not self.random
+            and getattr(optimal_state, "cntrst_denoiser_state", None) is not None
+        ):
+            plot_contrastive = (
+                partial(
+                    self.experiment.plot_samples,
+                    task=self.config["task"],
+                    logging_path=self.contrastive_path,
+                )
+                if self.save_plots
+                else partial(self.experiment.plot_samples, task=self.config["task"])
+            )
             jax.experimental.io_callback(
                 plot_contrastive,
                 None,
@@ -130,7 +213,7 @@ class MRILogger:
                 ground_truth,
                 optimal_state.cntrst_denoiser_state.integrator_state.position,
                 optimal_state.cntrst_denoiser_state.weights,
-                iteration
+                iteration,
             )
 
         # Log metrics to CSV using io_callback
@@ -142,14 +225,13 @@ class MRILogger:
             ssim_score,
             lpips_score,
             kspace_percent,
-            segmentation_metrics
+            segmentation_metrics,
         )
 
         # Plot history using io_callback
-        plot_history = partial(self.experiment.plot_history, logging_path=self.dir_path) if self.save_plots else self.experiment.plot_history
-        jax.experimental.io_callback(
-            plot_history,
-            None,
-            iteration,
-            history
+        plot_history = (
+            partial(self.experiment.plot_history, logging_path=self.dir_path)
+            if self.save_plots
+            else self.experiment.plot_history
         )
+        jax.experimental.io_callback(plot_history, None, iteration, history)

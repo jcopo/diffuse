@@ -1,7 +1,7 @@
-from diffuse.neural_network.unett import UNet as Unet
-from diffuse.neural_network.unet import UNet as UNet
+from diffuse.neural_network.unet import UNet
+from diffuse.neural_network.autoencoderKL import AutoencoderKL
 
 model_zoo = {
-    "UNett": Unet,
-    "UNet": UNet
+    "UNet": UNet,
+    "AutoencoderKL": AutoencoderKL
 }

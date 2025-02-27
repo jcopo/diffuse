@@ -23,10 +23,10 @@ class Euler:
     sde: SDE
 
     def init(
-        self, position: Array, rng_key: PRNGKeyArray, t: float,
+        self, position: Array, rng_key: PRNGKeyArray, t: float, iteration: int = 0
     ) -> EulerState:
         """Initialize integrator state with position, timestep and step size"""
-        return EulerState(position, rng_key, t, 0)
+        return EulerState(position, rng_key, t, iteration)
 
     def __call__(self, integrator_state: EulerState, score: Callable) -> EulerState:
         """Perform one Euler integration step: dx = drift*dt"""

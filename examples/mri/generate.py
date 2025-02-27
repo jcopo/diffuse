@@ -21,35 +21,35 @@ dataloader_zoo = {
     "fastMRI": lambda cfg: get_fastmri_dataloader(cfg, train=False),
 }
 
+
 def initialize_experiment(key, config):
     """Initialize all components needed for generation."""
-    data_model = config['dataset']
+    data_model = config["dataset"]
 
     dataloader = dataloader_zoo[data_model](config)
     xs = get_first_item(dataloader)
 
-    n_t = config['inference']['n_t']
-    tf = config['sde']['tf']
+    n_t = config["inference"]["n_t"]
+    tf = config["sde"]["tf"]
     key, subkey = jax.random.split(key)
     ground_truth = jax.random.choice(subkey, xs)
 
-
     beta = LinearSchedule(
-        b_min=config['sde']['beta_min'],
-        b_max=config['sde']['beta_max'],
-        t0=config['sde']['t0'],
-        T=tf
+        b_min=config["sde"]["beta_min"],
+        b_max=config["sde"]["beta_max"],
+        t0=config["sde"]["t0"],
+        T=tf,
     )
 
-    if config['score_model'] == "UNet":
+    if config["score_model"] == "UNet":
         score_net = UNet(
             config["unet"]["dt_embedding"],
             config["unet"]["embedding_dim"],
             upsampling=config["unet"]["upsampling"],
-            dim_mults=config["unet"]["dim_mults"]
+            dim_mults=config["unet"]["dim_mults"],
         )
-    elif config['score_model'] == "UNett":
-        score_net = Unet(dim=config['unet']['embedding_dim'])
+    elif config["score_model"] == "UNett":
+        score_net = Unet(dim=config["unet"]["embedding_dim"])
     else:
         raise ValueError(f"Score model {config['score_model']} not found")
 
@@ -61,13 +61,14 @@ def initialize_experiment(key, config):
 
     return sde, shape, n_t, nn_score, ground_truth
 
-def main(key, n_samples=50, config_path="examples/mri/configs/config_fastMRI_inference.yaml"):
+
+def main(
+    key, n_samples=50, config_path="examples/mri/configs/config_fastMRI_inference.yaml"
+):
     config = EnvYAML(config_path)
 
     # Get ground truth data
     sde, shape, n_t, nn_score, ground_truth = initialize_experiment(key, config)
-
-
 
     # Plot ground truth
     ground_truth_complex = ground_truth[..., 0] + 1j * ground_truth[..., 1]
@@ -99,11 +100,16 @@ def main(key, n_samples=50, config_path="examples/mri/configs/config_fastMRI_inf
 
     return state, hist
 
+
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, default="examples/mri/configs/config_fastMRI_inference.yaml")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="examples/mri/configs/config_fastMRI_inference.yaml",
+    )
     parser.add_argument("--n_samples", type=int, default=50)
 
     args = parser.parse_args()

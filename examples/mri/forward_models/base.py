@@ -1,6 +1,4 @@
 import einops
-import jax
-import jax.experimental
 import jax.numpy as jnp
 from jaxtyping import Array
 
@@ -17,20 +15,20 @@ PARAMS_SIZE_LINE = {
 }
 
 PARAMS_SIGMA_RADIAL = {
-    "kneeFastMRI": .1,
-    "fastMRI": .1,
-    "brainFastMRI": .5,
-    "WMH": .2,
+    "kneeFastMRI": 0.1,
+    "fastMRI": 0.1,
+    "brainFastMRI": 0.5,
+    "WMH": 0.2,
     "BRATS": 0.8,
 }
 
 ######## RANDOM ########
 PARAMS_SIGMA_RDM = {
-    "kneeFastMRI": .1,
-    "fastMRI": .1,
-    "brainFastMRI": .1,
-    "WMH": .1,
-    "BRATS": .1,
+    "kneeFastMRI": 0.1,
+    "fastMRI": 0.1,
+    "brainFastMRI": 0.1,
+    "WMH": 0.1,
+    "BRATS": 0.1,
 }
 
 PARAMS_SPARSITY = {
@@ -43,22 +41,21 @@ PARAMS_SPARSITY = {
 
 ######## VERTICAL ########
 PARAMS_SIGMA_VERTICAL = {
-    "kneeFastMRI": .1,
-    "fastMRI": .1,
-    "brainFastMRI": .1,
-    "WMH": .1,
-    "BRATS": .1,
+    "kneeFastMRI": 0.1,
+    "fastMRI": 0.1,
+    "brainFastMRI": 0.1,
+    "WMH": 0.1,
+    "BRATS": 0.1,
 }
 
 ######## SPIRAL ########
 PARAMS_SPIRAL = {
-    "kneeFastMRI": {'minval': 0.0, 'maxval': 1.0},
-    "fastMRI": {'minval': 0.0, 'maxval': 1.0},
-    "brainFastMRI": {'minval': 0.0, 'maxval': 1.0},
-    "WMH": {'minval': 0.0, 'maxval': 1.0},
-    "BRATS": {'minval': 0.0, 'maxval': 1.0},
+    "kneeFastMRI": {"minval": 0.0, "maxval": 1.0},
+    "fastMRI": {"minval": 0.0, "maxval": 1.0},
+    "brainFastMRI": {"minval": 0.0, "maxval": 1.0},
+    "WMH": {"minval": 0.0, "maxval": 1.0},
+    "BRATS": {"minval": 0.0, "maxval": 1.0},
 }
-
 
 
 def slice_fourier(mri_slice):
@@ -136,9 +133,7 @@ class baseMask:
     def update_measurement(
         self, measurement_state: MeasurementState, ground_truth: Array, design: Array
     ) -> MeasurementState:
-        mask_history = self.supp_mask(
-            design, measurement_state.mask_history
-        )
+        mask_history = self.supp_mask(design, measurement_state.mask_history)
         joint_y = self.measure_from_mask(mask_history, ground_truth)
         return MeasurementState(y=joint_y, mask_history=mask_history)
 
@@ -150,7 +145,9 @@ class baseMask:
         A_theta = self.measure_from_mask(mask, theta)
         tmp = y[..., :2] - A_theta[..., :2]
         tmp = jnp.abs(tmp[..., 0] + 1j * tmp[..., 1]) ** 2
-        logprob = - tmp / (self.sigma_prob * alpha_t) - mask.sum() * jnp.log(jnp.pi * self.sigma_prob * alpha_t)
+        logprob = -tmp / (self.sigma_prob * alpha_t) - mask.sum() * jnp.log(
+            jnp.pi * self.sigma_prob * alpha_t
+        )
         logprob = einops.einsum(logprob, mask, "t ..., ... -> t ...")
         logprob = einops.reduce(logprob, "t ... -> t", "sum")
         return logprob
@@ -159,4 +156,5 @@ class baseMask:
         meas_x = self.measure_from_mask(design, theta)
         diff = y - meas_x
         restored = self.restore_from_mask(design, jnp.zeros_like(theta), diff)
-        return restored
+        norm_diff = jnp.linalg.norm(diff)
+        return restored / norm_diff

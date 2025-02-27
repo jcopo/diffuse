@@ -59,13 +59,13 @@ class maskSpiral(baseMask):
     sigma: float
     data_model: str = "kneeFastMRI"
     max_angle: float = None
-    
 
     def init_design(self, key: PRNGKeyArray) -> Array:
         # return jax.random.uniform(key, shape=(3,), minval=PARAMS_SPIRAL[self.data_model]['minval'], maxval=PARAMS_SPIRAL[self.data_model]['maxval'])
-        return jax.random.uniform(key, shape=(3,), minval=2., maxval=4.)
+        return jax.random.uniform(key, shape=(3,), minval=2.0, maxval=4.0)
+
     def make(self, xi: Array) -> Array:
-        xi  = jax.nn.sigmoid(xi)
+        xi = jax.nn.sigmoid(xi)
         fov = xi[0]
         k_max = xi[1]
         angle_offset = xi[2]
@@ -74,5 +74,5 @@ class maskSpiral(baseMask):
             self.num_samples, k_max, fov, angle_offset, self.max_angle
         )
         grid_mask_soft = grid(kx, ky, self.img_shape, self.sigma)
-        grid_mask_hard = grid_mask_soft > .5
+        grid_mask_hard = grid_mask_soft > 0.5
         return grid_mask_soft + jax.lax.stop_gradient(grid_mask_hard - grid_mask_soft)

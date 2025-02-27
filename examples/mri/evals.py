@@ -11,6 +11,7 @@ from typing import Protocol
 from jaxtyping import Array
 from diffuse.base_forward_model import ForwardModel
 
+
 def get_confusion_matrix_metrics(ground_truth: Array, x: Array) -> dict:
     """Calculate confusion matrix metrics between ground truth and predicted values.
 
@@ -35,7 +36,7 @@ def get_confusion_matrix_metrics(ground_truth: Array, x: Array) -> dict:
         "TP": true_positives,
         "FP": false_positives,
         "TN": true_negatives,
-        "FN": false_negatives
+        "FN": false_negatives,
     }
 
 
@@ -58,16 +59,23 @@ def get_segmentation_metrics(ground_truth: Array, x: Array) -> dict:
     # Calculate IoU (Jaccard index): TP / (TP + FP + FN)
     iou = tp / jnp.maximum(tp + fp + fn, 1e-8)
 
-    return {
-        "DICE": dice,
-        "IoU": iou
-    }
+    return {"DICE": dice, "IoU": iou}
+
 
 class Experiment(Protocol):
     def plot_measurement(self, measurement_state):
         pass
 
-    def plot_samples(self, measurement_state, ground_truth, thetas, weights, n_meas, mask=None, logging_path=None):
+    def plot_samples(
+        self,
+        measurement_state,
+        ground_truth,
+        thetas,
+        weights,
+        n_meas,
+        mask=None,
+        logging_path=None,
+    ):
         pass
 
     def evaluate_metrics(self, ground_truth, theta_infered, weights_infered):
@@ -82,28 +90,67 @@ class WMHExperiment(Experiment):
         """Plot the history array."""
         fig, ax = plt.subplots(1, 1)
         ax.plot(history[-1])
-        ax.set_xlabel('Iteration')
-        ax.set_ylabel('Value')
-        ax.set_title('History')
+        ax.set_xlabel("Iteration")
+        ax.set_ylabel("Value")
+        ax.set_title("History")
         if logging_path:
             plt.savefig(f"{logging_path}/{n_meas}_history.png", bbox_inches="tight")
         else:
             plt.show()
         plt.close()
 
-
     def plot_measurement(self, measurement_state):
         plot_measurement(measurement_state)
 
-    def plot_samples(self, measurement_state, ground_truth, thetas, weights, n_meas, task="anomaly", logging_path=None):
+    def plot_samples(
+        self,
+        measurement_state,
+        ground_truth,
+        thetas,
+        weights,
+        n_meas,
+        task="anomaly",
+        logging_path=None,
+    ):
         abs_thetas = jnp.abs(thetas[..., 0] + 1j * thetas[..., 1])
         abs_ground_truth = jnp.abs(ground_truth[..., 0] + 1j * ground_truth[..., 1])
-        plot_channel(0, measurement_state.mask_history, measurement_state.y, abs_thetas, abs_ground_truth, weights, n_meas, self.mask, ground_truth, logging_path)
+        plot_channel(
+            0,
+            measurement_state.mask_history,
+            measurement_state.y,
+            abs_thetas,
+            abs_ground_truth,
+            weights,
+            n_meas,
+            self.mask,
+            ground_truth,
+            logging_path,
+        )
         if task == "anomaly":
-            plot_channel(1, measurement_state.mask_history, measurement_state.y, thetas[..., -1], ground_truth[..., -1], weights, n_meas, self.mask, ground_truth, logging_path)
+            plot_channel(
+                1,
+                measurement_state.mask_history,
+                measurement_state.y,
+                thetas[..., -1],
+                ground_truth[..., -1],
+                weights,
+                n_meas,
+                self.mask,
+                ground_truth,
+                logging_path,
+            )
 
-    def evaluate_metrics(self, ground_truth, theta_infered, weights_infered, task="anomaly", lpips_fn=None):
-        jax.debug.print("weights_infered logger: {}", jax.scipy.special.logsumexp(weights_infered))
+    def evaluate_metrics(
+        self,
+        ground_truth,
+        theta_infered,
+        weights_infered,
+        task="anomaly",
+        lpips_fn=None,
+    ):
+        jax.debug.print(
+            "weights_infered logger: {}", jax.scipy.special.logsumexp(weights_infered)
+        )
         weights_infered = jnp.exp(weights_infered)
         jax.debug.print("sum of weights_infered logger: {}", jnp.sum(weights_infered))
         # Convert to magnitude images and ensure correct shape
@@ -118,50 +165,58 @@ class WMHExperiment(Experiment):
         abs_ground_truth = abs_ground_truth[..., None]
 
         max_val = jnp.maximum(jnp.max(abs_ground_truth), jnp.max(abs_theta_infered))
-        psnr_array = jax.vmap(dm_pix.psnr, in_axes=(None, 0))(abs_ground_truth, abs_theta_infered)
-        #psnr_score = jnp.sum(psnr_array * weights_infered)
+        psnr_array = jax.vmap(dm_pix.psnr, in_axes=(None, 0))(
+            abs_ground_truth, abs_theta_infered
+        )
+        # psnr_score = jnp.sum(psnr_array * weights_infered)
         psnr_score = jnp.max(psnr_array)
 
         # More lenient SSIM parameters
-        ssim = partial(dm_pix.ssim,
-                      max_val=max_val,
-                      filter_size=13,     # Increased from 7 to 11
-                      filter_sigma=2.,   # Increased from 1.02 to 1.5
-                      k1=0.1,           # Default is usually 0.01
-                      k2=0.1)           # Default is usually 0.03
-        ssim_array = jax.vmap(ssim, in_axes=(None, 0))(abs_ground_truth, abs_theta_infered)
-        #ssim_score = jnp.sum(ssim_array * weights_infered)
+        ssim = partial(
+            dm_pix.ssim,
+            max_val=max_val,
+            filter_size=13,  # Increased from 7 to 11
+            filter_sigma=2.0,  # Increased from 1.02 to 1.5
+            k1=0.1,  # Default is usually 0.01
+            k2=0.1,
+        )  # Default is usually 0.03
+        ssim_array = jax.vmap(ssim, in_axes=(None, 0))(
+            abs_ground_truth, abs_theta_infered
+        )
+        # ssim_score = jnp.sum(ssim_array * weights_infered)
         ssim_score = jnp.max(ssim_array)
 
         tmp = jnp.expand_dims(abs_ground_truth, axis=0)
         tmp = jnp.tile(tmp, (abs_theta_infered.shape[0], 1, 1, 1))
         lpips_score = lpips_fn(tmp, abs_theta_infered)
-        lpips_score = jnp.squeeze(lpips_score, axis=(1,2,3))
+        lpips_score = jnp.squeeze(lpips_score, axis=(1, 2, 3))
         # lpips_score = jnp.sum(lpips_score * weights_infered)
         lpips_score = jnp.min(lpips_score)
-    
+
         # Save the magnitude images - fixed callback usage
-        
+
         # def save_callback(gt, pred, ssim_score_):
-            # save_path = f"/lustre/fswork/projects/rech/hlp/uha64uw/tmp_res/magnitude_images_{ssim_score_}.npz"
-            # jnp.savez(save_path, ground_truth_=gt, prediction_=pred)
+        # save_path = f"/lustre/fswork/projects/rech/hlp/uha64uw/tmp_res/magnitude_images_{ssim_score_}.npz"
+        # jnp.savez(save_path, ground_truth_=gt, prediction_=pred)
 
         # jax.experimental.io_callback(
-            # save_callback,
-            # None,
-            # abs_ground_truth,
-            # abs_theta_infered,
-            # ssim_score
+        # save_callback,
+        # None,
+        # abs_ground_truth,
+        # abs_theta_infered,
+        # ssim_score
         # )
 
         if task == "anomaly":
-            segmentation_metrics = jax.vmap(get_segmentation_metrics, in_axes=(None, 0))(ground_truth[..., -1], theta_infered[..., -1])
-            segmentation_metrics = jax.tree_map(lambda x: jnp.sum(x * weights_infered), segmentation_metrics)
+            segmentation_metrics = jax.vmap(
+                get_segmentation_metrics, in_axes=(None, 0)
+            )(ground_truth[..., -1], theta_infered[..., -1])
+            segmentation_metrics = jax.tree_map(
+                lambda x: jnp.sum(x * weights_infered), segmentation_metrics
+            )
             return psnr_score, ssim_score, lpips_score, segmentation_metrics
         else:
             return psnr_score, ssim_score, lpips_score, None
-
-
 
 
 def plot_measurement(measurement_state):
@@ -210,12 +265,12 @@ def plot_channel(
     fig.suptitle(
         "Generated Samples",
         fontsize=18,
-        y=.9,
+        y=0.9,
         x=0.65,
     )
 
     # Create grid with vertical divider
-    gs = fig.add_gridspec(1, 10, width_ratios=[1, 1, 1, 0.2] + [1]*6, wspace=0.02)
+    gs = fig.add_gridspec(1, 10, width_ratios=[1, 1, 1, 0.2] + [1] * 6, wspace=0.02)
 
     # Ground truth subplot
     ax_large = fig.add_subplot(gs[0])
@@ -231,7 +286,7 @@ def plot_channel(
         fontsize=14,
         fontweight="bold",
         rotation="vertical",
-        transform=ax_large.transAxes
+        transform=ax_large.transAxes,
     )
     ax_large.axis("off")
     ax_large.set_title("Ground Truth", fontsize=12)
@@ -257,8 +312,8 @@ def plot_channel(
 
     # Add vertical divider
     divider = fig.add_subplot(gs[3])
-    divider.axvline(x=0.5, color='black', linewidth=2)
-    divider.axis('off')
+    divider.axvline(x=0.5, color="black", linewidth=2)
+    divider.axis("off")
 
     # Sample plots
     for idx in range(n_samples):
@@ -279,7 +334,7 @@ def plot_channel(
                 fontsize=14,
                 fontweight="bold",
                 rotation="vertical",
-                transform=ax.transAxes
+                transform=ax.transAxes,
             )
 
     if logging_path:
@@ -287,6 +342,7 @@ def plot_channel(
     else:
         plt.show()
     plt.close()
+
 
 def _plot_channel(
     i,
@@ -321,7 +377,9 @@ def _plot_channel(
     fig = plt.figure(figsize=(12, 2.5))  # Reduced from (15, 6)
 
     # Create two-row grid with centered first row
-    gs = fig.add_gridspec(2, 10, height_ratios=[1.2, 1], hspace=0.05, wspace=0.03)  # Changed to 10 columns
+    gs = fig.add_gridspec(
+        2, 10, height_ratios=[1.2, 1], hspace=0.05, wspace=0.03
+    )  # Changed to 10 columns
 
     # First row: 3 main plots (centered)
     # Ground truth subplot
@@ -338,7 +396,7 @@ def _plot_channel(
         fontsize=fontsize,
         fontweight="bold",
         rotation="vertical",
-        transform=ax_large.transAxes
+        transform=ax_large.transAxes,
     )
     ax_large.axis("off")
     ax_large.set_title("Ground Truth", fontsize=fontsize)
@@ -381,7 +439,7 @@ def _plot_channel(
                 fontsize=fontsize,
                 fontweight="bold",
                 rotation="vertical",
-                transform=ax.transAxes
+                transform=ax.transAxes,
             )
 
     if logging_path:
@@ -403,8 +461,16 @@ def show_samples_plot(
 ):
     weights = jnp.exp(weights)
     # Convert complex values to magnitude and phase
-    thetas = jnp.stack([jnp.abs(thetas[..., 0] + 1j * thetas[..., 1]), thetas[..., -1]], axis=-1)
-    ground_truth = jnp.stack([jnp.abs(ground_truth[..., 0] + 1j * ground_truth[..., 1]), ground_truth[..., -1]], axis=-1)
+    thetas = jnp.stack(
+        [jnp.abs(thetas[..., 0] + 1j * thetas[..., 1]), thetas[..., -1]], axis=-1
+    )
+    ground_truth = jnp.stack(
+        [
+            jnp.abs(ground_truth[..., 0] + 1j * ground_truth[..., 1]),
+            ground_truth[..., -1],
+        ],
+        axis=-1,
+    )
 
     # Plot both channels
     for i in [0, 1]:
@@ -420,4 +486,3 @@ def show_samples_plot(
             ground_truth,
             logging_path,
         )
-

@@ -64,6 +64,28 @@ class LinearSchedule:
             )
         )
 
+@dataclass
+class CosineSchedule:
+    t0: float
+    T: float
+    s: float = 0.008
+
+    def __call__(self, t):
+        pass
+
+    def integrate(self, t, s):
+        t_scaled = (t - self.t0) / (self.T - self.t0)
+        s_scaled = (s - self.t0) / (self.T - self.t0)
+
+        theta_t = (t_scaled + self.s) / (1 + self.s) * jnp.pi / 2
+        theta_s = (s_scaled + self.s) / (1 + self.s) * jnp.pi / 2
+
+        alpha_bar_t = jnp.cos(theta_t) ** 2
+        alpha_bar_s = jnp.cos(theta_s) ** 2
+
+        return -jnp.log(alpha_bar_t / alpha_bar_s)
+
+
 
 @dataclass
 class SDE:
