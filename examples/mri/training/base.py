@@ -62,14 +62,18 @@ class BaseTrainer:
     ) -> Optional[Tuple[dict, optax.OptState, optax.EmaState, range, float]]:
         """Load checkpoint with common logic"""
         try:
-            params, _, ema_state, opt_state, begin_epoch = load_checkpoint(self.config)
+            params, _, ema_state, opt_state, begin_epoch = load_checkpoint(
+                self.config, latent=self.latent
+            )
             n_epochs = (
                 self.config["training"]["latent"]["n_epochs"]
                 if self.latent
                 else self.config["training"]["score"]["n_epochs"]
             )
             iterator_epoch = range(begin_epoch, n_epochs)
-            _, _, best_val_loss = load_best_model_checkpoint(self.config)
+            _, _, best_val_loss = load_best_model_checkpoint(
+                self.config, latent=self.latent
+            )
             return params, opt_state, ema_state, iterator_epoch, best_val_loss
 
         except ValueError:

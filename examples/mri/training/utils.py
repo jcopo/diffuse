@@ -118,7 +118,7 @@ def checkpoint_model(
 
 
 def load_checkpoint(
-    config: dict, verbose: bool = False, latent: bool = False
+    config: dict, latent: bool = False
 ) -> Tuple[Any, Any, EmaState, tuple, int]:
     """Load a model checkpoint."""
     begin_epoch = get_latest_model(config)
@@ -153,8 +153,7 @@ def load_checkpoint(
         ),
     )
 
-    if verbose:
-        print(f"Loaded checkpoint from epoch {begin_epoch}")
+    print(f"Loaded checkpoint from epoch {begin_epoch}")
     return params, ema_params, ema_state, opt_state, begin_epoch
 
 
