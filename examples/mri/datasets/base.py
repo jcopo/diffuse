@@ -4,6 +4,7 @@ from typing import List, Dict, Optional, Tuple, Any, Union
 import numpy as np
 import glob
 import os
+import jax
 
 
 def numpy_collate(batch: List[Any]) -> np.ndarray:
@@ -11,13 +12,24 @@ def numpy_collate(batch: List[Any]) -> np.ndarray:
 
 
 class BaseMRIDataset(Dataset):
-    def __init__(self, data_path: str, transform: Optional[callable] = None) -> None:
-        self.data_path = data_path
+    def __init__(
+        self,
+        cfg: Dict[str, Any],
+        train: Optional[bool] = True,
+        return_latent: Optional[bool] = False,
+        transform: Optional[callable] = None,
+    ) -> None:
+        folder = "train_data" if train else "val_data"
+        path_dataset = os.path.join(cfg["path_dataset"], folder)
+
+        self.cfg = cfg
+        self.data_path = path_dataset
         self.transform = transform
-        self.file_list: List[str] = glob.glob(os.path.join(data_path, "*.h5"))
+        self.file_list: List[str] = glob.glob(os.path.join(self.data_path, "*.h5"))
         self.num_slices: List[int] = []
         self.cached_data: Dict[str, Any] = {}
-
+        self.return_latent = return_latent
+        self.key = jax.random.PRNGKey(0)
         self._cache_data()
 
     def _cache_data(self) -> None:
@@ -33,17 +45,19 @@ class BaseMRIDataset(Dataset):
 
 
 def get_base_dataloader(
-    dataset: Dataset, cfg: Dict[str, Any], train: bool = True, latent: bool = False
+    dataset: Dataset,
+    cfg: Dict[str, Any],
+    train: Optional[bool] = True,
+    model: Optional[str] = "score",
 ) -> Union[Tuple[DataLoader, DataLoader], DataLoader]:
     """Common dataloader creation logic"""
-    if not latent:
-        config_key = "score"
+    if model == "autoencoder":
+        tmp = "latent"
     else:
-        config_key = "latent"
-
-    train_ratio = cfg["training"][config_key].get("train_ratio", 0.8)
-    batch_size = cfg["training"][config_key].get("batch_size", 32)
-    num_workers = cfg["training"][config_key].get("num_workers", 0)
+        tmp = "score"
+    train_ratio = cfg["training"][tmp].get("train_ratio", 0.8)
+    batch_size = cfg["training"][tmp].get("batch_size", 32)
+    num_workers = cfg["training"][tmp].get("num_workers", 0)
 
     if train:
         total_size = len(dataset)

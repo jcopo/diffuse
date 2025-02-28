@@ -1,9 +1,9 @@
 #!/bin/bash
 
-#SBATCH --job-name=dsknee
+#SBATCH --job-name=vknee
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:4
+#SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=24
 #SBATCH --hint=nomultithread
 #SBATCH --time=02:00:00
@@ -21,4 +21,4 @@ module load miniforge/24.9.0
 conda activate /lustre/fswork/projects/rech/hlp/uha64uw/.conda/envs/aoas
 
 cd $WORK/diffuse/
-python -m examples.mri.python_script.training --config examples/mri/configs/config_latent_kneeFastMRI.yaml --latent True
+python -m examples.mri.python_script.training_script --config examples/mri/configs/config_latent_kneeFastMRI.yaml --model autoencoder

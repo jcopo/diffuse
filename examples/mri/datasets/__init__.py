@@ -20,11 +20,8 @@ datasets_zoo = {
 
 
 def get_dataloader(
-    cfg, train: bool = True, latent: bool = False
+    cfg, train: bool = True, model: str = "score"
 ) -> Union[Tuple[DataLoader, DataLoader], DataLoader]:
-    folder = "train_data" if train else "val_data"
-    path_dataset = os.path.join(cfg["path_dataset"], folder)
-    dataset = datasets_zoo[cfg["dataset"]](
-        path_dataset,
-    )
-    return get_base_dataloader(dataset, cfg, train, latent)
+    return_latent = model == "score"
+    dataset = datasets_zoo[cfg["dataset"]](cfg, train, return_latent)
+    return get_base_dataloader(dataset, cfg, train, model)

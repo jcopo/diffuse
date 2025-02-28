@@ -4,6 +4,9 @@ import numpy as np
 import sigpy as sp
 
 
+# TODO: Add latent space return option
+
+
 class WMHDataset(BaseMRIDataset):
     def _cache_data(self) -> None:
         for file in self.file_list:

@@ -16,7 +16,6 @@ from .utils import (
     checkpoint_best_model,
     get_sharding,
 )
-from .latent import LatentModelTrainer
 
 
 class BaseTrainer:
@@ -24,6 +23,7 @@ class BaseTrainer:
         self.config = config
         self.key = jax.random.PRNGKey(0)
         self.sharding, self.replicated_sharding = get_sharding()
+        self.latent = self.__class__.__name__ == "LatentModelTrainer"
 
     def _init_model(
         self,
@@ -63,10 +63,9 @@ class BaseTrainer:
         """Load checkpoint with common logic"""
         try:
             params, _, ema_state, opt_state, begin_epoch = load_checkpoint(self.config)
-            latent = isinstance(self, LatentModelTrainer)
             n_epochs = (
                 self.config["training"]["latent"]["n_epochs"]
-                if latent
+                if self.latent
                 else self.config["training"]["score"]["n_epochs"]
             )
             iterator_epoch = range(begin_epoch, n_epochs)
@@ -122,8 +121,7 @@ class BaseTrainer:
 
         for batch in train_iterator:
             self.key, subkey = jax.random.split(self.key)
-            if self.parallel:
-                batch = jax.device_put(batch, self.sharding)
+            batch = jax.device_put(batch, self.sharding)
 
             params, opt_state, ema_state, val_loss, ema_params = batch_update(
                 subkey, params, opt_state, ema_state, batch
@@ -177,7 +175,7 @@ class BaseTrainer:
             ema_state,
             ema_params,
             epoch,
-            latent=isinstance(self, LatentModelTrainer),
+            latent=self.latent,
         )
 
         # Save best model checkpoint if improved
@@ -188,7 +186,7 @@ class BaseTrainer:
                 params,
                 ema_params,
                 val_loss,
-                latent=isinstance(self, LatentModelTrainer),
+                latent=self.latent,
             )
 
     def train(self, train_val_loaders: Tuple[Iterator, Iterator]) -> None:
@@ -213,7 +211,12 @@ class BaseTrainer:
         else:
             opt_state = optimizer.init(params)
             ema_state = ema_kernel.init(params)
-            iterator_epoch = range(self.config["training"]["n_epochs"])
+            n_epochs = (
+                self.config["training"]["latent"]["n_epochs"]
+                if self.latent
+                else self.config["training"]["score"]["n_epochs"]
+            )
+            iterator_epoch = range(n_epochs)
             best_val_loss = float("inf")
 
         params = jax.device_put(params, self.replicated_sharding)

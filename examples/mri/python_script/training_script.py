@@ -6,14 +6,14 @@ from pathlib import Path
 from envyaml import EnvYAML
 
 # Local imports
-from datasets import get_dataloader
+from ..datasets import get_dataloader
 from ..training import LatentModelTrainer, ScoreModelTrainer
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default="config.yaml")
-    parser.add_argument("--latent", type=bool, default=False)
+    parser.add_argument("--model", type=str, default="autoencoder")
     args = parser.parse_args()
 
     config = EnvYAML(args.config)
@@ -27,10 +27,10 @@ def main():
         config_dst.write_bytes(config_src.read_bytes())
 
     # Get data loaders
-    train_val_loaders = get_dataloader(config, latent=args.latent)
+    train_val_loaders = get_dataloader(config, model=args.model)
 
     # Initialize and run appropriate trainer
-    if args.latent:
+    if args.model == "autoencoder":
         trainer = LatentModelTrainer(config)
     else:
         trainer = ScoreModelTrainer(config)

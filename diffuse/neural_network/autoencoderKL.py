@@ -35,7 +35,7 @@ class FlaxDiagonalGaussianDistribution(object):
         if self.deterministic:
             return jnp.array([0.0])
 
-        return 0.5 * jnp.sum(
+        return 0.5 * jnp.mean(
             self.mean**2 + self.var - 1.0 - self.logvar, axis=[1, 2, 3]
         )
 
@@ -156,7 +156,7 @@ class AutoencoderKL(nn.Module):
     def encode(self, sample: ArrayLike, deterministic: bool = True):
         hidden_states = self.encoder(sample, deterministic=deterministic)
         moments = self.quant_conv(hidden_states)
-        posterior = FlaxDiagonalGaussianDistribution(moments)
+        posterior = FlaxDiagonalGaussianDistribution(moments, deterministic=deterministic)
 
         return posterior
 
@@ -170,7 +170,7 @@ class AutoencoderKL(nn.Module):
         return hidden_states
 
     def __call__(
-        self, sample: ArrayLike, deterministic: bool = True, training: bool = True
+        self, sample: ArrayLike, deterministic: bool = False, training: bool = True
     ):
 
         posterior = self.encode(sample, deterministic=deterministic)

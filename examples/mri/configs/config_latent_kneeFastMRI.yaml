@@ -33,20 +33,20 @@ training:
 
 loss:
     latent:
-        beta: 1.0e-3
+        beta: 1.0 # Regularization of KL divergence
     score:
-        score: "noise_matching"
+        score: "noise_matching" # Or "score_matching"
 
 inference:
     n_t: 50  # Number of time steps
     n_samples: 15  # Number of samples for denoiser
     n_samples_cntrst: 16  # Number of contrastive samples
     n_loop_opt: 3  # Number of optimization loops
-    lr: 0.1
+    lr: 0.1 # Learning rate for optimization
 
 sde:
-    t0: 0.0
-    tf: 1.0
+    t0: 0.0 # Start time
+    tf: 1.0 # End time
 
 neural_network:
     unet:
@@ -68,6 +68,6 @@ neural_network:
 
 mask:
     mask_type: "radial"  # or "spiral"
-    num_lines: 5
+    num_lines: 5 # Number of lines
 
 task: "quality"
