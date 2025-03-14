@@ -54,8 +54,8 @@ def score_match_loss(
     return jnp.mean(lmbda(ts) * sq_diff, axis=0)
 
 def weight_fun(t, sde: SDE):
-    _, beta = sde.beta_scheduler(t)
-    return beta ** 2
+    int_b = sde.beta.integrate(t, 0).squeeze()
+    return 1 - jnp.exp(-int_b)
 
 
 def noise_match_loss(
