@@ -98,7 +98,7 @@ class AutoencoderKL(nn.Module):
     down_block_types: Tuple[str] = ("DownEncoderBlock2D",)
     up_block_types: Tuple[str] = ("UpDecoderBlock2D",)
     block_out_channels: Tuple[int] = (64,)
-    layers_per_block: int = 1
+    layers_per_block: int = 2
     act_fn: str = "silu"
     latent_channels: int = 4
     norm_num_groups: int = 32
@@ -170,13 +170,15 @@ class AutoencoderKL(nn.Module):
         return hidden_states
 
     def __call__(
-        self, sample: ArrayLike, deterministic: bool = False, training: bool = True
+        self, sample: ArrayLike, deterministic: bool = False, training: bool = True, decode: bool = False
     ):
+
+        if decode:
+            return self.decode(sample, deterministic=deterministic)
 
         posterior = self.encode(sample, deterministic=deterministic)
         rng = self.make_rng("gaussian")
         hidden_states = posterior.sample(rng)
-
         sample = self.decode(hidden_states, deterministic=deterministic)
 
         if training:

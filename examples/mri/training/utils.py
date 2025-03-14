@@ -40,7 +40,7 @@ def get_latest_model(config: dict) -> int:
         model_dir = Path(config["model_dir"])
         model_files = [
             int(f.stem.split("_")[-1])
-            for f in model_dir.glob(f"{CHECKPOINT_PREFIX}*.npz")
+            for f in model_dir.glob(f"{CHECKPOINT_PREFIX}_[0-9]*.npz")
             if f.stem.split("_")[-1].isdigit()
         ]
         return max(model_files) - 1 if model_files else -1
@@ -110,7 +110,7 @@ def checkpoint_model(
     if delete_old:
         # Keep only the latest MAX_CHECKPOINTS files
         checkpoints = sorted(
-            paths.base_dir.glob(f"{paths.prefix}_*.npz"),
+            paths.base_dir.glob(f"{paths.prefix}_[0-9]*.npz"),
             key=lambda x: int(x.stem.split("_")[-1]),
         )
         for checkpoint in checkpoints[:-MAX_CHECKPOINTS]:

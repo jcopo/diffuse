@@ -54,8 +54,8 @@ def score_match_loss(
     return jnp.mean(lmbda(ts) * sq_diff, axis=0)
 
 def weight_fun(t, sde: SDE):
-    int_b = sde.beta.integrate(t, 0).squeeze()
-    return 1 - jnp.exp(-int_b)
+    _, beta = sde.beta_scheduler(t)
+    return beta ** 2
 
 
 def noise_match_loss(
@@ -101,7 +101,7 @@ def noise_match_loss(
     return jnp.mean(mse)
 
 def kl_loss(nn_params, rng_key, x0_samples, beta: float, network: Callable):
-    posterior, sample = network.apply(nn_params, x0_samples, rngs=rng_key)
+    posterior, sample = network.apply(nn_params, x0_samples, deterministic=False, training=True, rngs=rng_key)
     kl_value = posterior.kl()
     mse_value = einops.reduce((sample - x0_samples) ** 2, "t ... -> t ", "mean")
     return jnp.mean(beta * kl_value + mse_value)

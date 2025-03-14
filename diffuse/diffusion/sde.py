@@ -68,22 +68,17 @@ class LinearSchedule:
 class CosineSchedule:
     t0: float
     T: float
+    dt: float
     s: float = 0.008
 
     def __call__(self, t):
-        pass
+        return jax.lax.cond(t < 1e-3, lambda: 0., lambda: jnp.clip(1 - self._f(t) / self._f(t - self.dt), max=0.999))
+
+    def _f(self, t):
+        return jnp.cos((t + self.s) / (1 + self.s) * jnp.pi / 2) ** 2
 
     def integrate(self, t, s):
-        t_scaled = (t - self.t0) / (self.T - self.t0)
-        s_scaled = (s - self.t0) / (self.T - self.t0)
-
-        theta_t = (t_scaled + self.s) / (1 + self.s) * jnp.pi / 2
-        theta_s = (s_scaled + self.s) / (1 + self.s) * jnp.pi / 2
-
-        alpha_bar_t = jnp.cos(theta_t) ** 2
-        alpha_bar_s = jnp.cos(theta_s) ** 2
-
-        return -jnp.log(alpha_bar_t / alpha_bar_s)
+        return self._f(t) / self._f(s)
 
 
 

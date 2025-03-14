@@ -21,4 +21,4 @@ module load miniforge/24.9.0
 conda activate /lustre/fswork/projects/rech/hlp/uha64uw/.conda/envs/flax
 
 cd $WORK/diffuse/
-python -m examples.mri.python_script.training_script --config examples/mri/configs/config_latent_kneeFastMRI.yaml --model autoencoder
+python -m examples.mri.python_script.training_script --config examples/mri/configs/config_latent_kneeFastMRI.yaml --model score

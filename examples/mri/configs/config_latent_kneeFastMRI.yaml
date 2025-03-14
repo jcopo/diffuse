@@ -7,8 +7,8 @@ model_dir: "/lustre/fsn1/projects/rech/hlp/uha64uw/diffuse/data/kneeFastMRI/ldm/
 training:
     latent:
         cosine_schedule:
-            init_value: 2.0e-4 # Learning rate
-            decay_steps: 4000 # Number of epochs
+            init_value: 1.0e-3 # Learning rate
+            decay_steps: 1500 # Number of epochs
             alpha: 1.0e-2 # Final learning rate
             exponent: 1 # Exponent for the cosine schedule
         ema:
@@ -33,9 +33,9 @@ training:
 
 loss:
     latent:
-        beta: 1.0 # Regularization of KL divergence
+        beta: 1.0e-5 # Regularization of KL divergence
     score:
-        score: "noise_matching" # Or "score_matching"
+        type: "noise_matching" # Or "score_matching"
 
 inference:
     n_t: 50  # Number of time steps
@@ -52,17 +52,18 @@ neural_network:
     unet:
         dt: 0.001 # Time step
         dim: 64 # Embedding dimension
-        upsampling: "pixel_shuffle" # Upsampling method
-        dim_mults: [1, 2, 4, 8] # Multipliers for the embedding dimensions
+        upsampling: "resize" # Upsampling method
+        dim_mults: [1, 2, 4] # Multipliers for the embedding dimensions
         sample_size: 40 # Sample size
         channel_size: 4 # Number of channels
 
     autoencoder:
         in_channels: 2 # Number of channels in the input
         out_channels: 2 # Number of channels in the output
-        down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D", "DownBlock2D"] # Types of down blocks
-        up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D", "UpBlock2D"] # Types of up blocks
-        block_out_channels: [32, 64, 128, 256] # Output channels for each block
+        down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D"] # Types of down blocks
+        up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D"] # Types of up blocks
+        block_out_channels: [128, 256, 512] # Output channels for each block
+        layers_per_block: 4 # Number of layers per block
         sample_size: 320 # Sample size
         latent_channels: 4 # Number of channels in the latent space
 

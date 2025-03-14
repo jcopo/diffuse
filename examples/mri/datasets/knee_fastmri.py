@@ -20,11 +20,13 @@ class KneeFastMRIDataset(BaseMRIDataset):
                         params, data, deterministic=True, rngs=subkey
                     )
                     latent = posterior.mode()
-                    self.cached_data[file] = {"xspace": np.array(latent)}
+                    self.cached_data[file] = {"xspace": 0.18215 * np.array(latent)} # scaling factor from latent space see ref ...
         else:
             for file in tqdm(self.file_list, desc="Caching data"):
                 with h5py.File(file, "r") as f:
-                    self.cached_data[file] = {"xspace": np.array(f["xspace"])}
+                    data = np.array(f["xspace"])
+                    data = np.einsum("bhwc,b->bhwc", data, 1 / np.max(np.abs(data[..., 0] + 1j * data[..., 1]), axis=(1, 2)))
+                    self.cached_data[file] = {"xspace": data}
         self.num_slices = [v["xspace"].shape[0] for v in self.cached_data.values()]
         self.slice_mapper = np.cumsum(self.num_slices) - 1
 
