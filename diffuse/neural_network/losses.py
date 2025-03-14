@@ -84,7 +84,7 @@ def noise_match_loss(
     n_x0 = x0_samples.shape[0]
 
     # Generate time samples
-    ts = jax.random.randint(key_t, (n_x0, 1), minval=0, maxval=100)
+    ts = jax.random.randint(key_t, (n_x0, 1), minval=0, maxval=1000)
     ts = ts * (sde.tf / 1000)
 
     # Generate samples of x_t and get the noise used
