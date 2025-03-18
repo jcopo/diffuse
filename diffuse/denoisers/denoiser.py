@@ -22,8 +22,8 @@ class Denoiser(BaseDenoiser):
     x0_shape: Tuple[int, ...]
     deterministic: bool = False
 
-    def init(self, position: Array, rng_key: PRNGKeyArray, t: Array) -> DenoiserState:
-        integrator_state = self.integrator.init(position, rng_key, t)
+    def init(self, position: Array, rng_key: PRNGKeyArray, dt: float) -> DenoiserState:
+        integrator_state = self.integrator.init(position, rng_key, 0.0, dt)
         return DenoiserState(integrator_state)
 
     def step(
@@ -41,10 +41,11 @@ class Denoiser(BaseDenoiser):
     def generate(self, rng_key: PRNGKeyArray) -> Tuple[Array, Array]:
         r"""Generate denoised samples \theta_0"""
         rng_key, rng_key_start = jax.random.split(rng_key)
-        t = jnp.array([i / (self.n_steps - 1) * (self.sde.tf - 1e-3) for i in range(self.n_steps)])
+
+        dt = self.sde.tf / self.n_steps
 
         rndm_start = jax.random.normal(rng_key_start, shape=self.x0_shape)
-        state = self.init(rndm_start, rng_key, t)
+        state = self.init(rndm_start, rng_key, dt)
 
         def body_fun(state, _):
             state_next = self.step(state)

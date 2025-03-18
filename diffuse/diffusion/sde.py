@@ -7,7 +7,6 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import PRNGKeyArray, Array
 
-
 class SDEState(NamedTuple):
     position: Array
     t: float
@@ -152,7 +151,8 @@ class SDE:
         s = score(x, self.tf - t)
         return 0.5 * beta_t * x + beta_t * s
 
-    def reverse_drift_ode(self, x: Array, t: Array, score: Callable) -> Array:
+    def reverse_drift_ode(self, state: SDEState, score: Callable) -> Array:
+        x, t = state.position, state.t
         beta_t = self.beta(self.tf - t)
         s = score(x, self.tf - t)
         return 0.5 * (beta_t * x + beta_t * s)

@@ -83,9 +83,9 @@ def noise_match_loss(
     key_t, key_x = jax.random.split(rng_key)
     n_x0 = x0_samples.shape[0]
 
-    # Generate time samples
-    ts = jax.random.randint(key_t, (n_x0, 1), minval=0, maxval=1000)
-    ts = ts * (sde.tf / 1000)
+    # generate time samples
+    ts = jax.random.uniform(key_t, (n_x0 - 1, 1), minval=1e-5, maxval=sde.tf)
+    ts = jnp.concatenate([ts, jnp.array([[sde.tf]])], axis=0)
 
     # Generate samples of x_t and get the noise used
     state_0 = SDEState(x0_samples, jnp.zeros((n_x0, 1)))

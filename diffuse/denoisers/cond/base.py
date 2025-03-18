@@ -34,14 +34,13 @@ class CondDenoiser(BaseDenoiser):
     ess_high: Optional[float] = 0.5
 
     def init(
-        self, position: Array, rng_key: PRNGKeyArray, t: float
+        self, position: Array, rng_key: PRNGKeyArray, dt: float
     ) -> CondDenoiserState:
         n_particles = position.shape[0]
         log_weights = jnp.log(jnp.ones(n_particles) / n_particles)
         keys = jax.random.split(rng_key, n_particles)
-        iteration = jnp.zeros(n_particles, dtype=jnp.int32)
         integrator_state = self.integrator.init(
-            position, keys, t, iteration
+            position, keys, jnp.zeros(n_particles), dt + jnp.ones(n_particles)
         )
 
         return CondDenoiserState(integrator_state, log_weights)
@@ -54,11 +53,11 @@ class CondDenoiser(BaseDenoiser):
         n_particles: int,
     ):
         key, subkey = jax.random.split(rng_key)
-        t = jnp.stack([jnp.array([i / (n_steps - 1) * (self.sde.tf - 1e-3) for i in range(n_steps)]) for _ in range(n_particles)])
         rndm_start = jax.random.normal(
             subkey, (n_particles, *measurement_state.y.shape)
         )
-        state = self.init(rndm_start, subkey, t)
+        dt = self.sde.tf / n_steps
+        state = self.init(rndm_start, subkey, dt)
 
         def body_fun(state: CondDenoiserState, key: PRNGKeyArray):
             posterior = self.posterior_logpdf(

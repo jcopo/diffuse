@@ -12,8 +12,8 @@ from diffuse.diffusion.sde import SDE, SDEState
 class EulerState(IntegratorState):
     position: Array
     rng_key: PRNGKeyArray
-    t: Array
-    iteration: int
+    t: float
+    dt: float
 
 
 @dataclass
@@ -23,21 +23,19 @@ class Euler:
     sde: SDE
 
     def init(
-        self, position: Array, rng_key: PRNGKeyArray, t: float, iteration: int = 0
+        self, position: Array, rng_key: PRNGKeyArray, t: float, dt: float
     ) -> EulerState:
         """Initialize integrator state with position, timestep and step size"""
-        return EulerState(position, rng_key, t, iteration)
+        return EulerState(position, rng_key, t, dt)
 
     def __call__(self, integrator_state: EulerState, score: Callable) -> EulerState:
         """Perform one Euler integration step: dx = drift*dt"""
-        position, rng_key, t_iter, iteration = integrator_state
-        t_current, t_next = t_iter[iteration], t_iter[iteration+1]
+        position, rng_key, t, dt = integrator_state
 
-        drift = self.sde.reverse_drift_ode(position, t_current, score)
-        dx = drift * (t_next - t_current)
+        drift = self.sde.reverse_drift_ode(integrator_state, score)
+        dx = drift * dt
         _, rng_key_next = jax.random.split(rng_key)
-
-        return EulerState(position + dx, rng_key_next, t_iter, iteration+1)
+        return EulerState(position + dx, rng_key_next, t + dt, dt)
 
 
 def next_churn_noise_level(integrator_state: EulerState, stochastic_churn_rate: float, churn_min: float, churn_max: float, sde: SDE) -> float:
@@ -109,9 +107,6 @@ class HeunIntegrator:
         )
         position_churned, rng_key, t_reverse_churned, dt = integrator_state
         t_reverse_next = jnp.clip(t_reverse + dt, 0, self.sde.tf)
-        jax.debug.print("t_reverse_next: {t_reverse_next}", t_reverse_next=t_reverse_next)
-        jax.debug.print("t_reverse_churned: {t_reverse_churned}", t_reverse_churned=t_reverse_churned)
-
         drift_curr = self.sde.reverse_drift_ode(integrator_state, score)
         integrator_state_next = EulerState(position_churned + drift_curr * (t_reverse_next - t_reverse_churned), rng_key_next, t_reverse_next, dt)
 

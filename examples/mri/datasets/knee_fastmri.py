@@ -20,7 +20,7 @@ class KneeFastMRIDataset(BaseMRIDataset):
                         params, data, deterministic=True, rngs=subkey
                     )
                     latent = posterior.mode()
-                    self.cached_data[file] = {"xspace": 0.18215 * np.array(latent)} # scaling factor from latent space see ref ...
+                    self.cached_data[file] = {"xspace": np.array(latent)} # scaling factor from latent space see ref ...
         else:
             for file in tqdm(self.file_list, desc="Caching data"):
                 with h5py.File(file, "r") as f:
