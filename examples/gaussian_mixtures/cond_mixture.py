@@ -185,7 +185,7 @@ def test_backward_sde_conditional_mixture(integrator_class):
 
     # Generate samples
     n_samples = 1000
-    state, hist_position = denoise.generate(key_samples, n_steps, n_samples)
+    state, hist_position = denoise.generate(key_samples, n_steps-2, n_samples)
     hist_position = hist_position.squeeze().T
 
 

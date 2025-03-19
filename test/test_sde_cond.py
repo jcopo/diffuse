@@ -42,10 +42,6 @@ def init_mixture(key):
     return MixState(means, covs, mix_weights)
 
 
-@pytest.fixture
-def key():
-    return jax.random.PRNGKey(666)
-
 
 @pytest.fixture
 def sde_setup():
@@ -55,22 +51,22 @@ def sde_setup():
 
 
 @pytest.mark.parametrize("integrator_class", [EulerMaruyama, DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator])
-def test_backward_sde_conditional_mixture(integrator_class, plot_if_enabled):
-    key = jax.random.PRNGKey(42)
+@pytest.mark.parametrize("key", [jax.random.PRNGKey(42), jax.random.PRNGKey(666), jax.random.PRNGKey(1234)])
+def test_backward_sde_conditional_mixture(integrator_class, plot_if_enabled, key):
     d = 1  # Dimensionality (can use d=200)
-    sigma_y = 0.05
+    sigma_y = 0.01
 
     # Initialize the Gaussian mixture prior
-    mix_state = init_gaussian_mixture(key, d)
+    key_init, key_mix = jax.random.split(key)
+    mix_state = init_gaussian_mixture(key_init, d)
 
     # Define the SDE
-    t_init, t_final, n_steps = 0.001, 2.0, 100
+    t_init, t_final, n_steps = 0.001, 2.0, 500
     beta = LinearSchedule(b_min=0.1, b_max=20.0, t0=t_init, T=t_final)
     sde = SDE(beta=beta, tf=t_final)
 
     # Generate observation (similar to main())
-    key_meas, key_obs, key_samples = jax.random.split(key, 3)
-    sigma_y = 0.01
+    key_meas, key_obs, key_samples, key_gen = jax.random.split(key_mix, 4)
     A = jax.random.normal(key_obs, (1, d))
     forward_model = MatrixProduct(A=A, std=sigma_y)
     x_star = sampler_mixtr(key_samples, mix_state, 1)[0]
@@ -99,13 +95,13 @@ def test_backward_sde_conditional_mixture(integrator_class, plot_if_enabled):
     )
 
     # Generate samples
-    n_samples = 1000
-    state, hist_position = denoise.generate(key_samples, n_steps, n_samples)
+    n_samples = 5000
+    state, hist_position = denoise.generate(key_gen, n_steps, n_samples)
     hist_position = hist_position.squeeze().T
 
 
     # Visualization
-    perct = [0, 0.05, 0.1, 0.3, 0.6, 0.7, .73, .75, 0.8, 0.9, 1.]
+    perct = [0., 0.05, 0.1, 0.3, 0.6, 0.7, .73, .75, 0.8, 0.9]
     space = jnp.linspace(-10, 10, 100)
     plot_if_enabled(lambda: display_trajectories(hist_position, 100, title=integrator_class.__name__))
     plt.show()

@@ -44,9 +44,13 @@ class Denoiser(BaseDenoiser):
         r"""Generate denoised samples \theta_0"""
         rng_key, rng_key_start = jax.random.split(rng_key)
 
-        dt = self.sde.tf / n_steps
+        dt = (self.sde.tf - self.sde.beta.t0) / n_steps
 
-        rndm_start = jax.random.normal(rng_key_start, shape=(n_particles, *self.x0_shape))
+        # rndm_start = jax.random.normal(rng_key_start, shape=(n_particles, *self.x0_shape))
+        # sample with
+        rndm_start = jax.scipy.stats.norm.ppf(
+            jnp.arange(0, n_particles) / n_particles + 1 / (2 * n_particles)
+            )[:, None]
         keys = jax.random.split(rng_key, n_particles)
         state = jax.vmap(self.init, in_axes=(0, 0, None))(rndm_start, keys, dt)
 
