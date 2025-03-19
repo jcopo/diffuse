@@ -269,10 +269,10 @@ class DDIMIntegrator:
         score: Callable
     ) -> EulerState:
         """Perform one DDIM step from t to t+dt in the REVERSE process"""
-        position, rng_key, t_iter, iteration = integrator_state
+        position, rng_key, t, dt = integrator_state
         noise_pred = self.sde.score_to_noise(score)
 
-        t_reverse_curr, t_reverse_next = t_iter[iteration], t_iter[iteration+1]
+        t_reverse_curr, t_reverse_next = t, t+dt
 
         # Convert reverse time (t) to forward time (T - t_reverse)
         t_forward_curr = self.sde.tf - t_reverse_curr  # Current forward time
@@ -308,4 +308,4 @@ class DDIMIntegrator:
             sigma_next * noise  # Stochastic noise (if η > 0)
         )
 
-        return EulerState(position_next, rng_key_next, t_iter, iteration+1)
+        return EulerState(position_next, rng_key_next, t+dt, dt)
