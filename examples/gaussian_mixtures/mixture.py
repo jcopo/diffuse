@@ -116,7 +116,7 @@ def sampler_mixtr(key, state: MixState, N):
     return mu[idx] + noise_scaled
 
 
-xmax = 4
+#xmax = 4
 nbins = 200
 
 
@@ -134,6 +134,7 @@ def transform_mixture_params(state, sde, t):
 
 def display_histogram(samples, ax):
     nb = samples.flatten().shape[0]
+    xmax = jnp.max(jnp.abs(samples))
     h0, b = jnp.histogram(samples.flatten(), bins=nbins, range=[-xmax, xmax])
     h0 = h0 / nb * nbins / (2 * xmax)
     ax.bar(

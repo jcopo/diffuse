@@ -258,9 +258,10 @@ class DDIMIntegrator:
         position: Array,
         rng_key: PRNGKeyArray,
         t: Array,
+        dt: float
     ) -> EulerState:
         """Initialize integrator state with position, time, and timestep"""
-        return EulerState(position, rng_key, t, 0)
+        return EulerState(position, rng_key, t, dt)
 
     def __call__(
         self,

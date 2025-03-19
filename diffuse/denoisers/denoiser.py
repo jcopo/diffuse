@@ -18,9 +18,7 @@ class Denoiser(BaseDenoiser):
     integrator: Integrator
     sde: SDE
     score: Callable[[Array, float], Array]  # x -> t -> score(x, t)
-    n_steps: int
     x0_shape: Tuple[int, ...]
-    deterministic: bool = False
 
     def init(self, position: Array, rng_key: PRNGKeyArray, dt: float) -> DenoiserState:
         integrator_state = self.integrator.init(position, rng_key, 0.0, dt)
@@ -38,17 +36,22 @@ class Denoiser(BaseDenoiser):
 
         return DenoiserState(integrator_state_next)
 
-    def generate(self, rng_key: PRNGKeyArray) -> Tuple[Array, Array]:
+    def generate(self,
+        rng_key: PRNGKeyArray,
+        n_steps: int,
+        n_particles: int,
+    ) -> Tuple[Array, Array]:
         r"""Generate denoised samples \theta_0"""
         rng_key, rng_key_start = jax.random.split(rng_key)
 
-        dt = self.sde.tf / self.n_steps
+        dt = self.sde.tf / n_steps
 
-        rndm_start = jax.random.normal(rng_key_start, shape=self.x0_shape)
-        state = self.init(rndm_start, rng_key, dt)
+        rndm_start = jax.random.normal(rng_key_start, shape=(n_particles, *self.x0_shape))
+        keys = jax.random.split(rng_key, n_particles)
+        state = jax.vmap(self.init, in_axes=(0, 0, None))(rndm_start, keys, dt)
 
         def body_fun(state, _):
-            state_next = self.step(state)
+            state_next = jax.vmap(self.step)(state)
             return state_next, state_next.integrator_state.position
 
-        return jax.lax.scan(body_fun, state, jnp.arange(self.n_steps))
+        return jax.lax.scan(body_fun, state, jnp.arange(n_steps))

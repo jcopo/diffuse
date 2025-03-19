@@ -1,22 +1,33 @@
 from dataclasses import dataclass
+import pdb
 
+import matplotlib.pyplot as plt
+import jax.scipy.stats as stats
 import jax
+import jax.numpy as jnp
 from jax import Array
 from jaxtyping import PRNGKeyArray
+from functools import partial
 
-from examples.gaussian_mixtures.mixture import MixState
-
-
+from examples.gaussian_mixtures.mixture import MixState, pdf_mixtr, sampler_mixtr, rho_t
+from diffuse.diffusion.sde import SDE, LinearSchedule
+from diffuse.integrator.stochastic import EulerMaruyama
+from diffuse.integrator.deterministic import DDIMIntegrator
+from diffuse.denoisers.denoiser import Denoiser
+from examples.gaussian_mixtures.mixture import display_trajectories
+from test.test_sde_mixture import display_trajectories_at_times
+from examples.gaussian_mixtures.forward_models.matrix_product import MatrixProduct
 @dataclass
 class NoiseMask:
+    A: Array
     alpha: float
     std: float
 
     def measure(self, key: PRNGKeyArray, x: Array) -> Array:
-        return self.alpha * x + jax.random.normal(key, shape=x.shape) * self.std
+        return self.A @ x + jax.random.normal(key, shape=x.shape) * self.std
 
-    def restore(self, key: PRNGKeyArray, x: Array, measured: Array) -> Array:
-        return self.alpha * x
+    def restore(self, measured: Array) -> Array:
+        return self.A.T @ measured
 
 
 def posterior_distribution(
@@ -34,3 +45,192 @@ def posterior_distribution(
 
     new_weights = new_weights / new_weights.sum()
     return MixState(new_means, new_covs, new_weights)
+
+
+def init_gaussian_mixture(key, d=20):
+    n_mixt = 25
+    grid = jnp.array([(i, j) for i in range(-2, 3) for j in range(-2, 3)])  # Shape: (25, 2)
+    grid_scaled = 8 * grid
+    repeats = (d + 1) // 2
+    means = jnp.tile(grid_scaled, (1, repeats))[:, :d]  # Shape: (25, d)
+    covs = jnp.repeat(jnp.eye(d)[None, :, :], n_mixt, axis=0)  # Shape: (25, d, d)
+    key_weights = jax.random.split(key, 1)[0]
+    mix_weights = jax.random.uniform(key_weights, (n_mixt,))
+    mix_weights = mix_weights / jnp.sum(mix_weights)
+    return MixState(means, covs, mix_weights)
+
+
+# Generate observation
+# def generate_observation(key, mix_state: MixState, d=20, sigma_y=0.05):
+#     key_A, key_x, key_noise = jax.random.split(key, 3)
+#     x_star = sampler_mixtr(key_x, mix_state, 1)[0]  # Shape: (d,)
+#     A = jax.random.normal(key_A, (1, d))  # Shape: (1, d)
+#     epsilon = jax.random.normal(key_noise, (1,))
+#     y = A @ x_star + sigma_y * epsilon  # Shape: (1,)
+#     return y, A, x_star
+
+
+def compute_xt_given_y(mix_state_posterior: MixState, sde:SDE, t: float):
+    means, covs, weights = mix_state_posterior
+    alpha_t = jnp.exp(-sde.beta.integrate(t, 0.0))
+    means_xt = jnp.sqrt(alpha_t) * means
+    covs_xt = alpha_t * covs + (1 - alpha_t) * jnp.eye(covs.shape[-1])
+    return MixState(means_xt, covs_xt, weights)
+
+
+# Compute the theoretical posterior
+def compute_posterior(mix_state: MixState, y: Array, A: Array, sigma_y=0.05):
+    means, covs, weights = mix_state
+    d = means.shape[-1]
+
+    # Compute posterior parameters
+    AAT = A @ A.T  # Scalar (1x1)
+    Sigma_bar = jnp.linalg.inv(jnp.eye(d) + (1 / sigma_y**2) * (A.T @ A))  # Shape: (d, d)
+    covs_bar = jnp.repeat(Sigma_bar[None, :, :], len(weights), axis=0)  # Shape: (25, d, d)
+
+    # Posterior means
+    term1 = (1 / sigma_y**2) * (A.T @ y)  # Shape: (d, 1) -> (d,)
+    means_bar = jax.vmap(lambda m: Sigma_bar @ (term1 + m))(means)  # Shape: (25, d)
+
+    # Unnormalized posterior weights
+    likelihood_var = sigma_y**2 + AAT.item()  # Scalar
+    y_pred = jax.vmap(lambda m: A @ m)(means).squeeze()  # Shape: (25,)
+    log_likelihood = stats.norm.logpdf(y, loc=y_pred, scale=jnp.sqrt(likelihood_var))
+    weights_bar = weights * jnp.exp(log_likelihood)  # Unnormalized
+    weights_bar = weights_bar / jnp.sum(weights_bar)  # Normalize
+
+    return MixState(means_bar, covs_bar, weights_bar)
+
+
+# Visualization function including posterior
+def plot_distributions(mix_state, posterior_state, sde, t_values, x_grid, samples_prior):
+    fig, axes = plt.subplots(1, len(t_values) + 2, figsize=(18, 5))
+
+    # Plot prior distribution (t=0)
+    pdf_prior = pdf_mixtr(mix_state, x_grid)
+    axes[0].plot(x_grid[:, 0], pdf_prior, label="Prior PDF")
+    axes[0].hist(samples_prior[:, 0], bins=50, density=True, alpha=0.5, color="red", label="Samples")
+    axes[0].set_title("Prior (t=0)")
+    axes[0].legend()
+
+    # Plot posterior distribution
+    pdf_posterior = pdf_mixtr(posterior_state, x_grid)
+    axes[1].plot(x_grid[:, 0], pdf_posterior, label="Posterior PDF", color="green")
+    samples_posterior = sampler_mixtr(jax.random.PRNGKey(43), posterior_state, 1000)
+    axes[1].hist(samples_posterior[:, 0], bins=50, density=True, alpha=0.5, color="green", label="Posterior Samples")
+    axes[1].set_title("Theoretical Posterior")
+    axes[1].legend()
+
+    # Plot noised distributions
+    for i, t in enumerate(t_values):
+        pdf_t = rho_t(x_grid, t, mix_state, sde)
+        axes[i + 2].plot(x_grid[:, 0], pdf_t, label=f"PDF at t={t}", color="blue")
+        axes[i + 2].set_title(f"Noised (t={t})")
+        axes[i + 2].legend()
+
+    plt.tight_layout()
+    plt.show()
+
+
+def test_backward_sde_conditional_mixture():
+    key = jax.random.PRNGKey(42)
+    d = 1  # Dimensionality (can use d=200)
+    sigma_y = 0.05
+
+    # Initialize the Gaussian mixture prior
+    mix_state = init_gaussian_mixture(key, d)
+
+    # Define the SDE
+    t_init, t_final, n_steps = 0.0, 2.0, 500
+    beta = LinearSchedule(b_min=0.1, b_max=20.0, t0=t_init, T=t_final)
+    sde = SDE(beta=beta, tf=t_final)
+
+    # Generate observation (similar to main())
+    key_meas, key_obs, key_samples = jax.random.split(key, 3)
+    sigma_y = 0.05
+    A = jax.random.normal(key_obs, (1, d))
+    forward_model = MatrixProduct(A=A, std=sigma_y)
+    x_star = sampler_mixtr(key_samples, mix_state, 1)[0]
+    print(f"x_star shape: {x_star.shape}")
+    print(f"True x* (first 5 dims): {x_star[:5]}")
+    y = forward_model.measure(key_meas, None, x_star)
+
+    # Compute theoretical posterior
+    posterior_state = compute_posterior(mix_state, y, A, sigma_y)
+
+    # Define score function using posterior distribution
+    def pdf(x, t):
+        mix_state_t = compute_xt_given_y(posterior_state, sde, t)
+        return pdf_mixtr(mix_state_t, x)
+    def score(x, t):
+        return jax.grad(pdf)(x, t) / pdf(x, t)
+
+
+    # Define Integrator and Denoiser
+    #integrator = EulerMaruyama(sde=sde)
+    integrator = DDIMIntegrator(sde=sde)
+    denoise = Denoiser(
+        integrator=integrator, sde=sde, score=score, x0_shape=x_star.shape
+    )
+
+    # Generate initial samples
+    n_samples = 1000
+    # Generate samples
+    state, hist_position = denoise.generate(key_samples, n_steps, n_samples)
+
+    # Visualization
+    perct = [0, 0.05, 0.1, 0.3, 0.6, 0.7, .73, .75, 0.8, 0.9, 1]
+    space = jnp.linspace(-30, 30, 100)
+    display_trajectories(hist_position.squeeze().T, 100)
+    plt.show()
+    plt.close()
+    display_trajectories_at_times(
+        hist_position.squeeze().T,
+            t_init,
+            t_final,
+            n_steps,
+            space,
+            perct,
+            lambda x, t: pdf(x, t_final - t),
+        )
+    plt.show()
+    return state, hist_position, posterior_state
+
+# Main execution
+def main():
+    key = jax.random.PRNGKey(42)
+    d = 1  # Dimensionality (can use d=200)
+    sigma_y = 0.05
+
+    # Initialize the Gaussian mixture prior
+    mix_state = init_gaussian_mixture(key, d)
+
+    # Generate observation
+    y, A, x_star = generate_observation(key, mix_state, d, sigma_y)
+    print(f"Observation y: {y.item()}, True x* (first 5 dims): {x_star[:5]}")
+
+    # Compute the theoretical posterior
+    posterior_state = compute_posterior(mix_state, y, A, sigma_y)
+
+    # Define the SDE
+    beta = LinearSchedule(b_min=0.1, b_max=20.0, t0=0.0, T=1.0)
+    sde = SDE(beta=beta, tf=1.0)
+
+    # Sample from the prior for visualization
+    N_samples = 1000
+    samples_prior = sampler_mixtr(key, mix_state, N_samples)
+
+    # Define grid for PDF evaluation (project to 1D)
+    x_max = 20
+    x_grid = jnp.linspace(-x_max, x_max, 200)[:, None]
+    x_grid = jnp.hstack([x_grid, jnp.zeros((200, d-1))])
+
+    # Define time points for noising process
+    t_values = jnp.array([0.1, 0.5, 1.0])
+
+    # Plot everything
+    plot_distributions(mix_state, posterior_state, sde, t_values, x_grid, samples_prior)
+
+if __name__ == "__main__":
+    test_backward_sde_conditional_mixture()
+    #main()
