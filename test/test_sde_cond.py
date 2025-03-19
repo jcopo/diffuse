@@ -3,6 +3,9 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import pytest
+import scipy as sp
+import numpy as np
+import ott
 
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from examples.gaussian_mixtures.cond_mixture import NoiseMask, posterior_distribution
@@ -12,7 +15,12 @@ from examples.gaussian_mixtures.mixture import (
     display_histogram,
     sampler_mixtr,
 )
+from examples.gaussian_mixtures.forward_models.matrix_product import MatrixProduct
+from examples.gaussian_mixtures.cond_mixture import compute_posterior, compute_xt_given_y, init_gaussian_mixture
+from examples.gaussian_mixtures.mixture import cdf_mixtr, pdf_mixtr
+from test.test_sde_mixture import display_trajectories_at_times
 from diffuse.integrator.stochastic import EulerMaruyama
+from diffuse.integrator.deterministic import DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator
 from diffuse.denoisers.denoiser import Denoiser
 from examples.gaussian_mixtures.mixture import display_trajectories
 
@@ -46,85 +54,89 @@ def sde_setup():
     return sde
 
 
-def test_posterior_distribution_visual(
-    noise_mask, init_mixture, plot_if_enabled, sde_setup, key
-):
-    mix_state = init_mixture
-    sample = sampler_mixtr(key, mix_state, 1).squeeze()
-    y_meas = noise_mask.measure(key, sample)
-    post_state = posterior_distribution(mix_state, noise_mask, y_meas)
-    sde = sde_setup
+@pytest.mark.parametrize("integrator_class", [EulerMaruyama, DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator])
+def test_backward_sde_conditional_mixture(integrator_class, plot_if_enabled):
+    key = jax.random.PRNGKey(42)
+    d = 1  # Dimensionality (can use d=200)
+    sigma_y = 0.05
 
-    # samples from posterior
-    n_samples = 1000
-    post_samples = sampler_mixtr(key, post_state, n_samples)
+    # Initialize the Gaussian mixture prior
+    mix_state = init_gaussian_mixture(key, d)
 
-    #
-    space = jnp.linspace(-3, 3, 100)
-    prior_pdf = partial(rho_t, init_mix_state=init_mixture, sde=sde)
-    post_pdf = partial(rho_t, init_mix_state=post_state, sde=sde)
+    # Define the SDE
+    t_init, t_final, n_steps = 0.001, 2.0, 100
+    beta = LinearSchedule(b_min=0.1, b_max=20.0, t0=t_init, T=t_final)
+    sde = SDE(beta=beta, tf=t_final)
 
-    # plot
-    def plot_posterior():
-        fig, ax = plt.subplots()
-        display_histogram(post_samples, ax)
-        ax.plot(space, jax.vmap(prior_pdf, in_axes=(0, None))(space, 0.0))
-        ax.plot(space, jax.vmap(post_pdf, in_axes=(0, None))(space, 0.0))
-        ax.set_title("Posterior Distribution")
-        ax.grid(True)
-        plt.tight_layout()
+    # Generate observation (similar to main())
+    key_meas, key_obs, key_samples = jax.random.split(key, 3)
+    sigma_y = 0.01
+    A = jax.random.normal(key_obs, (1, d))
+    forward_model = MatrixProduct(A=A, std=sigma_y)
+    x_star = sampler_mixtr(key_samples, mix_state, 1)[0]
+    print(f"x_star shape: {x_star.shape}")
+    print(f"True x* (first 5 dims): {x_star[:5]}")
+    y = forward_model.measure(key_meas, None, x_star)
 
-    plot_if_enabled(plot_posterior)
+    # Compute theoretical posterior
+    posterior_state = compute_posterior(mix_state, y, A, sigma_y)
+
+    # Define score function using posterior distribution
+    def pdf(x, t):
+        mix_state_t = compute_xt_given_y(posterior_state, sde, t)
+        return pdf_mixtr(mix_state_t, x)
+    def cdf(x, t):
+        mix_state_t = compute_xt_given_y(posterior_state, sde, t)
+        return cdf_mixtr(mix_state_t, x)
+    def score(x, t):
+        return jax.grad(pdf)(x, t) / pdf(x, t)
 
 
-def test_denoise_mixture(noise_mask, init_mixture, plot_if_enabled, sde_setup, key):
-    mix_state = init_mixture
-    sample = sampler_mixtr(key, mix_state, 1).squeeze()
-    y_meas = noise_mask.measure(key, sample)
-    post_state = posterior_distribution(mix_state, noise_mask, y_meas)
-    sde = sde_setup
-    alpha, std_noise = noise_mask.alpha, noise_mask.std
-
-    pdf = partial(rho_t, init_mix_state=mix_state, sde=sde)
-    post_pdf = partial(rho_t, init_mix_state=post_state, sde=sde)
-    score = lambda x, t: jax.grad(post_pdf)(x, t) / post_pdf(x, t)
-    space = jnp.linspace(-3, 3, 100)
-
-    n_steps = 100
-    # define Intergator and Denoiser
-    integrator = EulerMaruyama(sde=sde)
+    # Define Integrator and Denoiser
+    integrator = integrator_class(sde=sde)
     denoise = Denoiser(
-        integrator=integrator, sde=sde, score=score, n_steps=n_steps, x0_shape=(1,)
+        integrator=integrator, sde=sde, score=score, x0_shape=x_star.shape
     )
 
-    init_samples = jax.random.normal(key, (1000, 1))
-    keys = jax.random.split(key, init_samples.shape[0])
+    # Generate samples
+    n_samples = 1000
+    state, hist_position = denoise.generate(key_samples, n_steps, n_samples)
+    hist_position = hist_position.squeeze().T
 
-    # test if init and step work
-    state = jax.vmap(denoise.init, in_axes=(0, 0, None))(init_samples, keys, 0.01)
-    state = jax.vmap(denoise.step)(state)
 
-    # generate samples
-    state, hist = jax.vmap(denoise.generate)(keys)
-    samples = state.integrator_state.position
+    # Visualization
+    perct = [0, 0.05, 0.1, 0.3, 0.6, 0.7, .73, .75, 0.8, 0.9, 1.]
+    space = jnp.linspace(-10, 10, 100)
+    plot_if_enabled(lambda: display_trajectories(hist_position, 100, title=integrator_class.__name__))
+    plt.show()
+    # plt.close()
+    plot_if_enabled(lambda: display_trajectories_at_times(
+        hist_position,
+        t_init,
+        t_final,
+        n_steps,
+        space,
+        perct,
+        lambda x, t: pdf(x, t_final - t),
+        title=integrator_class.__name__
+    ))
+    plt.show()
 
-    # plot samples
-    def plot_samples():
-        fig, ax = plt.subplots()
-        display_histogram(samples, ax)
-        ax.set_title("Samples from Posterior")
-        ax.plot(space, jax.vmap(post_pdf, in_axes=(0, None))(space, 0.0))
-        ax.grid(True)
-        plt.tight_layout()
-        plt.show()
+    # assert samples are distributed according to the true density
+    for i, x in enumerate(perct):
+        k = int(x * n_steps)
+        t = t_init + (k+1) * (t_final - t_init) / n_steps
+        ks_statistic, p_value = sp.stats.kstest(
+            np.array(hist_position[:, k]),
+            lambda x: cdf(x, t_final - t),
+        )
+        assert p_value > 0.05, f"Sample distribution does not match theoretical (method: {integrator_class.__name__}, p-value: {p_value}, t: {t}, k: {k})"
 
-    def plot_trajectories():
-        fig, ax = plt.subplots()
-        display_trajectories(hist.squeeze(), 100)
-        ax.set_title("Samples from Posterior")
-        ax.grid(True)
-        plt.tight_layout()
-        plt.show()
+    # compute Wasserstein distance between gen samples and true posterior samples
+    wasserstein_distance, _ = ott.tools.sliced.sliced_wasserstein(
+        state.integrator_state.position,
+        posterior_state.means,
+    )
+    print(f"method: {integrator_class.__name__}, Wasserstein distance: {wasserstein_distance}, n_samples: {n_samples}, n_steps: {n_steps}")
 
-    plot_if_enabled(plot_samples)
-    plot_if_enabled(plot_trajectories)
+

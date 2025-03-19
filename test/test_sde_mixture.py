@@ -26,7 +26,7 @@ jax.config.update("jax_enable_x64", True)
 
 @pytest.fixture
 def key():
-    return jax.random.PRNGKey(42)
+    return jax.random.PRNGKey(0)
 
 
 @pytest.fixture
@@ -75,7 +75,7 @@ def time_space_setup():
     t_init = 0.0
     t_final = 2.0
     n_samples = 5000
-    n_steps = 100
+    n_steps = 500
     ts = jnp.linspace(t_init, t_final, n_steps)
     space = jnp.linspace(-3, 3, 100)
     dts = jnp.array([t_final / n_steps] * (n_steps))
@@ -120,7 +120,7 @@ def test_forward_sde_mixture(
     # assert samples are distributed according to the true density
     for i, x in enumerate(perct):
         k = int(x * n_steps) + 1
-        t = t_init + (k+1) * (t_final - t_init) / n_steps
+        t = t_init + (k) * (t_final - t_init) / n_steps
         ks_statistic, p_value = sp.stats.kstest(
             np.array(noised_samples.position[:, k].squeeze()),
             lambda x: cdf_t(x, t, mix_state, sde),
