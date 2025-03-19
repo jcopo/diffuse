@@ -19,11 +19,14 @@ from examples.gaussian_mixtures.mixture import (
 from diffuse.diffusion.sde import SDE, LinearSchedule, SDEState
 from diffuse.denoisers.denoiser import Denoiser
 from diffuse.integrator.stochastic import EulerMaruyama
+from diffuse.integrator.deterministic import DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator
 
+# float64 accuracy
+jax.config.update("jax_enable_x64", True)
 
 @pytest.fixture
 def key():
-    return jax.random.PRNGKey(666)
+    return jax.random.PRNGKey(42)
 
 
 @pytest.fixture
@@ -45,19 +48,20 @@ def get_percentiles():
 
 
 def display_trajectories_at_times(
-    particles, t_init, t_final, n_steps, space, perct, pdf
+    particles, t_init, t_final, n_steps, space, perct, pdf, title=None
 ):
     n_plots = len(perct)
     d = particles.shape[-1]
     fig, axs = plt.subplots(n_plots, 1, figsize=(10 * n_plots, n_plots))
+    if title:
+        fig.suptitle(title)
     for i, x in enumerate(perct):
         k = int(x * n_steps)
-        t = t_init + k * (t_final - t_init) / n_steps
+        t = t_init + (k+1) * (t_final - t_init) / n_steps
 
         # plot histogram and true density
         display_histogram(particles[:, k], axs[i])
         axs[i].plot(space, jax.vmap(pdf, in_axes=(0, None))(space, t))
-
 
 @pytest.fixture
 def sde_setup():
@@ -116,18 +120,18 @@ def test_forward_sde_mixture(
     # assert samples are distributed according to the true density
     for i, x in enumerate(perct):
         k = int(x * n_steps) + 1
-        t = t_init + k * (t_final - t_init) / n_steps
+        t = t_init + (k+1) * (t_final - t_init) / n_steps
         ks_statistic, p_value = sp.stats.kstest(
             np.array(noised_samples.position[:, k].squeeze()),
             lambda x: cdf_t(x, t, mix_state, sde),
         )
         assert (
             p_value > 0.05
-        ), f"Sample distribution does not match theoretical (p-value: {p_value})"
+        ), f"Sample distribution does not match theoretical (p-value: {p_value}, t: {t}, k: {k})"
 
-
+@pytest.mark.parametrize("integrator_class", [EulerMaruyama, DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator])
 def test_backward_sde_mixture(
-    sde_setup, time_space_setup, plot_if_enabled, get_percentiles, init_mixture, key
+    sde_setup, time_space_setup, plot_if_enabled, get_percentiles, init_mixture, key, integrator_class
 ):
     sde = sde_setup
     t_init, t_final, n_samples, n_steps, ts, space, dts = time_space_setup
@@ -141,38 +145,39 @@ def test_backward_sde_mixture(
     keys = jax.random.split(key, n_samples)
 
     # define Intergator and Denoiser
-    integrator = EulerMaruyama(sde=sde)
+    integrator = integrator_class(sde=sde)
     denoise = Denoiser(
-        integrator=integrator, sde=sde, score=score, n_steps=n_steps, x0_shape=(1,)
+        integrator=integrator, sde=sde, score=score, x0_shape=(1,)
     )
-    init_samples = jax.random.normal(key, (n_samples, 1))
 
     # generate samples
-    keys = jax.random.split(key, init_samples.shape[0])
-    state, hist_position = jax.vmap(denoise.generate)(keys)
+    key_samples, _ = jax.random.split(key)
+    state, hist_position = denoise.generate(key_samples, n_steps, n_samples)
+    hist_position = hist_position.squeeze().T
 
     # plot if enabled
-    plot_if_enabled(lambda: display_trajectories(hist_position.squeeze(), 100))
+    plot_if_enabled(lambda: display_trajectories(hist_position, 100, title=integrator_class.__name__))
     plot_if_enabled(
         lambda: display_trajectories_at_times(
-            hist_position.squeeze(),
+            hist_position,
             t_init,
             t_final,
             n_steps,
             space,
             perct,
             lambda x, t: pdf(x, t_final - t),
+            title=integrator_class.__name__
         )
     )
 
     # assert samples are distributed according to the true density
     for i, x in enumerate(perct):
         k = int(x * n_steps)
-        t = t_init + k * (t_final - t_init) / n_steps
+        t = t_init + (k+1) * (t_final - t_init) / n_steps
         ks_statistic, p_value = sp.stats.kstest(
             hist_position[:, k].squeeze(),
             lambda x: cdf_t(x, t_final - t, mix_state, sde),
         )
         assert (
             p_value > 0.05
-        ), f"Sample distribution does not match theoretical (p-value: {p_value})"
+        ), f"Sample distribution does not match theoretical (method: {integrator_class.__name__}, p-value: {p_value}, t: {t}, k: {k})"

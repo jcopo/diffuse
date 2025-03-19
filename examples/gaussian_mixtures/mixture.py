@@ -146,7 +146,7 @@ def display_histogram(samples, ax):
     )
 
 
-def display_trajectories(Y, m):
+def display_trajectories(Y, m, title=None):
     """
     Color shading to show where particles ends up
     m: number of trajectories to plot
@@ -161,3 +161,5 @@ def display_trajectories(Y, m):
         plt.plot(
             Y[idx, :], c=[color_marker, 0, 1 - color_marker], alpha=0.3, linewidth=0.5
         )
+    if title:
+        plt.title(title)

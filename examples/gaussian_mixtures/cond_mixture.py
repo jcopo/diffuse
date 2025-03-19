@@ -8,15 +8,23 @@ import jax.numpy as jnp
 from jax import Array
 from jaxtyping import PRNGKeyArray
 from functools import partial
+import numpy as np
+import scipy as sp
+import ott
 
-from examples.gaussian_mixtures.mixture import MixState, pdf_mixtr, sampler_mixtr, rho_t
+from examples.gaussian_mixtures.mixture import MixState, pdf_mixtr, sampler_mixtr, rho_t, cdf_mixtr
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.integrator.stochastic import EulerMaruyama
-from diffuse.integrator.deterministic import DDIMIntegrator
+from diffuse.integrator.deterministic import DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator
 from diffuse.denoisers.denoiser import Denoiser
 from examples.gaussian_mixtures.mixture import display_trajectories
 from test.test_sde_mixture import display_trajectories_at_times
 from examples.gaussian_mixtures.forward_models.matrix_product import MatrixProduct
+
+# float64 accuracy
+jax.config.update("jax_enable_x64", True)
+
+
 @dataclass
 class NoiseMask:
     A: Array
@@ -132,7 +140,7 @@ def plot_distributions(mix_state, posterior_state, sde, t_values, x_grid, sample
     plt.show()
 
 
-def test_backward_sde_conditional_mixture():
+def test_backward_sde_conditional_mixture(integrator_class):
     key = jax.random.PRNGKey(42)
     d = 1  # Dimensionality (can use d=200)
     sigma_y = 0.05
@@ -141,13 +149,13 @@ def test_backward_sde_conditional_mixture():
     mix_state = init_gaussian_mixture(key, d)
 
     # Define the SDE
-    t_init, t_final, n_steps = 0.0, 2.0, 500
+    t_init, t_final, n_steps = 0.001, 2.0, 100
     beta = LinearSchedule(b_min=0.1, b_max=20.0, t0=t_init, T=t_final)
     sde = SDE(beta=beta, tf=t_final)
 
     # Generate observation (similar to main())
     key_meas, key_obs, key_samples = jax.random.split(key, 3)
-    sigma_y = 0.05
+    sigma_y = 0.01
     A = jax.random.normal(key_obs, (1, d))
     forward_model = MatrixProduct(A=A, std=sigma_y)
     x_star = sampler_mixtr(key_samples, mix_state, 1)[0]
@@ -162,75 +170,66 @@ def test_backward_sde_conditional_mixture():
     def pdf(x, t):
         mix_state_t = compute_xt_given_y(posterior_state, sde, t)
         return pdf_mixtr(mix_state_t, x)
+    def cdf(x, t):
+        mix_state_t = compute_xt_given_y(posterior_state, sde, t)
+        return cdf_mixtr(mix_state_t, x)
     def score(x, t):
         return jax.grad(pdf)(x, t) / pdf(x, t)
 
 
     # Define Integrator and Denoiser
-    #integrator = EulerMaruyama(sde=sde)
-    integrator = DDIMIntegrator(sde=sde)
+    integrator = integrator_class(sde=sde)
     denoise = Denoiser(
         integrator=integrator, sde=sde, score=score, x0_shape=x_star.shape
     )
 
-    # Generate initial samples
-    n_samples = 1000
     # Generate samples
+    n_samples = 1000
     state, hist_position = denoise.generate(key_samples, n_steps, n_samples)
+    hist_position = hist_position.squeeze().T
+
 
     # Visualization
-    perct = [0, 0.05, 0.1, 0.3, 0.6, 0.7, .73, .75, 0.8, 0.9, 1]
-    space = jnp.linspace(-30, 30, 100)
-    display_trajectories(hist_position.squeeze().T, 100)
+    perct = [0, 0.05, 0.1, 0.3, 0.6, 0.7, .73, .75, 0.8, 0.9, 1.]
+    space = jnp.linspace(-10, 10, 100)
+    display_trajectories(hist_position, 100, title=integrator_class.__name__)
     plt.show()
-    plt.close()
+    # plt.close()
     display_trajectories_at_times(
-        hist_position.squeeze().T,
-            t_init,
-            t_final,
-            n_steps,
-            space,
-            perct,
-            lambda x, t: pdf(x, t_final - t),
-        )
+        hist_position,
+        t_init,
+        t_final,
+        n_steps,
+        space,
+        perct,
+        lambda x, t: pdf(x, t_final - t),
+        title=integrator_class.__name__
+    )
     plt.show()
+
+    # assert samples are distributed according to the true density
+    for i, x in enumerate(perct):
+        k = int(x * n_steps)
+        t = t_init + (k+1) * (t_final - t_init) / n_steps
+        ks_statistic, p_value = sp.stats.kstest(
+            np.array(hist_position[:, k]),
+            lambda x: cdf(x, t_final - t),
+        )
+        assert p_value > 0.05, f"Sample distribution does not match theoretical (method: {integrator_class.__name__}, p-value: {p_value}, t: {t}, k: {k})"
+
+    # compute Wasserstein distance between gen samples and true posterior samples
+    wasserstein_distance, _ = ott.tools.sliced.sliced_wasserstein(
+        state.integrator_state.position,
+        posterior_state.means,
+    )
+    print(f"method: {integrator_class.__name__}, Wasserstein distance: {wasserstein_distance}, n_samples: {n_samples}, n_steps: {n_steps}")
+
+
     return state, hist_position, posterior_state
 
-# Main execution
-def main():
-    key = jax.random.PRNGKey(42)
-    d = 1  # Dimensionality (can use d=200)
-    sigma_y = 0.05
-
-    # Initialize the Gaussian mixture prior
-    mix_state = init_gaussian_mixture(key, d)
-
-    # Generate observation
-    y, A, x_star = generate_observation(key, mix_state, d, sigma_y)
-    print(f"Observation y: {y.item()}, True x* (first 5 dims): {x_star[:5]}")
-
-    # Compute the theoretical posterior
-    posterior_state = compute_posterior(mix_state, y, A, sigma_y)
-
-    # Define the SDE
-    beta = LinearSchedule(b_min=0.1, b_max=20.0, t0=0.0, T=1.0)
-    sde = SDE(beta=beta, tf=1.0)
-
-    # Sample from the prior for visualization
-    N_samples = 1000
-    samples_prior = sampler_mixtr(key, mix_state, N_samples)
-
-    # Define grid for PDF evaluation (project to 1D)
-    x_max = 20
-    x_grid = jnp.linspace(-x_max, x_max, 200)[:, None]
-    x_grid = jnp.hstack([x_grid, jnp.zeros((200, d-1))])
-
-    # Define time points for noising process
-    t_values = jnp.array([0.1, 0.5, 1.0])
-
-    # Plot everything
-    plot_distributions(mix_state, posterior_state, sde, t_values, x_grid, samples_prior)
 
 if __name__ == "__main__":
-    test_backward_sde_conditional_mixture()
+    integrators = [EulerMaruyama, DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator]
+    for integrator_class in integrators:
+        test_backward_sde_conditional_mixture(integrator_class)
     #main()
