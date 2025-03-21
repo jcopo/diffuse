@@ -64,22 +64,47 @@ class LinearSchedule:
         )
 
 @dataclass
-class CosineSchedule:
+class CosineSchedule(Schedule):
+    """
+    A class representing a cosine schedule as described in
+    'Improved Denoising Diffusion Probabilistic Models'
+
+    Attributes:
+        b_min (float): The minimum beta value
+        b_max (float): The maximum beta value
+        t0 (float): The starting time
+        T (float): The ending time
+        s (float): Offset parameter (default: 0.008)
+    """
+    b_min: float
+    b_max: float
     t0: float
     T: float
-    dt: float
     s: float = 0.008
 
     def __call__(self, t):
-        return jax.lax.cond(t < 1e-3, lambda: 0., lambda: jnp.clip(1 - self._f(t) / self._f(t - self.dt), max=0.999))
+        """
+        Calculates the value of the cosine schedule at a given time.
+        """
+        t_normalized = (t - self.t0) / (self.T - self.t0)
 
-    def _f(self, t):
-        return jnp.cos((t + self.s) / (1 + self.s) * jnp.pi / 2) ** 2
+        beta_t = jnp.pi * jnp.tan(0.5 * jnp.pi * (t_normalized + self.s) / (1 + self.s)) / (1 + self.s)
+        beta_t = jnp.clip(beta_t, self.b_min, self.b_max)
+
+        return beta_t
 
     def integrate(self, t, s):
-        return self._f(t) / self._f(s)
+        t_normalized = (t - self.t0) / (self.T - self.t0)
+        ft = jnp.cos((t_normalized + self.s) / (1 + self.s) * jnp.pi * 0.5) ** 2
+        f0 = jnp.cos(self.s / (1 + self.s) * jnp.pi * 0.5) ** 2
+        alpha_t = jnp.clip(ft / f0, 0.001, 0.9999)
 
+        s_normalized = (s - self.t0) / (self.T - self.t0)
+        fs = jnp.cos((s_normalized + self.s) / (1 + self.s) * jnp.pi * 0.5) ** 2
+        f0 = jnp.cos(self.s / (1 + self.s) * jnp.pi * 0.5) ** 2
+        alpha_s = jnp.clip(fs / f0, 0.001, 0.9999)
 
+        return jnp.log(alpha_s / alpha_t)
 
 @dataclass
 class SDE:
