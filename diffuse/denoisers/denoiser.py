@@ -58,4 +58,4 @@ class Denoiser(BaseDenoiser):
             state_next = jax.vmap(self.step)(state)
             return state_next, state_next.integrator_state.position
 
-        return jax.lax.scan(body_fun, state, jnp.arange(n_steps))
+        return jax.lax.scan(body_fun, state, jnp.arange(n_steps-1))

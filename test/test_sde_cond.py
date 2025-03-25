@@ -100,9 +100,12 @@ def test_backward_sde_conditional_mixture(integrator_class, plot_if_enabled, key
     state, hist_position = denoise.generate(key_gen, n_steps, n_samples)
     hist_position = hist_position.squeeze().T
 
+    # assert end time is < t_final
+    assert state.integrator_state.t[0] < t_final
+
 
     # Visualization
-    perct = [0., 0.05, 0.1, 0.3, 0.6, 0.7, .73, .75, 0.8, 0.9, 1.]
+    perct = [0., 0.05, 0.1, 0.3, 0.6, 0.7, .73, .75, 0.8, 0.9]
     space = jnp.linspace(-10, 10, 100)
     plot_if_enabled(lambda: display_trajectories(hist_position, 100, title=integrator_class.__name__))
     plt.show()
@@ -128,6 +131,15 @@ def test_backward_sde_conditional_mixture(integrator_class, plot_if_enabled, key
             lambda x: cdf(x, t_final - t),
         )
         assert p_value > 0.05, f"Sample distribution does not match theoretical (method: {integrator_class.__name__}, p-value: {p_value}, t: {t}, k: {k})"
+
+    # test for last element
+    k = -1
+    t = state.integrator_state.t[0]
+    ks_statistic, p_value = sp.stats.kstest(
+        np.array(hist_position[:, k]),
+        lambda x: cdf(x, t_final - t),
+    )
+    assert p_value > 0.05, f"Sample distribution does not match theoretical (method: {integrator_class.__name__}, p-value: {p_value}, t: {t}, k: {k})"
 
     # compute Wasserstein distance between gen samples and true posterior samples
     wasserstein_distance, _ = ott.tools.sliced.sliced_wasserstein(

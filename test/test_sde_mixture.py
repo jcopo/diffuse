@@ -19,7 +19,7 @@ from examples.gaussian_mixtures.mixture import (
 from diffuse.diffusion.sde import SDE, LinearSchedule, CosineSchedule, SDEState
 from diffuse.denoisers.denoiser import Denoiser
 from diffuse.integrator.stochastic import EulerMaruyama
-from diffuse.integrator.deterministic import DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator
+from diffuse.integrator.deterministic import DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator, Euler
 
 # float64 accuracy
 jax.config.update("jax_enable_x64", True)
@@ -130,7 +130,7 @@ def test_forward_sde_mixture(
         ), f"Sample distribution does not match theoretical (p-value: {p_value}, t: {t}, k: {k})"
 
 
-@pytest.mark.parametrize("integrator_class", [EulerMaruyama, DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator])
+@pytest.mark.parametrize("integrator_class", [EulerMaruyama, DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator, Euler])
 @pytest.mark.parametrize("schedule", [LinearSchedule, CosineSchedule])
 def test_backward_sde_mixture(
     time_space_setup, plot_if_enabled, get_percentiles, init_mixture, key, integrator_class, schedule
@@ -158,6 +158,8 @@ def test_backward_sde_mixture(
     state, hist_position = denoise.generate(key_samples, n_steps, n_samples)
     hist_position = hist_position.squeeze().T
 
+    # assert end time is < t_final
+    assert state.integrator_state.t[0] < t_final
     # plot if enabled
     plot_if_enabled(lambda: display_trajectories(hist_position, 100, title=integrator_class.__name__))
     plot_if_enabled(
