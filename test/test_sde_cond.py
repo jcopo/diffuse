@@ -20,7 +20,7 @@ from examples.gaussian_mixtures.cond_mixture import compute_posterior, compute_x
 from examples.gaussian_mixtures.mixture import cdf_mixtr, pdf_mixtr
 from test.test_sde_mixture import display_trajectories_at_times
 from diffuse.integrator.stochastic import EulerMaruyama
-from diffuse.integrator.deterministic import DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator
+from diffuse.integrator.deterministic import DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator, EulerIntegrator
 from diffuse.denoisers.denoiser import Denoiser
 from examples.gaussian_mixtures.mixture import display_trajectories
 
@@ -51,7 +51,7 @@ def sde_setup():
 
 
 @pytest.mark.parametrize("schedule", [LinearSchedule, CosineSchedule])
-@pytest.mark.parametrize("integrator_class", [EulerMaruyama, DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator])
+@pytest.mark.parametrize("integrator_class", [EulerMaruyama, DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator, EulerIntegrator])
 @pytest.mark.parametrize("key", [jax.random.PRNGKey(42), jax.random.PRNGKey(666), jax.random.PRNGKey(1234)])
 def test_backward_sde_conditional_mixture(integrator_class, plot_if_enabled, key, schedule):
     d = 1  # Dimensionality (can use d=200)

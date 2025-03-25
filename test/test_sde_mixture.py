@@ -19,7 +19,7 @@ from examples.gaussian_mixtures.mixture import (
 from diffuse.diffusion.sde import SDE, LinearSchedule, CosineSchedule, SDEState
 from diffuse.denoisers.denoiser import Denoiser
 from diffuse.integrator.stochastic import EulerMaruyama
-from diffuse.integrator.deterministic import DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator, Euler
+from diffuse.integrator.deterministic import DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator, EulerIntegrator
 
 # float64 accuracy
 jax.config.update("jax_enable_x64", True)
@@ -130,12 +130,16 @@ def test_forward_sde_mixture(
         ), f"Sample distribution does not match theoretical (p-value: {p_value}, t: {t}, k: {k})"
 
 
-@pytest.mark.parametrize("integrator_class", [EulerMaruyama, DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator, Euler])
+@pytest.mark.parametrize("integrator_class", [EulerMaruyama, DDIMIntegrator, EulerIntegrator, HeunIntegrator, DPMpp2sIntegrator])
 @pytest.mark.parametrize("schedule", [LinearSchedule, CosineSchedule])
 def test_backward_sde_mixture(
     time_space_setup, plot_if_enabled, get_percentiles, init_mixture, key, integrator_class, schedule
 ):
-    beta = schedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
+    beta_params = {
+        "LinearSchedule": {"b_min": 0.02, "b_max": 5.0, "t0": 0.0, "T": 2.0},
+        "CosineSchedule": {"b_min": 0.1, "b_max": 20.0, "t0": 0.0, "T": 2.0},
+    }
+    beta = schedule(**beta_params[schedule.__name__])
     sde = SDE(beta=beta, tf=2.0)
     t_init, t_final, n_samples, n_steps, ts, space, dts = time_space_setup
     perct = get_percentiles

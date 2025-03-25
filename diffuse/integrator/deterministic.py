@@ -17,7 +17,7 @@ class EulerState(IntegratorState):
 
 
 @dataclass
-class Euler:
+class EulerIntegrator:
     """Euler deterministic integrator for ODEs"""
 
     sde: SDE
