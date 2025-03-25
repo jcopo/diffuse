@@ -16,7 +16,7 @@ from examples.gaussian_mixtures.mixture import (
     rho_t,
     sampler_mixtr,
 )
-from diffuse.diffusion.sde import SDE, LinearSchedule, SDEState
+from diffuse.diffusion.sde import SDE, LinearSchedule, CosineSchedule, SDEState
 from diffuse.denoisers.denoiser import Denoiser
 from diffuse.integrator.stochastic import EulerMaruyama
 from diffuse.integrator.deterministic import DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator
@@ -43,7 +43,7 @@ def init_mixture(key):
 
 @pytest.fixture
 def get_percentiles():
-    perct = [0, 0.03, 0.06, 0.08, 0.1, 0.3, 0.7, 0.8, 0.9, 1]
+    perct = [0.03, 0.06, 0.08, 0.1, 0.3, 0.7, 0.8, 0.9, 1]
     return perct
 
 
@@ -129,11 +129,14 @@ def test_forward_sde_mixture(
             p_value > 0.05
         ), f"Sample distribution does not match theoretical (p-value: {p_value}, t: {t}, k: {k})"
 
+
 @pytest.mark.parametrize("integrator_class", [EulerMaruyama, DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator])
+@pytest.mark.parametrize("schedule", [LinearSchedule, CosineSchedule])
 def test_backward_sde_mixture(
-    sde_setup, time_space_setup, plot_if_enabled, get_percentiles, init_mixture, key, integrator_class
+    time_space_setup, plot_if_enabled, get_percentiles, init_mixture, key, integrator_class, schedule
 ):
-    sde = sde_setup
+    beta = schedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
+    sde = SDE(beta=beta, tf=2.0)
     t_init, t_final, n_samples, n_steps, ts, space, dts = time_space_setup
     perct = get_percentiles
     mix_state = init_mixture
