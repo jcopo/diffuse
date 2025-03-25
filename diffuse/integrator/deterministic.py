@@ -41,7 +41,8 @@ class Euler:
 def next_churn_noise_level(integrator_state: EulerState, stochastic_churn_rate: float, churn_min: float, churn_max: float, sde: SDE) -> float:
     """Compute the next churn noise level"""
     _, _, t_reverse, dt = integrator_state
-    t_forward_curr = sde.tf - t_reverse
+    t_forward_curr = jnp.minimum(sde.tf - t_reverse, sde.tf)  # Clamp to tf
+
     n_steps = sde.tf / dt
     churn_rate = jnp.where(
         stochastic_churn_rate / n_steps - jnp.sqrt(2) + 1 > 0,
@@ -51,7 +52,7 @@ def next_churn_noise_level(integrator_state: EulerState, stochastic_churn_rate: 
     churn_rate = jnp.where(
         t_forward_curr > churn_min, jnp.where(t_forward_curr < churn_max, churn_rate, 0), 0
     )
-    return sde.tf - t_forward_curr * (1 + churn_rate)
+    return jnp.minimum(sde.tf - t_forward_curr * (1 + churn_rate), sde.tf)  # Clamp final result
 
 def apply_stochastic_churn(integrator_state: EulerState, stochastic_churn_rate: float, churn_min: float, churn_max: float, noise_inflation_factor: float, sde: SDE) -> EulerState:
     """Apply stochastic churn to the sample"""
