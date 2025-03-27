@@ -88,7 +88,7 @@ class CosineSchedule(Schedule):
         """
         t_normalized = (t - self.t0) / (self.T - self.t0)
 
-        beta_t = (jnp.pi / (self.T * (1 + self.s))) * jnp.tan(0.5 * jnp.pi * (t_normalized + self.s) / (1 + self.s))
+        beta_t = jnp.pi * jnp.tan(0.5 * jnp.pi * (t_normalized + self.s) / (1 + self.s)) / (1 + self.s)
         beta_t = jnp.clip(beta_t, self.b_min, self.b_max)
 
         return beta_t
