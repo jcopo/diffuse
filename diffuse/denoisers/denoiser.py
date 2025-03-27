@@ -48,7 +48,7 @@ class Denoiser(BaseDenoiser):
 
         rndm_start = jax.random.normal(rng_key_start, shape=(n_particles, *self.x0_shape))
         # sample with
-        # rndm_start = jax.scipy.stats.norm.ppf(
+        # ppf = jax.scipy.stats.norm.ppf(
         #     jnp.arange(0, n_particles) / n_particles + 1 / (2 * n_particles)
         #     )[:, None]
         keys = jax.random.split(rng_key, n_particles)
@@ -58,4 +58,4 @@ class Denoiser(BaseDenoiser):
             state_next = jax.vmap(self.step)(state)
             return state_next, state_next.integrator_state.position
 
-        return jax.lax.scan(body_fun, state, jnp.arange(n_steps-1))
+        return jax.lax.scan(body_fun, state, jnp.arange(n_steps))

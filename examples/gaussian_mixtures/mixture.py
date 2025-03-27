@@ -117,7 +117,7 @@ def sampler_mixtr(key, state: MixState, N):
 
 
 #xmax = 4
-nbins = 200
+nbins = 120
 
 
 def transform_mixture_params(state, sde, t):
@@ -133,9 +133,19 @@ def transform_mixture_params(state, sde, t):
 
 
 def display_histogram(samples, ax):
-    nb = samples.flatten().shape[0]
+    flat_samples = samples.flatten()
+    nb = flat_samples.shape[0]
     xmax = jnp.max(jnp.abs(samples))
-    h0, b = jnp.histogram(samples.flatten(), bins=nbins, range=[-xmax, xmax])
+
+    # Freedman-Diaconis rule
+    # bin width = 2 * IQR * n^(-1/3)
+    percentiles = jnp.array([75, 25])  # Convert to JAX array
+    q75, q25 = jnp.percentile(flat_samples, percentiles)
+    iqr = q75 - q25
+    bin_width = 2 * iqr * (nb ** (-1/3))
+    # nbins = jnp.ceil((2 * xmax) / bin_width).astype(int)
+
+    h0, b = jnp.histogram(flat_samples, bins=nbins, range=[-xmax, xmax])
     h0 = h0 / nb * nbins / (2 * xmax)
     ax.bar(
         jnp.linspace(-xmax, xmax, nbins),
