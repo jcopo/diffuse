@@ -162,29 +162,11 @@ class SDE:
 
         return (SDEState(res, ts), noise) if return_noise else SDEState(res, ts)
 
-    def drift(self, state: SDEState) -> Array:
-        x, t = state.position, state.t
-        return -0.5 * self.beta(t) * x
-
-    def diffusion(self, state: SDEState) -> Array:
-        t = state.t
-        return jnp.sqrt(self.beta(t))
-
-    def reverse_drift(self, state: SDEState, score: Callable) -> Array:
-        x, t = state.position, state.t
-        beta_t = self.beta(self.tf - t)
-        s = score(x, self.tf - t)
-        return 0.5 * beta_t * x + beta_t * s
-
-    def reverse_drift_ode(self, state: SDEState, score: Callable) -> Array:
+    def reverse_drift_ode(self, state: SDEState, score: Callable) -> Array: # TODO: remove when deterministic is finished
         x, t = state.position, state.t
         beta_t = self.beta(self.tf - t)
         s = score(x, self.tf - t)
         return 0.5 * (beta_t * x + beta_t * s)
-
-    def reverse_diffusion(self, state: SDEState) -> Array:
-        t = state.t
-        return jnp.sqrt(self.beta(self.tf - t))
 
     def score_to_noise(self, score_fn: Callable) -> Callable:
         """
