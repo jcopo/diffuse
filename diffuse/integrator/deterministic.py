@@ -7,13 +7,12 @@ from jaxtyping import Array, PRNGKeyArray
 
 from diffuse.integrator.base import IntegratorState
 from diffuse.diffusion.sde import SDE, SDEState
-
+from diffuse.timer.base import Timer
 
 class EulerState(IntegratorState):
     position: Array
     rng_key: PRNGKeyArray
-    t: float
-    dt: float
+    step: int
 
 
 @dataclass
@@ -21,6 +20,7 @@ class EulerIntegrator:
     """Euler deterministic integrator for ODEs"""
 
     sde: SDE
+    timer: Timer
 
     def init(
         self, position: Array, rng_key: PRNGKeyArray, t: float, dt: float
