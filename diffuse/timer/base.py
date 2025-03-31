@@ -1,9 +1,5 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, Callable
-import jax.numpy as jnp
-from jax.random import PRNGKeyArray
-
 
 class Timer(ABC):
     """Abstract base class for timers"""
@@ -13,11 +9,18 @@ class Timer(ABC):
         pass
 
 
+@dataclass
 class VpTimer(Timer):
     n_steps: int
     eps: float
 
     def __call__(self, step: int) -> float:
-        return 1 + step / self.n_steps * (self.eps - 1)
+        t = 1 + step / self.n_steps * (self.eps - 1)
+        return t
 
 
+if __name__ == "__main__":
+    timer = VpTimer(n_steps=100, eps=0.001)
+    print(timer(0))
+    print(timer(1))
+    print(timer(100))

@@ -20,7 +20,7 @@ from diffuse.diffusion.sde import SDE, LinearSchedule, CosineSchedule, SDEState
 from diffuse.denoisers.denoiser import Denoiser
 from diffuse.integrator.stochastic import EulerMaruyama
 from diffuse.integrator.deterministic import DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator, EulerIntegrator
-
+from diffuse.timer.base import VpTimer
 # float64 accuracy
 jax.config.update("jax_enable_x64", True)
 
@@ -152,7 +152,8 @@ def test_backward_sde_mixture(
     keys = jax.random.split(key, n_samples)
 
     # define Intergator and Denoiser
-    integrator = integrator_class(sde=sde)
+    timer = VpTimer(n_steps=n_steps, eps=0.001)
+    integrator = integrator_class(sde=sde, timer=timer)
     denoise = Denoiser(
         integrator=integrator, sde=sde, score=score, x0_shape=(1,)
     )

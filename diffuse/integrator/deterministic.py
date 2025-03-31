@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, Iterable
+from typing import Callable, Iterable, NamedTuple
 from functools import partial
 import jax
 import jax.numpy as jnp
@@ -9,10 +9,11 @@ from diffuse.integrator.base import IntegratorState
 from diffuse.diffusion.sde import SDE, SDEState
 from diffuse.timer.base import Timer
 
-class EulerState(IntegratorState):
+
+class EulerState(NamedTuple):
     position: Array
     rng_key: PRNGKeyArray
-    step: int
+    step: int = 0
 
 
 @dataclass
@@ -23,18 +24,22 @@ class EulerIntegrator:
     timer: Timer
 
     def init(
-        self, position: Array, rng_key: PRNGKeyArray, t: float, dt: float
+        self, position: Array, rng_key: PRNGKeyArray
     ) -> EulerState:
         """Initialize integrator state with position, timestep and step size"""
-        return EulerState(position, rng_key, t, dt)
+        return EulerState(position, rng_key)
 
     def __call__(self, integrator_state: EulerState, score: Callable) -> EulerState:
         """Perform one Euler integration step: dx = drift*dt"""
-        position, rng_key, t, dt = integrator_state
-        drift = self.sde.reverse_drift_ode(integrator_state, score)
+        position, rng_key, step = integrator_state
+        t, t_next = self.timer(step), self.timer(step + 1)
+        dt = t_next - t
+        beta_t = self.sde.beta(t)
+        score_val = score(position, t)
+        drift =  - 0.5 * beta_t * (position + score_val)
         dx = drift * dt
         _, rng_key_next = jax.random.split(rng_key)
-        return EulerState(position + dx, rng_key_next, t + dt, dt)
+        return EulerState(position + dx, rng_key_next, step + 1)
 
 
 def next_churn_noise_level(integrator_state: EulerState, stochastic_churn_rate: float, churn_min: float, churn_max: float, sde: SDE) -> float:
