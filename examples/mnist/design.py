@@ -9,7 +9,7 @@ import csv
 
 from diffuse.neural_network.unet import UNet
 from diffuse.diffusion.sde import SDE, LinearSchedule
-from diffuse.integrator.stochastic import EulerMaruyama
+from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
 from diffuse.integrator.deterministic import DPMpp2sIntegrator
 from diffuse.denoisers.cond import FPSDenoiser
 from diffuse.design.bayesian_design import ExperimentOptimizer
@@ -144,7 +144,7 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
     n_opt_steps = n_t * n_loop_opt + (n_loop_opt - 1)
 
     # Conditional Denoiser
-    integrator = EulerMaruyama(sde)
+    integrator = EulerMaruyamaIntegrator(sde)
     # integrator = DPMpp2sIntegrator(sde, stochastic_churn_rate=0.5, churn_min=0.05, churn_max=1.95, noise_inflation_factor=1.0)
     resample = True
 

@@ -14,7 +14,7 @@ import ott
 
 from examples.gaussian_mixtures.mixture import MixState, pdf_mixtr, sampler_mixtr, rho_t, cdf_mixtr
 from diffuse.diffusion.sde import SDE, LinearSchedule
-from diffuse.integrator.stochastic import EulerMaruyama
+from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
 from diffuse.integrator.deterministic import DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator
 from diffuse.denoisers.denoiser import Denoiser
 from examples.gaussian_mixtures.mixture import display_trajectories
@@ -229,7 +229,7 @@ def test_backward_sde_conditional_mixture(integrator_class):
 
 
 if __name__ == "__main__":
-    integrators = [EulerMaruyama, DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator]
+    integrators = [EulerMaruyamaIntegrator, DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator]
     for integrator_class in integrators:
         test_backward_sde_conditional_mixture(integrator_class)
     #main()

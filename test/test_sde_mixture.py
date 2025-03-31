@@ -18,7 +18,7 @@ from examples.gaussian_mixtures.mixture import (
 )
 from diffuse.diffusion.sde import SDE, LinearSchedule, CosineSchedule, SDEState
 from diffuse.denoisers.denoiser import Denoiser
-from diffuse.integrator.stochastic import EulerMaruyama
+from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
 from diffuse.integrator.deterministic import DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator, EulerIntegrator
 from diffuse.timer.base import VpTimer
 # float64 accuracy
@@ -130,7 +130,7 @@ def test_forward_sde_mixture(
         ), f"Sample distribution does not match theoretical (p-value: {p_value}, t: {t}, k: {k})"
 
 
-@pytest.mark.parametrize("integrator_class", [EulerMaruyama, DDIMIntegrator, EulerIntegrator, HeunIntegrator, DPMpp2sIntegrator])
+@pytest.mark.parametrize("integrator_class", [EulerMaruyamaIntegrator, DDIMIntegrator, EulerIntegrator, HeunIntegrator, DPMpp2sIntegrator])
 @pytest.mark.parametrize("schedule", [LinearSchedule, CosineSchedule])
 def test_backward_sde_mixture(
     time_space_setup, plot_if_enabled, get_percentiles, init_mixture, key, integrator_class, schedule

@@ -1,7 +1,7 @@
 import jax
 
 from diffuse.denoisers.denoiser import Denoiser
-from diffuse.integrator.stochastic import EulerMaruyama
+from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
 from diffuse.integrator.deterministic import DPMpp2sIntegrator
 from diffuse.utils.plotting import plot_lines
 import numpy as np

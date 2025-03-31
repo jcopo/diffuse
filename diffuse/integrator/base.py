@@ -5,8 +5,7 @@ from jaxtyping import Array, PRNGKeyArray
 class IntegratorState(NamedTuple):
     position: Array
     rng_key: PRNGKeyArray
-    t: float
-    dt: float
+    step: int = 0
 
 
 class Integrator(Protocol):

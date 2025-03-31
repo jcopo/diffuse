@@ -7,38 +7,32 @@ from jaxtyping import Array, PRNGKeyArray
 
 from diffuse.integrator.base import IntegratorState
 from diffuse.diffusion.sde import SDE
-
-
-class EulerMaruyamaState(IntegratorState):
-    """Euler-Maruyama integrator state"""
-
-    position: Array
-    rng_key: PRNGKeyArray
-    t: float
-    dt: float
-
+from diffuse.timer.base import Timer
 
 @dataclass
-class EulerMaruyama:
+class EulerMaruyamaIntegrator:
     """Euler-Maruyama stochastic integrator for SDEs"""
 
     sde: SDE
+    timer: Timer
 
     def init(
-        self, position: Array, rng_key: PRNGKeyArray, t: float, dt: float
-    ) -> EulerMaruyamaState:
+        self, position: Array, rng_key: PRNGKeyArray
+    ) -> IntegratorState:
         """Initialize integrator state with position, random key and timestep"""
-        return EulerMaruyamaState(position, rng_key, t, dt)
+        return IntegratorState(position, rng_key)
 
     def __call__(
-        self, integrator_state: EulerMaruyamaState, score: Callable
-    ) -> EulerMaruyamaState:
+        self, integrator_state: IntegratorState, score: Callable
+    ) -> IntegratorState:
         """Perform one Euler-Maruyama integration step: dx = drift*dt + diffusion*dW"""
-        position, rng_key, t, dt = integrator_state
-        drift = self.sde.reverse_drift(integrator_state, score)
-        diffusion = self.sde.reverse_diffusion(integrator_state)
+        position, rng_key, step = integrator_state
+        t, t_next = self.timer(step), self.timer(step + 1)
+        dt = t - t_next
+        drift = self.sde.beta(t) * (0.5 * position + score(position, t))
+        diffusion = jnp.sqrt(self.sde.beta(t))
         noise = jax.random.normal(rng_key, position.shape) * jnp.sqrt(dt)
 
         dx = drift * dt + diffusion * noise
         _, rng_key_next = jax.random.split(rng_key)
-        return EulerMaruyamaState(position + dx, rng_key_next, t + dt, dt)
+        return IntegratorState(position + dx, rng_key_next, step + 1)
