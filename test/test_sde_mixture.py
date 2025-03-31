@@ -152,7 +152,7 @@ def test_backward_sde_mixture(
     keys = jax.random.split(key, n_samples)
 
     # define Intergator and Denoiser
-    timer = VpTimer(n_steps=n_steps, eps=0.001)
+    timer = VpTimer(n_steps=n_steps, eps=0.001, tf=2.0)
     integrator = integrator_class(sde=sde, timer=timer)
     denoise = Denoiser(
         integrator=integrator, sde=sde, score=score, x0_shape=(1,)

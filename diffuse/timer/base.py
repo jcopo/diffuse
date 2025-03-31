@@ -13,14 +13,8 @@ class Timer(ABC):
 class VpTimer(Timer):
     n_steps: int
     eps: float
+    tf: float
 
     def __call__(self, step: int) -> float:
-        t = 1 + step / self.n_steps * (self.eps - 1)
+        t = self.tf + step / self.n_steps * (self.eps - self.tf)
         return t
-
-
-if __name__ == "__main__":
-    timer = VpTimer(n_steps=100, eps=0.001)
-    print(timer(0))
-    print(timer(1))
-    print(timer(100))

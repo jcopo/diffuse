@@ -33,10 +33,10 @@ class EulerIntegrator:
         """Perform one Euler integration step: dx = drift*dt"""
         position, rng_key, step = integrator_state
         t, t_next = self.timer(step), self.timer(step + 1)
-        dt = t_next - t
+        dt = t - t_next
         beta_t = self.sde.beta(t)
         score_val = score(position, t)
-        drift =  - 0.5 * beta_t * (position + score_val)
+        drift = 0.5 * beta_t * (position + score_val)
         dx = drift * dt
         _, rng_key_next = jax.random.split(rng_key)
         return EulerState(position + dx, rng_key_next, step + 1)
