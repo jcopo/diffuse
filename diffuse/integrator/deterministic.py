@@ -31,7 +31,6 @@ class EulerIntegrator:
     def __call__(self, integrator_state: EulerState, score: Callable) -> EulerState:
         """Perform one Euler integration step: dx = drift*dt"""
         position, rng_key, t, dt = integrator_state
-
         drift = self.sde.reverse_drift_ode(integrator_state, score)
         dx = drift * dt
         _, rng_key_next = jax.random.split(rng_key)
