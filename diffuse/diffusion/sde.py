@@ -174,7 +174,6 @@ class SDE(DiffusionModel):
     tf: float
 
     def alpha_beta(self, t: float) -> Tuple[float, float]:
-        print("t: {}".format(t))
         alpha = jnp.exp(-self.beta.integrate(t, 0.))
         beta = self.beta(t)
         return alpha, beta

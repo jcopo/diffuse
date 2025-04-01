@@ -58,8 +58,6 @@ def display_trajectories_at_times(
     for i, x in enumerate(perct):
         k = int(x * n_steps)
         t = 1.0 - timer(k+1)
-        print(f'k: {k}')
-        print(f"t: {t}")
         # plot histogram and true density
         display_histogram(particles[:, k], axs[i])
         axs[i].plot(space, jax.vmap(pdf, in_axes=(0, None))(space, t))
