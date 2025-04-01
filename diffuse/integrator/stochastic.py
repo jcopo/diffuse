@@ -3,24 +3,15 @@ from typing import Callable
 
 import jax
 import jax.numpy as jnp
-from jaxtyping import Array, PRNGKeyArray
 
-from diffuse.integrator.base import IntegratorState
-from diffuse.diffusion.sde import SDE
-from diffuse.timer.base import Timer
+from diffuse.integrator.base import IntegratorState, Integrator
+
+__all__ = ["EulerMaruyamaIntegrator"]
+
 
 @dataclass
-class EulerMaruyamaIntegrator:
+class EulerMaruyamaIntegrator(Integrator):
     """Euler-Maruyama stochastic integrator for SDEs"""
-
-    sde: SDE
-    timer: Timer
-
-    def init(
-        self, position: Array, rng_key: PRNGKeyArray
-    ) -> IntegratorState:
-        """Initialize integrator state with position, random key and timestep"""
-        return IntegratorState(position, rng_key)
 
     def __call__(
         self, integrator_state: IntegratorState, score: Callable
