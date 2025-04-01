@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Tuple
 from functools import partial
 import jax
 import jax.numpy as jnp
@@ -26,100 +26,102 @@ class EulerIntegrator:
         """Perform one Euler integration step: dx = drift*dt"""
         position, rng_key, step = integrator_state
         t, t_next = self.timer(step), self.timer(step + 1)
-        dt = t - t_next
-        drift = 0.5 * self.sde.beta(t) * (position + score(position, t))
+        dt = t_next - t
+        drift = - 0.5 * self.sde.beta(t) * (position + score(position, t))
         dx = drift * dt
         _, rng_key_next = jax.random.split(rng_key)
         return IntegratorState(position + dx, rng_key_next, step + 1)
 
 
-def next_churn_noise_level(integrator_state: IntegratorState, stochastic_churn_rate: float, churn_min: float, churn_max: float, sde: SDE) -> float:
+def next_churn_noise_level(t: float, stochastic_churn_rate: float, churn_min: float, churn_max: float, sde: SDE, timer: Timer) -> float:
     """Compute the next churn noise level"""
-    _, _, t_reverse, dt = integrator_state
-    t_forward_curr = jnp.minimum(sde.tf - t_reverse, sde.tf)  # Clamp to tf
 
-    n_steps = sde.tf / dt
+
     churn_rate = jnp.where(
-        stochastic_churn_rate / n_steps - jnp.sqrt(2) + 1 > 0,
+        stochastic_churn_rate / timer.n_steps - jnp.sqrt(2) + 1 > 0,
         jnp.sqrt(2) - 1,
-        stochastic_churn_rate / n_steps,
+        stochastic_churn_rate / timer.n_steps,
     )
     churn_rate = jnp.where(
-        t_forward_curr > churn_min, jnp.where(t_forward_curr < churn_max, churn_rate, 0), 0
+        t > churn_min, jnp.where(t < churn_max, churn_rate, 0), 0
     )
-    return jnp.minimum(sde.tf - t_forward_curr * (1 + churn_rate), sde.tf)  # Clamp final result
+    return t * (1 + churn_rate)
 
-def apply_stochastic_churn(integrator_state: IntegratorState, stochastic_churn_rate: float, churn_min: float, churn_max: float, noise_inflation_factor: float, sde: SDE) -> IntegratorState:
+def apply_stochastic_churn(integrator_state: IntegratorState, stochastic_churn_rate: float, churn_min: float, churn_max: float, noise_inflation_factor: float, sde: SDE, timer: Timer) -> Tuple[Array, float]:
     """Apply stochastic churn to the sample"""
-    position, rng_key, t_reverse, dt = integrator_state
-    t_forward_curr = sde.tf - t_reverse
-    t_forward_prev = sde.tf - next_churn_noise_level(integrator_state, stochastic_churn_rate, churn_min, churn_max, sde)
-    int_b_curr, int_b_prev = (
-        sde.beta.integrate(t_forward_curr, sde.beta.t0),
-        sde.beta.integrate(t_forward_prev, sde.beta.t0),
+    position, rng_key, step = integrator_state
+    t = timer(step)
+
+    t_churned = next_churn_noise_level(t, stochastic_churn_rate, churn_min, churn_max, sde, timer)
+    int_b, int_b_churned = (
+        sde.beta.integrate(t, sde.beta.t0),
+        sde.beta.integrate(t_churned, sde.beta.t0),
     )
-    beta_curr, beta_prev = (
-        jnp.sqrt(1 - jnp.exp(-int_b_curr)),
-        jnp.sqrt(1 - jnp.exp(-int_b_prev)),
+    beta, beta_churned = (
+        jnp.sqrt(1 - jnp.exp(-int_b)),
+        jnp.sqrt(1 - jnp.exp(-int_b_churned)),
     )
     extra_noise_stddev = (
-        jnp.sqrt(beta_prev**2 - beta_curr**2) * noise_inflation_factor
+        jnp.sqrt(beta_churned**2 - beta**2) * noise_inflation_factor
     )
     new_position = (
         position + jax.random.normal(rng_key, position.shape) * extra_noise_stddev
     )
-    _, rng_key_next = jax.random.split(rng_key)
-    return IntegratorState(
-        new_position, rng_key_next, sde.tf - t_forward_prev, dt
-    )
+
+    return new_position, t_churned
 
 @dataclass
 class HeunIntegrator:
     """Heun deterministic integrator for ODEs"""
     sde: SDE
+    timer: Timer
     stochastic_churn_rate: float = 0.0
-    churn_min: float = 0.05 # in forward time
-    churn_max: float = 1.95
+    churn_min: float = 0.5
+    churn_max: float = 1.
     noise_inflation_factor: float = 1.0
 
-    def init(self, position: Array, rng_key: PRNGKeyArray, t: float, dt: float) -> IntegratorState:
+    def init(self, position: Array, rng_key: PRNGKeyArray) -> IntegratorState:
         """Initialize integrator state with position, timestep and step size"""
-        return IntegratorState(position, rng_key, t, dt)
+        return IntegratorState(position, rng_key)
 
     def __call__(self, integrator_state: IntegratorState, score: Callable) -> IntegratorState:
-        _, rng_key, t_reverse, _ = integrator_state
+        position, rng_key, step = integrator_state
         _, rng_key_next = jax.random.split(rng_key)
+
+        t = self.timer(step)
 
         _apply_stochastic_churn = partial(apply_stochastic_churn, stochastic_churn_rate=self.stochastic_churn_rate,
                                           churn_min=self.churn_min,
                                           churn_max=self.churn_max,
                                           noise_inflation_factor=self.noise_inflation_factor,
-                                          sde=self.sde)
-        integrator_state = jax.lax.cond(
+                                          sde=self.sde,
+                                          timer=self.timer)
+
+        position_churned, t_churned = jax.lax.cond(
             self.stochastic_churn_rate > 0,
             _apply_stochastic_churn,
-            lambda x: x,
+            lambda _: (position, t),
             integrator_state,
         )
-        position_churned, rng_key, t_reverse_churned, dt = integrator_state
-        t_reverse_next = jnp.clip(t_reverse + dt, 0, self.sde.tf)
-        drift_curr = self.sde.reverse_drift_ode(integrator_state, score)
-        integrator_state_next = IntegratorState(position_churned + drift_curr * (t_reverse_next - t_reverse_churned), rng_key_next, t_reverse_next, dt)
 
-        drift_next = self.sde.reverse_drift_ode(integrator_state_next, score)
-        position_next = position_churned + (drift_curr + drift_next) * (t_reverse_next - t_reverse_churned) / 2
+        # jax.debug.print("t_churned: {t_churned}", t_churned=t_churned)
+        # jax.debug.print("t: {t}", t=t)
+        t_next = self.timer(step + 1)
+        dt = t_next - t_churned
 
+        drift_churned = - 0.5 * self.sde.beta(t_churned) * (position_churned + score(position_churned, t_churned))
+        position_next_churned = position_churned + drift_churned * dt
 
-        integrator_state_next_tmp = IntegratorState(position_next, rng_key_next, t_reverse_next, dt)
+        drift_next = - 0.5 * self.sde.beta(t_next) * (position_next_churned + score(position_next_churned, t_next))
+        position_next_heun = position_churned + (drift_churned + drift_next) * dt / 2
 
-        next_integrator_state = jax.lax.cond(
-            t_reverse_next < 2-1e-2,
-            lambda x, y: x,
-            lambda x, y: y,
-            integrator_state_next_tmp,
-            integrator_state_next
+        next_state = jax.lax.cond(
+            step + 1 == self.timer.n_steps,
+            lambda : IntegratorState(position_next_churned, rng_key_next, step + 1),
+            lambda : IntegratorState(position_next_heun, rng_key_next, step + 1),
         )
-        return next_integrator_state
+
+        return next_state
 
 
 @dataclass

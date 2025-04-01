@@ -20,7 +20,7 @@ from diffuse.diffusion.sde import SDE, LinearSchedule, CosineSchedule, SDEState
 from diffuse.denoisers.denoiser import Denoiser
 from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
 from diffuse.integrator.deterministic import DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator, EulerIntegrator
-from diffuse.timer.base import VpTimer
+from diffuse.timer.base import VpTimer, HeunTimer
 # float64 accuracy
 jax.config.update("jax_enable_x64", True)
 
@@ -48,7 +48,7 @@ def get_percentiles():
 
 
 def display_trajectories_at_times(
-    particles, t_init, t_final, n_steps, space, perct, pdf, title=None
+    particles, timer, n_steps, space, perct, pdf, title=None
 ):
     n_plots = len(perct)
     d = particles.shape[-1]
@@ -57,23 +57,24 @@ def display_trajectories_at_times(
         fig.suptitle(title)
     for i, x in enumerate(perct):
         k = int(x * n_steps)
-        t = t_init + (k+1) * (t_final - t_init) / n_steps
-
+        t = 1.0 - timer(k+1)
+        print(f'k: {k}')
+        print(f"t: {t}")
         # plot histogram and true density
         display_histogram(particles[:, k], axs[i])
         axs[i].plot(space, jax.vmap(pdf, in_axes=(0, None))(space, t))
 
 @pytest.fixture
 def sde_setup():
-    beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
-    sde = SDE(beta=beta, tf=2.0)
+    beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=1.0)
+    sde = SDE(beta=beta, tf=1.0)
     return sde
 
 
 @pytest.fixture
 def time_space_setup():
     t_init = 0.0
-    t_final = 2.0
+    t_final = 1.0
     n_samples = 5000
     n_steps = 300
     ts = jnp.linspace(t_init, t_final, n_steps)
@@ -105,11 +106,12 @@ def test_forward_sde_mixture(
     plot_if_enabled(
         lambda: display_trajectories(noised_samples.position.squeeze(), 100)
     )
+
+    timer = VpTimer(n_steps=n_steps, eps=0.001, tf=1.0)
     plot_if_enabled(
         lambda: display_trajectories_at_times(
             noised_samples.position.squeeze(),
-            t_init,
-            t_final,
+            timer,
             n_steps,
             space,
             perct,
@@ -136,11 +138,11 @@ def test_backward_sde_mixture(
     time_space_setup, plot_if_enabled, get_percentiles, init_mixture, key, integrator_class, schedule
 ):
     beta_params = {
-        "LinearSchedule": {"b_min": 0.02, "b_max": 5.0, "t0": 0.0, "T": 2.0},
-        "CosineSchedule": {"b_min": 0.1, "b_max": 20.0, "t0": 0.0, "T": 2.0},
+        "LinearSchedule": {"b_min": 0.02, "b_max": 5.0, "t0": 0.0, "T": 1.0},
+        "CosineSchedule": {"b_min": 0.1, "b_max": 20.0, "t0": 0.0, "T": 1.0},
     }
     beta = schedule(**beta_params[schedule.__name__])
-    sde = SDE(beta=beta, tf=2.0)
+    sde = SDE(beta=beta, tf=1.0)
     t_init, t_final, n_samples, n_steps, ts, space, dts = time_space_setup
     perct = get_percentiles
     mix_state = init_mixture
@@ -152,7 +154,12 @@ def test_backward_sde_mixture(
     keys = jax.random.split(key, n_samples)
 
     # define Intergator and Denoiser
-    timer = VpTimer(n_steps=n_steps, eps=0.001, tf=2.0)
+    if integrator_class in [EulerMaruyamaIntegrator, EulerIntegrator]:
+        timer = VpTimer(n_steps=n_steps, eps=0.001, tf=1.0)
+        # timer = HeunTimer(n_steps=n_steps, rho=7.0, sigma_min=0.002, sigma_max=1.0)
+    elif integrator_class == HeunIntegrator:
+        timer = HeunTimer(n_steps=n_steps, rho=7.0, sigma_min=0.002, sigma_max=1.0)
+
     integrator = integrator_class(sde=sde, timer=timer)
     denoise = Denoiser(
         integrator=integrator, sde=sde, score=score, x0_shape=(1,)
@@ -170,8 +177,7 @@ def test_backward_sde_mixture(
     plot_if_enabled(
         lambda: display_trajectories_at_times(
             hist_position,
-            t_init,
-            t_final,
+            timer,
             n_steps,
             space,
             perct,
