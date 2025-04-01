@@ -1,11 +1,12 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import partial
-from typing import Callable, NamedTuple, Union
+from typing import Callable, NamedTuple, Tuple, Union
 
 import jax
 import jax.numpy as jnp
-from jaxtyping import PRNGKeyArray, Array
+from jaxtyping import Array, PRNGKeyArray
+
 
 class SDEState(NamedTuple):
     position: Array
@@ -63,6 +64,7 @@ class LinearSchedule:
             )
         )
 
+
 @dataclass
 class CosineSchedule(Schedule):
     """
@@ -76,6 +78,7 @@ class CosineSchedule(Schedule):
         T (float): The ending time
         s (float): Offset parameter (default: 0.008)
     """
+
     b_min: float
     b_max: float
     t0: float
@@ -106,14 +109,11 @@ class CosineSchedule(Schedule):
 
         return jnp.log(alpha_s / alpha_t)
 
-@dataclass
-class SDE:
-    r"""
-    dX(t) = -0.5 \beta(t) X(t) dt + \sqrt{\beta(t)} dW(t)
-    """
 
-    beta: Schedule
-    tf: float
+class DiffusionModel(ABC):
+    @abstractmethod
+    def alpha_beta(self, t: float) -> Tuple[float, float]:
+        pass
 
     def score(self, state: SDEState, state_0: SDEState) -> Array:
         """
@@ -121,78 +121,60 @@ class SDE:
         """
         x, t = state.position, state.t
         x0, t0 = state_0.position, state_0.t
-        int_b = self.beta.integrate(t, t0).squeeze()
-        alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
+        alpha_t, _ = self.alpha_beta(t)
 
-        return -(x - alpha * x0) / beta
+        return -(x - jnp.sqrt(alpha_t) * x0) / (1 - alpha_t)
 
-    def tweedie(self, state: SDEState, score: Callable) -> SDEState:
+    def tweedie(self, state: SDEState, score_fn: Callable) -> SDEState:
+        """
+        Tweedie's formula to compute E[x_t | x_0]
+        """
         x, t = state.position, state.t
-        int_b = self.beta.integrate(t, self.beta.t0).squeeze()
-        alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
-        return SDEState((x + beta * score(x, t)) / alpha, self.beta.t0)
+        alpha_t, _ = self.alpha_beta(t)
+        return SDEState(
+            (x + (1 - alpha_t) * score_fn(x, t)) / jnp.sqrt(alpha_t), 0.
+        )
 
-    def path(
-        self,
-        key: PRNGKeyArray,
-        state: SDEState,
-        ts: float,
-        return_noise: bool = False
+    def path(self, key: PRNGKeyArray, state: SDEState, ts: Array, return_noise: bool = False
     ) -> Union[SDEState, tuple[SDEState, Array]]:
         """
-        Generate x_ts | x_t ~ N(.| exp(-0.5 \int_ts^t \beta(s) ds) x_0, 1 - exp(-\int_ts^t \beta(s) ds))
-
-        Args:
-            key: Random number generator key
-            state: Current state
-            ts: Target time
-            return_noise: If True, also return the noise used to generate the sample
-
-        Returns:
-            If return_noise is False, returns just the new state
-            If return_noise is True, returns tuple of (new state, noise used)
+        Samples x_t | x_0 ~ N(sqrt(alpha_t) * x_0, (1 - alpha_t) * I)
         """
-        x, t = state.position, state.t
-
-        int_b = self.beta.integrate(ts, t)
-        alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
+        x = state.position
+        alpha_t, _ = self.alpha_beta(ts)
 
         noise = jax.random.normal(key, x.shape)
-        res = alpha * x + jnp.sqrt(beta) * noise
-
+        res = jnp.sqrt(alpha_t) * x + jnp.sqrt(1 - alpha_t) * noise
         return (SDEState(res, ts), noise) if return_noise else SDEState(res, ts)
 
     def score_to_noise(self, score_fn: Callable) -> Callable:
-        """
-        Convert a score function to a noise prediction function.
-
-        Args:
-            score_fn: Function that predicts score, with signature (x, t) -> score
-
-        Returns:
-            Function that predicts noise, with signature (x, t) -> noise
-        """
         def noise_fn(x: Array, t: Array) -> Array:
-            int_b = self.beta.integrate(t, self.beta.t0).squeeze()
-            beta = 1 - jnp.exp(-int_b)  # β_t = 1 - α_t
+            alpha_t, beta_t = self.alpha_beta(t)
             score = score_fn(x, t)
-            return -jnp.sqrt(beta) * score  # ε = -√β * score
+            return -jnp.sqrt(beta_t) * score
 
         return noise_fn
 
     def noise_to_score(self, noise_fn: Callable) -> Callable:
-        """
-        Convert a noise prediction function to a score function.
-
-        Args:
-            noise_fn: Function that predicts noise, with signature (x, t) -> noise
-
-        Returns:
-            Function that predicts score, with signature (x, t) -> score
-        """
         def score_fn(x: Array, t: Array) -> Array:
-            int_b = self.beta.integrate(t, self.beta.t0).squeeze()
-            beta = 1 - jnp.exp(-int_b)  # β_t = 1 - α_t
+            alpha_t, beta_t = self.alpha_beta(t)
             noise = noise_fn(x, t)
-            return -noise / (jnp.sqrt(beta) + 1e-6)  # Correct equivalence: score = -ε / √β
+            return -noise / (jnp.sqrt(beta_t) + 1e-6)
+
         return score_fn
+
+
+@dataclass
+class SDE(DiffusionModel):
+    r"""
+    dX(t) = -0.5 \beta(t) X(t) dt + \sqrt{\beta(t)} dW(t)
+    """
+
+    beta: Schedule
+    tf: float
+
+    def alpha_beta(self, t: float) -> Tuple[float, float]:
+        print("t: {}".format(t))
+        alpha = jnp.exp(-self.beta.integrate(t, 0.))
+        beta = self.beta(t)
+        return alpha, beta
