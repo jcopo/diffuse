@@ -190,13 +190,9 @@ def apply_stochastic_churn(
     t_churned = next_churn_noise_level(
         t, stochastic_churn_rate, churn_min, churn_max, timer
     )
-    int_b, int_b_churned = (
-        sde.beta.integrate(t, sde.beta.t0),
-        sde.beta.integrate(t_churned, sde.beta.t0),
-    )
     alpha, alpha_churned = (
-        jnp.exp(-int_b),
-        jnp.exp(-int_b_churned),
+        sde.alpha_beta(t)[0],
+        sde.alpha_beta(t_churned)[0],
     )
 
     new_position = (

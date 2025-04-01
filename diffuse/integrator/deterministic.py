@@ -39,9 +39,10 @@ class EulerIntegrator(ChurnedIntegrator):
         position_churned, t_churned = self._churn_fn(integrator_state)
         t_next = self.timer(step + 1)
         dt = t_next - t_churned
+        beta_churned = self.sde.alpha_beta(t_churned)[1]
         drift = (
             -0.5
-            * self.sde.beta(t_churned)
+            * beta_churned
             * (position_churned + score(position_churned, t_churned))
         )
         dx = drift * dt
@@ -83,10 +84,10 @@ class HeunIntegrator(ChurnedIntegrator):
 
         t_next = self.timer(step + 1)
         dt = t_next - t_churned
-
+        beta_churned = self.sde.alpha_beta(t_churned)[1]
         drift_churned = (
             -0.5
-            * self.sde.beta(t_churned)
+            * beta_churned
             * (position_churned + score(position_churned, t_churned))
         )
         position_next_churned = position_churned + drift_churned * dt
@@ -140,27 +141,21 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
         t_next = self.timer(step + 1)
         t_mid = (t_churned + t_next) / 2
 
-        t0 = self.sde.beta.t0
-        int_b_churned, int_b_next, int_b_mid = (
-            self.sde.beta.integrate(t_churned, t0),
-            self.sde.beta.integrate(t_next, t0),
-            self.sde.beta.integrate(t_mid, t0),
-        )
         alpha_churned, alpha_next, alpha_mid = (
-            jnp.exp(-0.5 * int_b_churned),
-            jnp.exp(-0.5 * int_b_next),
-            jnp.exp(-0.5 * int_b_mid),
+            self.sde.alpha_beta(t_churned)[0],
+            self.sde.alpha_beta(t_next)[0],
+            self.sde.alpha_beta(t_mid)[0],
         )
         sigma_churned, sigma_next, sigma_mid = (
-            jnp.sqrt(-jnp.expm1(-int_b_churned)),
-            jnp.sqrt(-jnp.expm1(-int_b_next)),
-            jnp.sqrt(-jnp.expm1(-int_b_mid)),
+            jnp.sqrt(1 - alpha_churned),
+            jnp.sqrt(1 - alpha_next),
+            jnp.sqrt(1 - alpha_mid),
         )
 
         log_scale_churned, log_scale_next, log_scale_mid = (
-            jnp.log(alpha_churned / sigma_churned),
-            jnp.log(alpha_next / sigma_next),
-            jnp.log(alpha_mid / sigma_mid),
+            jnp.log(jnp.sqrt(alpha_churned) / sigma_churned),
+            jnp.log(jnp.sqrt(alpha_next) / sigma_next),
+            jnp.log(jnp.sqrt(alpha_mid) / sigma_mid),
         )
 
         h = log_scale_next - log_scale_churned
@@ -171,7 +166,7 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
         ).position
         u = (
             sigma_mid / sigma_churned * position_churned
-            - alpha_mid * jnp.expm1(-h * r) * pred_x0_churned
+            - jnp.sqrt(alpha_mid) * jnp.expm1(-h * r) * pred_x0_churned
         )
 
         pred_x0_mid = self.sde.tweedie(SDEState(u, t_mid), score).position
@@ -179,7 +174,7 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
 
         next_position = (
             sigma_next / sigma_churned * position_churned
-            - alpha_next * jnp.expm1(-h) * D
+            - jnp.sqrt(alpha_next) * jnp.expm1(-h) * D
         )
 
         _, rng_key_next = jax.random.split(rng_key)
@@ -234,21 +229,17 @@ class DDIMIntegrator(ChurnedIntegrator):
 
         t_next = self.timer(step + 1)
 
-        # Compute cumulative noise schedule (β) integrals for α calculation
-        # Corrected integration limits: integrate from 0 to t_forward_curr (not curr_t to 0)
-        int_b_churned = self.sde.beta.integrate(t_churned, self.sde.beta.t0).squeeze()
-        int_b_next = self.sde.beta.integrate(t_next, self.sde.beta.t0).squeeze()
+        # Compute α_t (signal rate) and σ_t (noise variance) for current/next steps
+        alpha_churned = self.sde.alpha_beta(t_churned)[0]
+        alpha_next = self.sde.alpha_beta(t_next)[0]
 
-        # Compute α (signal rate) and β (noise variance) for current/next steps
-        alpha_churned = jnp.exp(-0.5 * int_b_churned)  # α_t = exp(-0.5 ∫₀^t β(s) ds)
-        alpha_next = jnp.exp(-0.5 * int_b_next)
-        beta_churned = 1.0 - alpha_churned**2  # β_t = 1 - α_t² (noise variance)
+        sigma_churned = 1.0 - alpha_churned  # σ_t = 1 - α_t (noise variance)
 
-        # Predict noise using the FORWARD time (t_forward_curr)
+        # Predict noise
         eps = noise_pred(position_churned, t_churned)
 
         # Estimate x₀ from x_t and predicted noise
-        pred_x0 = (position_churned - jnp.sqrt(beta_churned) * eps) / alpha_churned
+        pred_x0 = (position_churned - jnp.sqrt(sigma_churned) * eps) / jnp.sqrt(alpha_churned)
 
         # Compute stochasticity term (σ) for next step
         sigma_next = self.eta * jnp.sqrt(1 - alpha_next**2)
