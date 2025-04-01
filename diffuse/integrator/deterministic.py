@@ -13,9 +13,26 @@ __all__ = ["EulerIntegrator", "HeunIntegrator", "DPMpp2sIntegrator", "DDIMIntegr
 
 @dataclass
 class EulerIntegrator(ChurnedIntegrator):
+    """Euler deterministic integrator for reverse-time diffusion processes.
+
+    Implements the basic Euler method for numerical integration of the reverse-time SDE:
+    dx = [-0.5 * β(t) * (x + s(x,t))] * dt
+
+    where β(t) is the noise schedule and s(x,t) is the score function.
+    """
+
     def __call__(
         self, integrator_state: IntegratorState, score: Callable
     ) -> IntegratorState:
+        """Perform one Euler integration step in reverse time.
+
+        Args:
+            integrator_state: Current state containing (position, rng_key, step)
+            score: Score function s(x,t) that approximates ∇ₓ log p(x|t)
+
+        Returns:
+            Updated IntegratorState with the next position
+        """
         _, rng_key, step = integrator_state
         _, rng_key_next = jax.random.split(rng_key)
 
@@ -34,9 +51,31 @@ class EulerIntegrator(ChurnedIntegrator):
 
 @dataclass
 class HeunIntegrator(ChurnedIntegrator):
+    """Heun's method integrator for reverse-time diffusion processes.
+
+    Implements a second-order Runge-Kutta method (Heun's method) that uses an
+    intermediate Euler step to improve accuracy. The final step is computed as:
+
+    x_{n+1} = x_n + (k₁ + k₂)/2 * dt
+
+    where:
+    k₁ = drift(x_n, t_n)
+    k₂ = drift(x_n + k₁*dt, t_{n+1})
+    """
+
     def __call__(
         self, integrator_state: IntegratorState, score: Callable
     ) -> IntegratorState:
+        """Perform one Heun integration step in reverse time.
+
+        Args:
+            integrator_state: Current state containing (position, rng_key, step)
+            score: Score function s(x,t) that approximates ∇ₓ log p(x|t)
+
+        Returns:
+            Updated IntegratorState with the next position. For the final step,
+            returns the Euler prediction instead of the Heun correction.
+        """
         _, rng_key, step = integrator_state
         _, rng_key_next = jax.random.split(rng_key)
 
@@ -70,9 +109,29 @@ class HeunIntegrator(ChurnedIntegrator):
 
 @dataclass
 class DPMpp2sIntegrator(ChurnedIntegrator):
+    """DPM-Solver++ (2S) integrator for reverse-time diffusion processes.
+
+    Implements the 2nd-order DPM-Solver++ algorithm which uses a midpoint
+    prediction step and dynamic thresholding. This method provides improved
+    stability and accuracy compared to basic Euler integration.
+
+    The method uses log-space computations and midpoint predictions to
+    better handle the diffusion process dynamics.
+    """
+
     def __call__(
         self, integrator_state: IntegratorState, score: Callable
     ) -> IntegratorState:
+        """Perform one DPM-Solver++ (2S) integration step in reverse time.
+
+        Args:
+            integrator_state: Current state containing (position, rng_key, step)
+            score: Score function s(x,t) that approximates ∇ₓ log p(x|t)
+
+        Returns:
+            Updated IntegratorState with the next position computed using
+            the DPM-Solver++ (2S) algorithm
+        """
         _, rng_key, step = integrator_state
         _, rng_key_next = jax.random.split(rng_key)
 
@@ -131,17 +190,41 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
 
 @dataclass
 class DDIMIntegrator(ChurnedIntegrator):
-    """
-    Deterministic DDIM integrator that performs reverse process steps using dt.
-    The reverse process starts at t=0 (noise at forward time T) and progresses to t=T (data at forward time 0).
+    """Denoising Diffusion Implicit Models (DDIM) integrator.
+
+    Implements the DDIM sampling procedure which allows for deterministic or
+    stochastic sampling from diffusion models. The stochasticity is controlled
+    by the η (eta) parameter:
+    - η = 0: Fully deterministic (default)
+    - η = 1: Equivalent to standard diffusion sampling
+    - 0 < η < 1: Interpolation between deterministic and stochastic behavior
+
+    Attributes:
+        eta (float): Controls the sampling stochasticity. Default is 0 for
+            deterministic sampling.
     """
 
-    eta: float = 0.0  # Controls stochasticity (η=0 for deterministic DDIM)
+    eta: float = 0.0
 
     def __call__(
         self, integrator_state: IntegratorState, score: Callable
     ) -> IntegratorState:
-        """Perform one DDIM step from t to t+dt in the REVERSE process"""
+        """Perform one DDIM step in reverse time.
+
+        Args:
+            integrator_state: Current state containing (position, rng_key, step)
+            score: Score function s(x,t) that approximates ∇ₓ log p(x|t)
+
+        Returns:
+            Updated IntegratorState with the next position computed using
+            the DDIM update rule:
+            x_{t-1} = α_{t-1} * x̂₀ + sqrt(1 - α_{t-1}² - σ_{t-1}²) * ε_θ + σ_{t-1} * ε
+            where:
+            - x̂₀ is the predicted denoised image
+            - ε_θ is the predicted noise
+            - ε is random noise (if η > 0)
+            - σ_{t-1} controls stochasticity based on η
+        """
         _, rng_key, step = integrator_state
         _, rng_key_next = jax.random.split(rng_key)
 
