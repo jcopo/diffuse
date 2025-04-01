@@ -162,12 +162,6 @@ class SDE:
 
         return (SDEState(res, ts), noise) if return_noise else SDEState(res, ts)
 
-    def reverse_drift_ode(self, state: SDEState, score: Callable) -> Array: # TODO: remove when deterministic is finished
-        x, t = state.position, state.t
-        beta_t = self.beta(self.tf - t)
-        s = score(x, self.tf - t)
-        return 0.5 * (beta_t * x + beta_t * s)
-
     def score_to_noise(self, score_fn: Callable) -> Callable:
         """
         Convert a score function to a noise prediction function.
