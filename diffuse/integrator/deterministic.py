@@ -57,15 +57,13 @@ def apply_stochastic_churn(integrator_state: IntegratorState, stochastic_churn_r
         sde.beta.integrate(t, sde.beta.t0),
         sde.beta.integrate(t_churned, sde.beta.t0),
     )
-    beta, beta_churned = (
-        jnp.sqrt(1 - jnp.exp(-int_b)),
-        jnp.sqrt(1 - jnp.exp(-int_b_churned)),
+    alpha, alpha_churned = (
+        jnp.exp(-int_b),
+        jnp.exp(-int_b_churned),
     )
-    extra_noise_stddev = (
-        jnp.sqrt(beta_churned**2 - beta**2) * noise_inflation_factor
-    )
+
     new_position = (
-        position + jax.random.normal(rng_key, position.shape) * extra_noise_stddev
+        jnp.sqrt(alpha_churned / alpha) * position + jax.random.normal(rng_key, position.shape) * jnp.sqrt(1 - alpha_churned / alpha) * noise_inflation_factor
     )
 
     return new_position, t_churned
@@ -75,7 +73,7 @@ class HeunIntegrator:
     """Heun deterministic integrator for ODEs"""
     sde: SDE
     timer: Timer
-    stochastic_churn_rate: float = 0.0
+    stochastic_churn_rate: float = 1.0
     churn_min: float = 0.5
     churn_max: float = 1.
     noise_inflation_factor: float = 1.0
@@ -104,8 +102,9 @@ class HeunIntegrator:
             integrator_state,
         )
 
-        # jax.debug.print("t_churned: {t_churned}", t_churned=t_churned)
         # jax.debug.print("t: {t}", t=t)
+        # jax.debug.print("t_churned: {t_churned}", t_churned=t_churned)
+
         t_next = self.timer(step + 1)
         dt = t_next - t_churned
 
