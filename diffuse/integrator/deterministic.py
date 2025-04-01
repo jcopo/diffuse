@@ -187,19 +187,28 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
 class DDIMIntegrator(ChurnedIntegrator):
     """Denoising Diffusion Implicit Models (DDIM) integrator.
 
-    Implements the DDIM sampling procedure which allows for deterministic or
-    stochastic sampling from diffusion models. The stochasticity is controlled
-    by the η (eta) parameter:
-    - η = 0: Fully deterministic (default)
-    - η = 1: Equivalent to standard diffusion sampling
-    - 0 < η < 1: Interpolation between deterministic and stochastic behavior
+    Implements the DDIM sampling procedure which enables fast, high-quality sampling
+    through a non-Markovian deterministic process. DDIM can generate samples in
+    significantly fewer steps than DDPM while maintaining sample quality.
 
-    Attributes:
-        eta (float): Controls the sampling stochasticity. Default is 0 for
-            deterministic sampling.
+    The update rule follows:
+    x_{t-1} = √α_{t-1} * x̂₀ + √(1 - α_{t-1}) * ε_θ
+
+    where:
+    - x̂₀ is the predicted denoised sample: (x_t - √(1-α_t) * ε_θ) / √α_t
+    - ε_θ is the predicted noise from the model
+    - α_t represents the cumulative product of (1 - β_t)
+    - β_t is the forward process noise schedule
+
+    This implementation uses a deterministic sampler (η=0) which provides a good
+    balance between speed and quality. The deterministic nature allows for exact
+    reconstruction of the reverse process given the same noise predictions.
+
+    References:
+        Song, J., Meng, C., Ermon, S. (2020). "Denoising Diffusion Implicit Models"
+        https://arxiv.org/abs/2010.02502
+
     """
-
-    eta: float = 0.0
 
     def __call__(
         self, integrator_state: IntegratorState, score: Callable
@@ -213,12 +222,12 @@ class DDIMIntegrator(ChurnedIntegrator):
         Returns:
             Updated IntegratorState with the next position computed using
             the DDIM update rule:
-            x_{t-1} = α_{t-1} * x̂₀ + sqrt(1 - α_{t-1}² - σ_{t-1}²) * ε_θ + σ_{t-1} * ε
+            x_{t-1} = √α_{t-1} * x̂₀ + √(1 - α_{t-1}) * ε_θ
             where:
-            - x̂₀ is the predicted denoised image
-            - ε_θ is the predicted noise
-            - ε is random noise (if η > 0)
-            - σ_{t-1} controls stochasticity based on η
+            - x̂₀ is the predicted denoised sample: (x_t - √(1-α_t) * ε_θ) / √α_t
+            - ε_θ is the predicted noise from the model
+            - α_t represents the cumulative product of (1 - β_t)
+            - β_t is the forward process noise schedule
         """
         _, rng_key, step = integrator_state
         _, rng_key_next = jax.random.split(rng_key)
@@ -229,30 +238,13 @@ class DDIMIntegrator(ChurnedIntegrator):
 
         t_next = self.timer(step + 1)
 
-        # Compute α_t (signal rate) and σ_t (noise variance) for current/next steps
         alpha_churned = self.sde.alpha_beta(t_churned)[0]
         alpha_next = self.sde.alpha_beta(t_next)[0]
 
-        sigma_churned = 1.0 - alpha_churned  # σ_t = 1 - α_t (noise variance)
-
-        # Predict noise
         eps = noise_pred(position_churned, t_churned)
 
-        # Estimate x₀ from x_t and predicted noise
-        pred_x0 = (position_churned - jnp.sqrt(sigma_churned) * eps) / jnp.sqrt(alpha_churned)
+        pred_x0 = (position_churned - jnp.sqrt(1 - alpha_churned) * eps) / jnp.sqrt(alpha_churned)
 
-        # Compute stochasticity term (σ) for next step
-        sigma_next = self.eta * jnp.sqrt(1 - alpha_next**2)
-
-        # Sample noise if η > 0 (stochastic DDIM)
-        noise = jax.random.normal(rng_key, position_churned.shape)
-        _, rng_key_next = jax.random.split(rng_key)
-
-        # DDIM update rule (reverse process)
-        position_next = (
-            alpha_next * pred_x0  # Data estimate term
-            + jnp.sqrt(1 - alpha_next**2 - sigma_next**2) * eps  # Direction adjustment
-            + sigma_next * noise  # Stochastic noise (if η > 0)
-        )
+        position_next = jnp.sqrt(alpha_next) * pred_x0 + jnp.sqrt(1 - alpha_next) * eps
 
         return IntegratorState(position_next, rng_key_next, step + 1)

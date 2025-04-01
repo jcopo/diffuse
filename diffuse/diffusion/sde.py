@@ -149,17 +149,17 @@ class DiffusionModel(ABC):
 
     def score_to_noise(self, score_fn: Callable) -> Callable:
         def noise_fn(x: Array, t: Array) -> Array:
-            alpha_t, beta_t = self.alpha_beta(t)
+            alpha_t, _ = self.alpha_beta(t)
             score = score_fn(x, t)
-            return -jnp.sqrt(beta_t) * score
+            return -jnp.sqrt(1 - alpha_t) * score
 
         return noise_fn
 
     def noise_to_score(self, noise_fn: Callable) -> Callable:
         def score_fn(x: Array, t: Array) -> Array:
-            alpha_t, beta_t = self.alpha_beta(t)
+            alpha_t, _ = self.alpha_beta(t)
             noise = noise_fn(x, t)
-            return -noise / (jnp.sqrt(beta_t) + 1e-6)
+            return -noise / (jnp.sqrt(1 - alpha_t) + 1e-6)
 
         return score_fn
 
