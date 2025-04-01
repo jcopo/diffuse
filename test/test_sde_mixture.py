@@ -122,7 +122,7 @@ def test_forward_sde_mixture(
     # assert samples are distributed according to the true density
     for i, x in enumerate(perct):
         k = int(x * n_steps) + 1
-        t = t_init + (k) * (t_final - t_init) / n_steps
+        t = 1. - timer(k+1)
         ks_statistic, p_value = sp.stats.kstest(
             np.array(noised_samples.position[:, k].squeeze()),
             lambda x: cdf_t(x, t, mix_state, sde),
@@ -203,7 +203,7 @@ def test_backward_sde_mixture(
         t = 1. - timer(k+1)
         samples = hist_position[:, k].squeeze()
         # select randomly 300 samples
-        sample_indices = jax.random.choice(key, samples.shape[0], shape=(200,))
+        sample_indices = jax.random.choice(key, samples.shape[0], shape=(300,))
         samples = samples[sample_indices]
         ks_statistic, p_value = sp.stats.kstest(
             samples,
