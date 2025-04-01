@@ -19,7 +19,7 @@ from examples.gaussian_mixtures.mixture import (
 from diffuse.diffusion.sde import SDE, LinearSchedule, CosineSchedule, SDEState
 from diffuse.denoisers.denoiser import Denoiser
 from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
-from diffuse.integrator.deterministic import DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator, EulerIntegrator
+from diffuse.integrator.deterministic import DDIMIntegrator, EulerIntegrator, HeunIntegrator, DPMpp2sIntegrator
 from diffuse.timer.base import VpTimer, HeunTimer
 # float64 accuracy
 jax.config.update("jax_enable_x64", True)
@@ -132,10 +132,25 @@ def test_forward_sde_mixture(
         ), f"Sample distribution does not match theoretical (p-value: {p_value}, t: {t}, k: {k})"
 
 
-@pytest.mark.parametrize("integrator_class", [EulerMaruyamaIntegrator, DDIMIntegrator, EulerIntegrator, HeunIntegrator, DPMpp2sIntegrator])
+integrator_classes = [
+    EulerMaruyamaIntegrator,
+    DDIMIntegrator,
+    EulerIntegrator,
+    HeunIntegrator,
+    DPMpp2sIntegrator
+]
+
+timer_configs = [
+    ("vp", lambda n_steps: VpTimer(n_steps=n_steps, eps=0.001, tf=1.0)),
+    ("heun", lambda n_steps: HeunTimer(n_steps=n_steps, rho=7.0, sigma_min=0.002, sigma_max=1.0))
+]
+
+@pytest.mark.parametrize("integrator_class", integrator_classes)
+@pytest.mark.parametrize("timer_name,timer_fn", timer_configs)
 @pytest.mark.parametrize("schedule", [LinearSchedule, CosineSchedule])
 def test_backward_sde_mixture(
-    time_space_setup, plot_if_enabled, get_percentiles, init_mixture, key, integrator_class, schedule
+    time_space_setup, plot_if_enabled, get_percentiles, init_mixture, key,
+    integrator_class, timer_name, timer_fn, schedule
 ):
     beta_params = {
         "LinearSchedule": {"b_min": 0.02, "b_max": 5.0, "t0": 0.0, "T": 1.0},
@@ -153,13 +168,8 @@ def test_backward_sde_mixture(
     # init_samples = jax.random.normal(key_samples, (n_samples, 1))
     keys = jax.random.split(key, n_samples)
 
-    # define Intergator and Denoiser
-    if integrator_class in [EulerMaruyamaIntegrator, EulerIntegrator]:
-        timer = VpTimer(n_steps=n_steps, eps=0.001, tf=1.0)
-        # timer = HeunTimer(n_steps=n_steps, rho=7.0, sigma_min=0.002, sigma_max=1.0)
-    elif integrator_class == HeunIntegrator:
-        timer = HeunTimer(n_steps=n_steps, rho=7.0, sigma_min=0.002, sigma_max=1.0)
-
+    # Create timer with correct n_steps
+    timer = timer_fn(n_steps)
     integrator = integrator_class(sde=sde, timer=timer)
     denoise = Denoiser(
         integrator=integrator, sde=sde, score=score, x0_shape=(1,)
@@ -189,7 +199,8 @@ def test_backward_sde_mixture(
     # assert samples are distributed according to the true density
     for i, x in enumerate(perct):
         k = int(x * n_steps)
-        t = t_init + (k+1) * (t_final - t_init) / n_steps
+        # t = t_init + (k+1) * (t_final - t_init) / n_steps
+        t = 1. - timer(k+1)
         samples = hist_position[:, k].squeeze()
         # select randomly 300 samples
         sample_indices = jax.random.choice(key, samples.shape[0], shape=(200,))

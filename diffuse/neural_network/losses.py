@@ -2,9 +2,27 @@ import jax
 import jax.numpy as jnp
 import einops
 from typing import Callable
-from jaxtyping import PyTreeDef, PRNGKeyArray
+from jaxtyping import PyTreeDef, PRNGKeyArray, Array
 from diffuse.diffusion.sde import SDE, SDEState
 from functools import partial
+
+
+@dataclass
+class Losses:
+    network: Callable
+    sde: SDE
+    timer: Timer
+
+    def make_loss(self, loss_fn: Callable, *args, **kwargs)->Callable[[PyTreeDef, PRNGKeyArray, Array], float]:
+        def loss(
+            nn_params: PyTreeDef,
+            rng_key: PRNGKeyArray,
+            x0_samples: Array,
+        ):
+            return loss_fn(nn_params, rng_key, x0_samples, self.sde, self.network, *args, **kwargs)
+        return loss
+
+
 
 
 def score_match_loss(
@@ -14,6 +32,7 @@ def score_match_loss(
     sde: SDE,
     network: Callable,
     lmbda: Callable = None,
+    timer: Timer = TimerEuler(),
 ):
     """
     Calculate the score matching loss. This version shares the batch of x0 and t. Meaning nt_samples and n_x0 must be the same.
@@ -33,6 +52,7 @@ def score_match_loss(
     key_t, key_x = jax.random.split(rng_key)
     n_x0 = x0_samples.shape[0]
     # generate time samples
+    ts = timer.get_train_times(n_x0)
     ts = jax.random.uniform(key_t, (n_x0 - 1, 1), minval=1e-5, maxval=sde.tf)
     ts = jnp.concatenate([ts, jnp.array([[sde.tf]])], axis=0)
 
@@ -100,7 +120,7 @@ def noise_match_loss(
 
     return jnp.mean(mse)
 
-def kl_loss(nn_params, rng_key, x0_samples, beta: float, network: Callable):
+def kl_loss(nn_params: PyTreeDef, rng_key: PRNGKeyArray, x0_samples: Array, beta: float, network: AutoencoderKL):
     posterior, sample = network.apply(nn_params, x0_samples, deterministic=False, training=True, rngs=rng_key)
     kl_value = posterior.kl()
     mse_value = einops.reduce((sample - x0_samples) ** 2, "t ... -> t ", "mean")
