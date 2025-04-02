@@ -24,6 +24,12 @@ from diffuse.timer.base import VpTimer, HeunTimer
 # float64 accuracy
 jax.config.update("jax_enable_x64", True)
 
+# Add this at module level, after imports and before fixtures
+beta_params = {
+    "LinearSchedule": {"b_min": 0.02, "b_max": 5.0, "t0": 0.0, "T": 1.0},
+    "CosineSchedule": {"b_min": 0.1, "b_max": 20.0, "t0": 0.0, "T": 1.0},
+}
+
 @pytest.fixture
 def key():
     return jax.random.PRNGKey(42)
@@ -63,13 +69,6 @@ def display_trajectories_at_times(
         axs[i].plot(space, jax.vmap(pdf, in_axes=(0, None))(space, t))
 
 @pytest.fixture
-def sde_setup():
-    beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=1.0)
-    sde = SDE(beta=beta, tf=1.0)
-    return sde
-
-
-@pytest.fixture
 def time_space_setup():
     t_init = 0.0
     t_final = 1.0
@@ -81,10 +80,14 @@ def time_space_setup():
     return t_init, t_final, n_samples, n_steps, ts, space, dts
 
 
+@pytest.mark.parametrize("schedule", [LinearSchedule, CosineSchedule])
 def test_forward_sde_mixture(
-    sde_setup, time_space_setup, plot_if_enabled, get_percentiles, init_mixture, key
+    time_space_setup, plot_if_enabled, get_percentiles, init_mixture, key, schedule
 ):
-    sde = sde_setup
+    # Remove local beta_params and use the module-level one
+    beta = schedule(**beta_params[schedule.__name__])
+    sde = SDE(beta=beta, tf=1.0)
+
     t_init, t_final, n_samples, n_steps, ts, space, _ = time_space_setup
     perct = get_percentiles
     # samples from univariate gaussian
@@ -150,10 +153,7 @@ def test_backward_sde_mixture(
     time_space_setup, plot_if_enabled, get_percentiles, init_mixture, key,
     integrator_class, timer_name, timer_fn, schedule
 ):
-    beta_params = {
-        "LinearSchedule": {"b_min": 0.02, "b_max": 5.0, "t0": 0.0, "T": 1.0},
-        "CosineSchedule": {"b_min": 0.1, "b_max": 20.0, "t0": 0.0, "T": 1.0},
-    }
+    # Remove local beta_params and use the module-level one
     beta = schedule(**beta_params[schedule.__name__])
     sde = SDE(beta=beta, tf=1.0)
     t_init, t_final, n_samples, n_steps, ts, space, dts = time_space_setup
