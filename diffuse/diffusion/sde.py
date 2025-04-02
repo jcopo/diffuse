@@ -91,7 +91,7 @@ class CosineSchedule(Schedule):
         """
         t_normalized = (t - self.t0) / (self.T - self.t0)
 
-        beta_t = jnp.pi * jnp.tan(0.5 * jnp.pi * (t_normalized + self.s) / (1 + self.s)) / (1 + self.s)
+        beta_t = jnp.pi * jnp.tan(0.5 * jnp.pi * (t_normalized + self.s) / (1 + self.s)) / (self.T * (1 + self.s))
         beta_t = jnp.clip(beta_t, self.b_min, self.b_max)
 
         return beta_t
@@ -176,4 +176,4 @@ class SDE(DiffusionModel):
     def alpha_beta(self, t: float) -> Tuple[float, float]:
         alpha = jnp.exp(-self.beta.integrate(t, 0.))
         beta = self.beta(t)
-        return alpha, beta
+        return jnp.clip(alpha, 0.001, 0.9999), beta

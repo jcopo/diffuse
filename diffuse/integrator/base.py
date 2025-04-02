@@ -84,7 +84,7 @@ class ChurnedIntegrator(Integrator):
 
     stochastic_churn_rate: float = 1.0
     churn_min: float = 0.5
-    churn_max: float = 1.0
+    churn_max: float = 2.0
     noise_inflation_factor: float = 1.0001
 
     def _churn_fn(self, integrator_state: IntegratorState) -> Tuple[Array, float]:
@@ -114,7 +114,6 @@ class ChurnedIntegrator(Integrator):
             lambda _: (position, t),
             integrator_state,
         )
-
         return position_churned, t_churned
 
 

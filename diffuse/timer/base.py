@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+import jax.numpy as jnp
+
 
 @dataclass
 class Timer:
@@ -73,6 +75,7 @@ class HeunTimer(Timer):
         ) ** self.rho
 
 
+@dataclass
 class DDIMTimer(Timer):
     """Denoising Diffusion Implicit Models (DDIM) Timer.
 
@@ -88,9 +91,9 @@ class DDIMTimer(Timer):
     """
 
     n_time_training: int
-    c_1: float
-    c_2: float
-    j0: int
+    c_1: float = 0.001
+    c_2: float = 0.008
+    j0: int = 8
 
     def __call__(self, step: int) -> float:
         """Compute time value for given step using DDIM scheduling.
@@ -101,15 +104,21 @@ class DDIMTimer(Timer):
         Returns:
             float: Time value at current step
         """
-        t = self.c_1 + (self.c_2 - self.c_1) * (step / self.n_steps) ** self.j0
-        return t
+        j = jnp.floor(
+            self.j0
+            + (self.n_time_training - 1 - self.j0) * step / (self.n_steps - 1)
+            + 0.5
+        ).astype(int).item()
+        return self.u_i(j)
 
+    def _alpha(self, j: int) -> float:
+        return jnp.sin(0.5 * jnp.pi * j / (self.n_time_training * (self.c_2 + 1))) ** 2
 
-if __name__ == "__main__":
-    from matplotlib import pyplot as plt
-    import jax.numpy as jnp
-
-    timer = HeunTimer(n_steps=100, sigma_max=1.0)
-    ts = jnp.linspace(0, 100, 100)
-    plt.plot(ts, timer(ts))
-    plt.show()
+    def u_i(self, j: int) -> float:
+        u = 0
+        for i in range(self.n_time_training, j, -1):
+            alpha = self._alpha(i)
+            alpha_next = self._alpha(i - 1)
+            maxi = jnp.maximum(alpha_next / alpha, self.c_1)
+            u = jnp.sqrt((u**2 + 1) / maxi - 1)
+        return u

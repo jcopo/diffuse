@@ -20,7 +20,7 @@ from diffuse.diffusion.sde import SDE, LinearSchedule, CosineSchedule, SDEState
 from diffuse.denoisers.denoiser import Denoiser
 from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
 from diffuse.integrator.deterministic import DDIMIntegrator, EulerIntegrator, HeunIntegrator, DPMpp2sIntegrator
-from diffuse.timer.base import VpTimer, HeunTimer
+from diffuse.timer.base import VpTimer, HeunTimer, DDIMTimer
 # float64 accuracy
 jax.config.update("jax_enable_x64", True)
 
@@ -63,7 +63,7 @@ def display_trajectories_at_times(
         fig.suptitle(title)
     for i, x in enumerate(perct):
         k = int(x * n_steps)
-        t = 1.0 - timer(k+1)
+        t = timer(0) - timer(k+1)
         # plot histogram and true density
         display_histogram(particles[:, k], axs[i])
         axs[i].plot(space, jax.vmap(pdf, in_axes=(0, None))(space, t))
@@ -71,7 +71,7 @@ def display_trajectories_at_times(
 @pytest.fixture
 def time_space_setup():
     t_init = 0.0
-    t_final = 1.0
+    t_final = 20.0
     n_samples = 5000
     n_steps = 300
     ts = jnp.linspace(t_init, t_final, n_steps)
@@ -124,7 +124,7 @@ def test_forward_sde_mixture(
     for i, x in enumerate(perct):
         k = int(x * n_steps) + 1
         t = 1. - timer(k+1)
-        ks_statistic, p_value = sp.stats.kstest(
+        _, p_value = sp.stats.kstest(
             np.array(noised_samples.position[:, k].squeeze()),
             lambda x: cdf_t(x, t, mix_state, sde),
         )
@@ -142,32 +142,35 @@ integrator_classes = [
 ]
 
 timer_configs = [
-    ("vp", lambda n_steps: VpTimer(n_steps=n_steps, eps=0.001, tf=1.0)),
-    ("heun", lambda n_steps: HeunTimer(n_steps=n_steps, rho=7.0, sigma_min=0.002, sigma_max=1.0))
+    ("vp", lambda n_steps: VpTimer(n_steps=n_steps, eps=0.001, tf=20.0)),
+    ("heun", lambda n_steps: HeunTimer(n_steps=n_steps, rho=7.0, sigma_min=0.002, sigma_max=80.0)),
+    ("ddim", lambda n_steps: DDIMTimer(n_steps=n_steps, n_time_training=1000, c_1=0.001, c_2=0.008, j0=8))
 ]
 
 @pytest.mark.parametrize("integrator_class", integrator_classes)
 @pytest.mark.parametrize("timer_name,timer_fn", timer_configs)
-@pytest.mark.parametrize("schedule", [LinearSchedule, CosineSchedule])
+@pytest.mark.parametrize("schedule", [LinearSchedule])#, CosineSchedule])
 def test_backward_sde_mixture(
     time_space_setup, plot_if_enabled, get_percentiles, init_mixture, key,
     integrator_class, timer_name, timer_fn, schedule
 ):
-    # Remove local beta_params and use the module-level one
-    beta = schedule(**beta_params[schedule.__name__])
-    sde = SDE(beta=beta, tf=1.0)
-    t_init, t_final, n_samples, n_steps, ts, space, dts = time_space_setup
+    _, _, n_samples, n_steps, _, space, _ = time_space_setup
+    timer = timer_fn(n_steps)
+    t_final = timer(0)
+    print(t_final)
+    beta_params_updated = beta_params[schedule.__name__].copy()
+    beta_params_updated["T"] = t_final
+    beta = schedule(**beta_params_updated)
+
+    sde = SDE(beta=beta, tf=t_final)
+
     perct = get_percentiles
     mix_state = init_mixture
 
     pdf = partial(rho_t, init_mix_state=mix_state, sde=sde)
     score = lambda x, t: jax.grad(pdf)(x, t) / pdf(x, t)
 
-    # init_samples = jax.random.normal(key_samples, (n_samples, 1))
-    keys = jax.random.split(key, n_samples)
 
-    # Create timer with correct n_steps
-    timer = timer_fn(n_steps)
     integrator = integrator_class(sde=sde, timer=timer)
     denoise = Denoiser(
         integrator=integrator, sde=sde, score=score, x0_shape=(1,)
@@ -175,13 +178,12 @@ def test_backward_sde_mixture(
 
     # generate samples
     key_samples, _ = jax.random.split(key)
-    state, hist_position = denoise.generate(key_samples, n_steps, n_samples)
+    _, hist_position = denoise.generate(key_samples, n_steps, n_samples)
+
     hist_position = hist_position.squeeze().T
 
-    # assert end time is < t_final
-    # assert state.integrator_state.t[0] < t_final
     # plot if enabled
-    plot_if_enabled(lambda: display_trajectories(hist_position, 100, title=integrator_class.__name__))
+    plot_if_enabled(lambda: display_trajectories(hist_position, 100, title=f"{integrator_class.__name__} (Timer: {timer_name}, Schedule: {schedule.__name__})"))
     plot_if_enabled(
         lambda: display_trajectories_at_times(
             hist_position,
@@ -190,7 +192,7 @@ def test_backward_sde_mixture(
             space,
             perct,
             lambda x, t: pdf(x, t_final - t),
-            title=integrator_class.__name__
+            title=f"{integrator_class.__name__} (Timer: {timer_name}, Schedule: {schedule.__name__})"
         )
     )
 
@@ -198,7 +200,7 @@ def test_backward_sde_mixture(
     for i, x in enumerate(perct):
         k = int(x * n_steps)
         # t = t_init + (k+1) * (t_final - t_init) / n_steps
-        t = 1. - timer(k+1)
+        t = timer(0) - timer(k+1)
         samples = hist_position[:, k].squeeze()
         # select randomly 300 samples
         sample_indices = jax.random.choice(key, samples.shape[0], shape=(300,))

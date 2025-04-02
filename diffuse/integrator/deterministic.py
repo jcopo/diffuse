@@ -37,6 +37,7 @@ class EulerIntegrator(ChurnedIntegrator):
         _, rng_key_next = jax.random.split(rng_key)
 
         position_churned, t_churned = self._churn_fn(integrator_state)
+
         t_next = self.timer(step + 1)
         dt = t_next - t_churned
         beta_churned = self.sde.alpha_beta(t_churned)[1]
@@ -47,6 +48,7 @@ class EulerIntegrator(ChurnedIntegrator):
         )
         dx = drift * dt
         _, rng_key_next = jax.random.split(rng_key)
+
         return IntegratorState(position_churned + dx, rng_key_next, step + 1)
 
 
@@ -158,12 +160,13 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
             jnp.log(jnp.sqrt(alpha_mid) / sigma_mid),
         )
 
-        h = log_scale_next - log_scale_churned
-        r = (log_scale_mid - log_scale_churned) / h
+        h = jnp.clip(log_scale_next - log_scale_churned, 1e-6)
+        r = jnp.clip((log_scale_mid - log_scale_churned) / h, 1e-6)
 
         pred_x0_churned = self.sde.tweedie(
             SDEState(position_churned, t_churned), score
         ).position
+
         u = (
             sigma_mid / sigma_churned * position_churned
             - jnp.sqrt(alpha_mid) * jnp.expm1(-h * r) * pred_x0_churned
@@ -243,7 +246,9 @@ class DDIMIntegrator(ChurnedIntegrator):
 
         eps = noise_pred(position_churned, t_churned)
 
-        pred_x0 = (position_churned - jnp.sqrt(1 - alpha_churned) * eps) / jnp.sqrt(alpha_churned)
+        pred_x0 = (position_churned - jnp.sqrt(1 - alpha_churned) * eps) / jnp.sqrt(
+            alpha_churned
+        )
 
         position_next = jnp.sqrt(alpha_next) * pred_x0 + jnp.sqrt(1 - alpha_next) * eps
 
