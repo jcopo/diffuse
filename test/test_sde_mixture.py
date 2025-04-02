@@ -157,7 +157,7 @@ def test_backward_sde_mixture(
     _, _, n_samples, n_steps, _, space, _ = time_space_setup
     timer = timer_fn(n_steps)
     t_final = timer(0)
-    print(t_final)
+
     beta_params_updated = beta_params[schedule.__name__].copy()
     beta_params_updated["T"] = t_final
     beta = schedule(**beta_params_updated)

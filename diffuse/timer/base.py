@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+import jax
 import jax.numpy as jnp
 
 
@@ -95,6 +96,17 @@ class DDIMTimer(Timer):
     c_2: float = 0.008
     j0: int = 8
 
+    def __post_init__(self):
+        def body_fun(u, i):
+            alpha = self._alpha(i)
+            alpha_next = self._alpha(i - 1)
+            maxi = jnp.maximum(alpha_next / alpha, self.c_1)
+            u_next = jnp.sqrt((u**2 + 1) / maxi - 1)
+            return u_next, u_next
+
+        indices = jnp.arange(self.n_time_training, 0, -1)
+        _, self.u_list = jax.lax.scan(body_fun, 0.0, indices)
+
     def __call__(self, step: int) -> float:
         """Compute time value for given step using DDIM scheduling.
 
@@ -109,16 +121,14 @@ class DDIMTimer(Timer):
             + (self.n_time_training - 1 - self.j0) * step / (self.n_steps - 1)
             + 0.5
         ).astype(int).item()
-        return self.u_i(j)
+        return self.u_list[j]
 
     def _alpha(self, j: int) -> float:
         return jnp.sin(0.5 * jnp.pi * j / (self.n_time_training * (self.c_2 + 1))) ** 2
 
-    def u_i(self, j: int) -> float:
-        u = 0
-        for i in range(self.n_time_training, j, -1):
-            alpha = self._alpha(i)
-            alpha_next = self._alpha(i - 1)
-            maxi = jnp.maximum(alpha_next / alpha, self.c_1)
-            u = jnp.sqrt((u**2 + 1) / maxi - 1)
-        return u
+
+if __name__ == "__main__":
+    timer = DDIMTimer(n_steps=100, n_time_training=1000, c_1=0.001, c_2=0.008, j0=8)
+    print(timer(0))
+    print(timer(50))
+    print(timer(100))
