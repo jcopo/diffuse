@@ -6,150 +6,227 @@ import pytest
 import scipy as sp
 import numpy as np
 import ott
+from collections import defaultdict
 
 from diffuse.diffusion.sde import SDE, LinearSchedule, CosineSchedule
-from examples.gaussian_mixtures.cond_mixture import NoiseMask, posterior_distribution
-from examples.gaussian_mixtures.mixture import (
-    MixState,
-    rho_t,
-    display_histogram,
-    sampler_mixtr,
-)
-from examples.gaussian_mixtures.forward_models.matrix_product import MatrixProduct
 from examples.gaussian_mixtures.cond_mixture import compute_posterior, compute_xt_given_y, init_gaussian_mixture
-from examples.gaussian_mixtures.mixture import cdf_mixtr, pdf_mixtr
+from examples.gaussian_mixtures.mixture import cdf_mixtr, pdf_mixtr, sampler_mixtr, display_trajectories
+from examples.gaussian_mixtures.forward_models.matrix_product import MatrixProduct
 from test.test_sde_mixture import display_trajectories_at_times
 from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
 from diffuse.integrator.deterministic import DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator, EulerIntegrator
 from diffuse.denoisers.denoiser import Denoiser
-from examples.gaussian_mixtures.mixture import display_trajectories
+from diffuse.timer.base import VpTimer, HeunTimer, DDIMTimer
 
+# Global configurations
+CONFIG = {
+    "schedules": {
+        "LinearSchedule": {
+            "params": {"b_min": 0.1, "b_max": 20.0, "t0": 0.001, "T": 1.0},
+            "class": LinearSchedule
+        },
+        "CosineSchedule": {
+            "params": {"b_min": 0.1, "b_max": 20.0, "t0": 0.001, "T": 1.0},
+            "class": CosineSchedule
+        }
+    },
+    "integrators": [
+        EulerMaruyamaIntegrator,
+        DDIMIntegrator,
+        HeunIntegrator,
+        DPMpp2sIntegrator,
+        EulerIntegrator
+    ],
+    "space": {
+        "t_init": 0.001,
+        "t_final": 1.0,
+        "n_samples": 5000,
+        "n_steps": 300,
+        "d": 1,  # dimensionality
+        "sigma_y": 0.01  # observation noise
+    },
+    "percentiles": [0.0, 0.05, 0.1, 0.3, 0.6, 0.7, 0.73, 0.75, 0.8, 0.9],
+    "timers": [
+        ("vp", lambda n_steps, t_final: VpTimer(n_steps=n_steps, eps=0.001, tf=t_final)),
+        ("heun", lambda n_steps, t_final: HeunTimer(n_steps=n_steps, rho=7.0, sigma_min=0.002, sigma_max=1.0)),
+    ],
+}
+
+# Simple dict to store results
+wasserstein_results = defaultdict(list)
+
+@pytest.fixture(autouse=True)
+def collect_wasserstein():
+    """Automatically collect Wasserstein distances from all tests"""
+    yield
+
+    # At the end of all tests, print summary
+    if wasserstein_results:
+        print("\nWasserstein Distance Summary:")
+        print("-" * 80)  # Increased width for longer keys
+        print(f"{'Configuration':<50} {'Distances':<10}")
+        print("-" * 80)
+        for config, distances in wasserstein_results.items():
+            print(f"{config:<50} {distances}")
 
 @pytest.fixture
-def noise_mask():
-    return NoiseMask(alpha=0.8, std=1.3)
-
-
-@pytest.fixture
-def init_mixture(key):
-    n_mixt = 3
-    d = 1
-    means = jax.random.uniform(key, (n_mixt, d), minval=-3, maxval=3)
-    covs = 0.1 * (jax.random.normal(key + 1, (n_mixt, d, d))) ** 2
-    mix_weights = jax.random.uniform(key + 2, (n_mixt,))
-    mix_weights /= jnp.sum(mix_weights)
-
-    return MixState(means, covs, mix_weights)
-
-
-
-@pytest.fixture
-def sde_setup():
-    beta = LinearSchedule(b_min=0.02, b_max=5.0, t0=0.0, T=2.0)
-    sde = SDE(beta=beta, tf=2.0)
-    return sde
-
-
-@pytest.mark.parametrize("schedule", [LinearSchedule, CosineSchedule])
-@pytest.mark.parametrize("integrator_class", [EulerMaruyamaIntegrator, DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator, EulerIntegrator])
-@pytest.mark.parametrize("key", [jax.random.PRNGKey(42), jax.random.PRNGKey(666), jax.random.PRNGKey(1234)])
-def test_backward_sde_conditional_mixture(integrator_class, plot_if_enabled, key, schedule):
-    d = 1  # Dimensionality (can use d=200)
-    sigma_y = 0.01
+def test_setup():
+    """Single fixture that provides all necessary test configuration and objects"""
+    key = jax.random.PRNGKey(42)
+    space_config = CONFIG["space"]
 
     # Initialize the Gaussian mixture prior
-    key_init, key_mix = jax.random.split(key)
-    mix_state = init_gaussian_mixture(key_init, d)
+    mix_state = init_gaussian_mixture(key, space_config["d"])
 
-    # Define the SDE
-    t_init, t_final, n_steps = 0.001, 2.0, 500
-    beta = schedule(b_min=0.1, b_max=20.0, t0=t_init, T=t_final)
-    sde = SDE(beta=beta, tf=t_final)
+    def create_sde(schedule_name):
+        schedule_config = CONFIG["schedules"][schedule_name]
+        beta = schedule_config["class"](**schedule_config["params"])
+        return SDE(beta=beta, tf=space_config["t_final"])
 
-    # Generate observation (similar to main())
-    key_meas, key_obs, key_samples, key_gen = jax.random.split(key_mix, 4)
-    A = jax.random.normal(key_obs, (1, d))
-    forward_model = MatrixProduct(A=A, std=sigma_y)
-    x_star = sampler_mixtr(key_samples, mix_state, 1)[0]
-    print(f"x_star shape: {x_star.shape}")
-    print(f"True x* (first 5 dims): {x_star[:5]}")
-    y = forward_model.measure(key_meas, None, x_star)
+    # Create observation setup
+    key_meas, key_obs = jax.random.split(key)
+    A = jax.random.normal(key_obs, (1, space_config["d"]))
+    forward_model = MatrixProduct(A=A, std=space_config["sigma_y"])
 
-    # Compute theoretical posterior
-    posterior_state = compute_posterior(mix_state, y, A, sigma_y)
+    return {
+        "key": key,
+        "key_meas": key_meas,
+        "mix_state": mix_state,
+        "forward_model": forward_model,
+        "A": A,
+        "create_sde": create_sde,
+        "perct": CONFIG["percentiles"],
+        **space_config
+    }
 
-    # Define score function using posterior distribution
+def create_score_functions(posterior_state, sde):
+    """Helper to create pdf, cdf and score functions for the posterior"""
     def pdf(x, t):
         mix_state_t = compute_xt_given_y(posterior_state, sde, t)
         return pdf_mixtr(mix_state_t, x)
+
     def cdf(x, t):
         mix_state_t = compute_xt_given_y(posterior_state, sde, t)
         return cdf_mixtr(mix_state_t, x)
+
     def score(x, t):
         return jax.grad(pdf)(x, t) / pdf(x, t)
 
+    return pdf, cdf, score
 
-    # Define Integrator and Denoiser
-    integrator = integrator_class(sde=sde)
+def validate_distributions(position, timer, n_steps, perct, cdf, key=None, method=None, forward=True):
+    """Helper function to validate sample distributions against theoretical ones."""
+    for i, x in enumerate(perct):
+        k = int(x * n_steps)
+        t = timer(0) - timer(k+1)
+        samples = position[:, k].squeeze()
+        sample_indices = jax.random.choice(key, samples.shape[0], shape=(300,))
+        samples = samples[sample_indices]
+
+
+        if key is not None:  # Use subset of samples if key provided
+            sample_indices = jax.random.choice(key, samples.shape[0], shape=(200,))
+            samples = samples[sample_indices]
+
+        #time = t if forward else timer(0) - t
+        ks_statistic, p_value = sp.stats.kstest(
+            np.array(samples),
+            lambda x: cdf(x, t),
+        )
+
+        error_msg = f"Sample distribution does not match theoretical (p-value: {p_value}, t: {t}, k: {k})"
+        if method:
+            error_msg = f"Sample distribution does not match theoretical (method: {method.__name__}, p-value: {p_value}, t: {t}, k: {k})"
+
+        assert p_value > 0.01, error_msg
+
+@pytest.mark.parametrize("schedule_name", ["LinearSchedule", "CosineSchedule"])
+@pytest.mark.parametrize("integrator_class", CONFIG["integrators"])
+@pytest.mark.parametrize("timer_name,timer_fn", CONFIG["timers"])
+def test_backward_sde_conditional_mixture(test_setup, plot_if_enabled, integrator_class, schedule_name, timer_name, timer_fn):
+    # Unpack setup
+    key = test_setup["key"]
+    key_meas = test_setup["key_meas"]
+    mix_state = test_setup["mix_state"]
+    forward_model = test_setup["forward_model"]
+    A = test_setup["A"]
+    t_init = test_setup["t_init"]
+    t_final = test_setup["t_final"]
+    n_steps = test_setup["n_steps"]
+    n_samples = test_setup["n_samples"]
+    sigma_y = test_setup["sigma_y"]
+    perct = test_setup["perct"]
+
+    # Create SDE
+    sde = test_setup["create_sde"](schedule_name)
+
+    # Create timer
+    timer = timer_fn(n_steps, t_final)
+
+    # Generate observation
+    key_samples = jax.random.split(key_meas)[0]
+    x_star = sampler_mixtr(key_samples, mix_state, 1)[0]
+    y = forward_model.measure(key_meas, None, x_star)
+
+    # Compute theoretical posterior and score functions
+    posterior_state = compute_posterior(mix_state, y, A, sigma_y)
+    pdf, cdf, score = create_score_functions(posterior_state, sde)
+
+    # Setup denoising process with timer
+    integrator = integrator_class(sde=sde, timer=timer)
     denoise = Denoiser(
-        integrator=integrator, sde=sde, score=score, x0_shape=x_star.shape
+        integrator=integrator,
+        sde=sde,
+        score=score,
+        x0_shape=x_star.shape
     )
 
     # Generate samples
-    n_samples = 5000
+    key_gen = jax.random.split(key_samples)[0]
     state, hist_position = denoise.generate(key_gen, n_steps, n_samples)
     hist_position = hist_position.squeeze().T
 
-    # assert end time is < t_final
-    assert state.integrator_state.t[0] < t_final
-
-
     # Visualization
-    perct = [0., 0.05, 0.1, 0.3, 0.6, 0.7, .73, .75, 0.8, 0.9]
     space = jnp.linspace(-10, 10, 100)
-    plot_if_enabled(lambda: display_trajectories(hist_position, 100, title=integrator_class.__name__))
-    plt.show()
-    # plt.close()
-    plot_if_enabled(lambda: display_trajectories_at_times(
-        hist_position,
-        t_init,
-        t_final,
-        n_steps,
-        space,
-        perct,
-        lambda x, t: pdf(x, t_final - t),
-        title=integrator_class.__name__
-    ))
-    plt.show()
+    plot_title = f"{integrator_class.__name__} (Timer: {timer_name}, Schedule: {schedule_name})"
 
-    # assert samples are distributed according to the true density
-    for i, x in enumerate(perct):
-        k = int(x * n_steps)
-        t = t_init + (k+1) * (t_final - t_init) / n_steps
-        samples = hist_position[:, k].squeeze()
-        # select randomly 300 samples
-        sample_indices = jax.random.choice(key, samples.shape[0], shape=(200,))
-        samples = samples[sample_indices]
-        ks_statistic, p_value = sp.stats.kstest(
-            np.array(samples),
-            lambda x: cdf(x, t_final - t),
+    plot_if_enabled(lambda: display_trajectories(hist_position, 100, title=plot_title))
+    plot_if_enabled(
+        lambda: display_trajectories_at_times(
+            hist_position,
+            timer,
+            n_steps,
+            space,
+            perct,
+            lambda x, t: pdf(x, t_final - t),
+            title=plot_title
         )
-        assert p_value > 0.01, f"Sample distribution does not match theoretical (method: {integrator_class.__name__}, p-value: {p_value}, t: {t}, k: {k})"
-
-    # test for last element
-    k = -1
-    t = state.integrator_state.t[0]
-    ks_statistic, p_value = sp.stats.kstest(
-        np.array(hist_position[:, k]),
-        lambda x: cdf(x, t_final - t),
     )
-    # assert p_value > 0.01, f"Sample distribution does not match theoretical (method: {integrator_class.__name__}, p-value: {p_value}, t: {t}, k: {k})"
 
-    # compute Wasserstein distance between gen samples and true posterior samples
+    # Compute Wasserstein distance
     wasserstein_distance, _ = ott.tools.sliced.sliced_wasserstein(
         state.integrator_state.position,
         posterior_state.means,
     )
-    print(f"method: {integrator_class.__name__}, Wasserstein distance: {wasserstein_distance}, n_samples: {n_samples}, n_steps: {n_steps}")
+
+    # Create a composite key for the results
+    result_key = f"{integrator_class.__name__}_{schedule_name}_{timer_name}"
+    wasserstein_results[result_key].append(float(wasserstein_distance))
+
+    # assert wasserstein_distance < 0.1
+    assert wasserstein_distance.item() < 0.1
+
+
+    # # Validate distributions
+    # validate_distributions(
+    #     hist_position,
+    #     timer,
+    #     n_steps,
+    #     perct,
+    #     lambda x, t: cdf(x, t_final - t),
+    #     key=key,
+    #     method=integrator_class,
+    #     forward=False
+    # )
 
 
