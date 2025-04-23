@@ -1,22 +1,39 @@
+from collections import defaultdict
 from functools import partial
+from test.test_sde_mixture import display_trajectories_at_times
+
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
-import pytest
-import scipy as sp
 import numpy as np
 import ott
-from collections import defaultdict
+import pytest
+import scipy as sp
 
-from diffuse.diffusion.sde import SDE, LinearSchedule, CosineSchedule
-from examples.gaussian_mixtures.cond_mixture import compute_posterior, compute_xt_given_y, init_gaussian_mixture
-from examples.gaussian_mixtures.mixture import cdf_mixtr, pdf_mixtr, sampler_mixtr, display_trajectories
-from examples.gaussian_mixtures.forward_models.matrix_product import MatrixProduct
-from test.test_sde_mixture import display_trajectories_at_times
-from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
-from diffuse.integrator.deterministic import DDIMIntegrator, HeunIntegrator, DPMpp2sIntegrator, EulerIntegrator
+from diffuse.base_forward_model import MeasurementState
+from diffuse.denoisers.cond import CondDenoiser, DPSDenoiser, FPSDenoiser, TMPDenoiser
 from diffuse.denoisers.denoiser import Denoiser
-from diffuse.timer.base import VpTimer, HeunTimer, DDIMTimer
+from diffuse.diffusion.sde import SDE, CosineSchedule, LinearSchedule
+from diffuse.integrator.deterministic import (
+    DDIMIntegrator,
+    DPMpp2sIntegrator,
+    EulerIntegrator,
+    HeunIntegrator,
+)
+from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
+from diffuse.timer.base import DDIMTimer, HeunTimer, VpTimer
+from examples.gaussian_mixtures.cond_mixture import (
+    compute_posterior,
+    compute_xt_given_y,
+    init_gaussian_mixture,
+)
+from examples.gaussian_mixtures.forward_models.matrix_product import MatrixProduct
+from examples.gaussian_mixtures.mixture import (
+    cdf_mixtr,
+    display_trajectories,
+    pdf_mixtr,
+    sampler_mixtr,
+)
 
 # Global configurations
 CONFIG = {
@@ -230,3 +247,95 @@ def test_backward_sde_conditional_mixture(test_setup, plot_if_enabled, integrato
     # )
 
 
+
+
+
+# Add the denoiser classes to the CONFIG
+CONFIG["cond_denoisers"] = [
+    DPSDenoiser,
+    TMPDenoiser,
+    FPSDenoiser
+]
+
+@pytest.mark.parametrize("schedule_name", ["LinearSchedule", "CosineSchedule"])
+@pytest.mark.parametrize("integrator_class", CONFIG["integrators"])
+@pytest.mark.parametrize("timer_name,timer_fn", CONFIG["timers"])
+@pytest.mark.parametrize("denoiser_class", CONFIG["cond_denoisers"])
+def test_backward_CondDenoisers(test_setup, plot_if_enabled, integrator_class, schedule_name, timer_name, timer_fn, denoiser_class):
+    # Unpack setup
+    key = test_setup["key"]
+    key_meas = test_setup["key_meas"]
+    mix_state = test_setup["mix_state"]
+    forward_model = test_setup["forward_model"]
+    A = test_setup["A"]
+    t_init = test_setup["t_init"]
+    t_final = test_setup["t_final"]
+    n_steps = test_setup["n_steps"]
+    n_samples = test_setup["n_samples"]
+    sigma_y = test_setup["sigma_y"]
+    perct = test_setup["perct"]
+
+    # Create SDE
+    sde = test_setup["create_sde"](schedule_name)
+
+    # Create timer
+    timer = timer_fn(n_steps, t_final)
+
+    # Generate observation
+    key_samples = jax.random.split(key_meas)[0]
+    x_star = sampler_mixtr(key_samples, mix_state, 1)[0]
+    y = forward_model.measure(key_meas, None, x_star)
+
+    # Compute theoretical posterior and score functions
+    posterior_state = compute_posterior(mix_state, y, A, sigma_y)
+    pdf, cdf, score = create_score_functions(posterior_state, sde)
+
+    # Setup denoising process with timer
+    integrator = integrator_class(sde=sde, timer=timer)
+    denoise = denoiser_class(
+        integrator=integrator,
+        sde=sde,
+        score=score,
+        forward_model=forward_model
+    )
+
+    # Create measurement state with mask
+    mask = jnp.ones_like(y)
+    measurement_state = MeasurementState(y=y, mask_history=mask)
+
+    # Generate samples
+    key_gen = jax.random.split(key_samples)[0]
+    state, hist_position = denoise.generate(key_gen, measurement_state, n_steps, n_samples)
+    hist_position = hist_position.squeeze().T
+
+    # Visualization
+    space = jnp.linspace(-10, 10, 100)
+    plot_title = f"{denoiser_class.__name__} (Integrator: {integrator_class.__name__}, Timer: {timer_name}, Schedule: {schedule_name})"
+
+    plot_if_enabled(lambda: display_trajectories(hist_position, 100, title=plot_title))
+    plot_if_enabled(
+        lambda: display_trajectories_at_times(
+            hist_position,
+            timer,
+            n_steps,
+            space,
+            perct,
+            lambda x, t: pdf(x, t_final - t),
+            title=plot_title
+        )
+    )
+
+    # Compute Wasserstein distance
+    wasserstein_distance, _ = ott.tools.sliced.sliced_wasserstein(
+        state.integrator_state.position,
+        posterior_state.means,
+    )
+
+    # Create a composite key for the results
+    result_key = f"{denoiser_class.__name__}_{integrator_class.__name__}_{schedule_name}_{timer_name}"
+    wasserstein_results[result_key].append(float(wasserstein_distance))
+
+    print(f"\nWasserstein distance for {result_key}: {float(wasserstein_distance):.6f}")
+
+    # assert wasserstein_distance < 0.1
+    assert wasserstein_distance.item() < 0.1
