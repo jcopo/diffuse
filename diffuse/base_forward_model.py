@@ -6,7 +6,7 @@ class MeasurementState(NamedTuple):
     mask_history: Array
 
 class ForwardModel(Protocol):
-    sigma_prob: float
+    std: float
 
     def projection_design(self, design: Array) -> Array: ...
 

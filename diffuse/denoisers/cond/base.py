@@ -20,7 +20,7 @@ class CondDenoiserState(NamedTuple):
     """Conditional denoiser state"""
 
     integrator_state: IntegratorState
-    log_weights: Array = jnp.array([])
+    log_weights: float = 0.0
 
 
 @dataclass
@@ -34,12 +34,10 @@ class CondDenoiser(BaseDenoiser):
     ess_high: Optional[float] = 0.5
 
     def init(
-        self, position: Array, rng_key: PRNGKeyArray
+        self, position: Array, rng_key: PRNGKeyArray, n_particles: int
     ) -> CondDenoiserState:
-        n_particles = position.shape[0]
-        log_weights = jnp.log(jnp.ones(n_particles) / n_particles)
-        keys = jax.random.split(rng_key, n_particles)
-        integrator_state = self.integrator.init(position, keys)
+        log_weights = - jnp.log(n_particles)
+        integrator_state = self.integrator.init(position, rng_key)
 
         return CondDenoiserState(integrator_state, log_weights)
 
@@ -50,20 +48,22 @@ class CondDenoiser(BaseDenoiser):
         n_steps: int,
         n_particles: int,
     ):
-        key, subkey = jax.random.split(rng_key)
+        rng_key, rng_key_start = jax.random.split(rng_key)
         rndm_start = jax.random.normal(
-            subkey, (n_particles, *measurement_state.y.shape)
+            rng_key_start, (n_particles, *measurement_state.y.shape)
         )
-        state = self.init(rndm_start, subkey)
+
+        keys = jax.random.split(rng_key, n_particles)
+        state = jax.vmap(self.init, in_axes=(0, 0, None))(rndm_start, keys, n_particles)
 
         def body_fun(state: CondDenoiserState, key: PRNGKeyArray):
             posterior = self.posterior_logpdf(
                 key, measurement_state.y, measurement_state.mask_history
             )
             state_next = self.batch_step(key, state, posterior, measurement_state)
-            return state_next, None
+            return state_next, state_next.integrator_state.position
 
-        keys = jax.random.split(key, n_steps)
+        keys = jax.random.split(rng_key, n_steps)
         return jax.lax.scan(body_fun, state, keys)
 
     def step(
@@ -113,7 +113,7 @@ class CondDenoiser(BaseDenoiser):
         )
         abs_diff = jnp.abs(diff[..., 0] + 1j * diff[..., 1])
         log_weights = jax.scipy.stats.norm.logpdf(
-            abs_diff, 0, self.forward_model.sigma_prob
+            abs_diff, 0, self.forward_model.std
         )
         log_weights = einops.einsum(
             measurement_state.mask_history, log_weights, "..., b ... -> b"

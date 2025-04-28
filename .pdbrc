@@ -1,6 +1,5 @@
 import jax
 import matplotlib.pyplot as plt
-from diffuse.samplopt.conditional import plt_fracts
 alias pt jax.tree_util.tree_map(lambda x: x.shape, %1)
 
 # Print instance variables (usage "pi classInst")
@@ -11,5 +10,3 @@ alias sh %1.shape
 
 alias pp plt.imshow(%1, cmap="gray")
 alias ss plt.show()
-
-alias pf plt_fracts(%1)

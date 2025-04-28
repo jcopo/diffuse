@@ -32,16 +32,38 @@ def make_in_axes_except(x: PyTree, except_path: str) -> PyTree:
 
     return jax.tree_util.tree_map_with_path(_set_axes, x)
 
+def make_in_axes(x: PyTree, value: int = 0) -> PyTree:
+    """
+    Creates an in_axes PyTree where all leaves have the same value.
+
+    Args:
+        x: The PyTree to create in_axes for
+        value: The value to use for all leaves (default: 0)
+
+    Returns:
+        A PyTree with the same structure as x but with all leaves set to the specified value
+
+    Example:
+        class State(NamedTuple):
+            position: Array
+            step: int
+
+        state = State(position=jnp.array([1,2,3]), step=0)
+        in_axes = make_in_axes(state)
+        # Returns: State(position=0, step=0)
+    """
+    return jax.tree_util.tree_map(lambda _: value, x)
+
 def pmap_reshaping(x: PyTree) -> PyTree:
     num_devices = jax.device_count()
-    return jax.tree_map(
+    return jax.tree_util.tree_map(
         lambda x: x.reshape((num_devices, -1, *x.shape[1:])) if len(x.shape) > 0 else x,
         x,
     )
 
 
 def pmap_unshaping(x: PyTree):
-    return jax.tree_map(
+    return jax.tree_util.tree_map(
         lambda x: x.reshape((-1, *x.shape[2:])) if len(x.shape) > 0 else x, x
     )
 
@@ -49,7 +71,8 @@ def pmap_unshaping(x: PyTree):
 def pmapper(fn, x: T, batch_size: int = None, **kwargs) -> T:
     fn = partial(fn, **kwargs)
     mapped_fn = lambda x_: jax.lax.map(f=fn, xs=x_, batch_size=batch_size)
-    in_axes = make_in_axes_except(x, "step")
+    in_axes = make_in_axes(x)
+
     in_axes = (in_axes,)
     pmapped_fn = jax.pmap(mapped_fn, axis_name="devices", in_axes=in_axes)
 

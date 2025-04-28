@@ -16,30 +16,16 @@ class DPSDenoiser(CondDenoiser):
     def posterior_logpdf(
         self, rng_key: PRNGKeyArray, y_meas: Array, design_mask: Array
     ):
-        # Using Tweedie's formula for posterior sampling
-        def _posterior_logpdf(x, t):
-            # Apply Tweedie's formula to get denoised prediction
+        def _residual(x, t):
             denoised = self.sde.tweedie(SDEState(x, t), self.score).position
+            return jnp.linalg.norm(y_meas - self.forward_model.measure_from_mask(rng_key, design_mask, denoised)) ** 2
 
-            # Compute residual: A^T(y - AE[X_0|X_t])
-            v = self.forward_model.grad_logprob_y(denoised, y_meas, design_mask)
+        def _posterior_logpdf(x, t):
+            residual, guidance = jax.value_and_grad(_residual)(x, t)
+            xi = 1 / (jnp.sqrt(residual) + 1e-3)
 
-            int_b = self.sde.beta.integrate(t, 0.0)
-            alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
-
-            # Compute score and guidance in one JVP operation
-            def score_fn(x_):
-                return self.score(x_, t)
-
-            score_val, tangents = jax.jvp(score_fn, (x,), (v,))
-            scale = 1 / (jnp.linalg.norm(v) + 1e-3)
-            guidance = (
-                scale
-                * (v + beta * tangents)
-                / (alpha * self.forward_model.sigma_prob + 1e-3)
-            )
-
-            return score_val + guidance
+            score_val = self.score(x, t)
+            return score_val - xi * guidance
 
         return _posterior_logpdf
 
