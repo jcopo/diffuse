@@ -37,11 +37,24 @@ CONFIG = {
         }
     },
     "integrators": [
-        EulerMaruyamaIntegrator,
-        DDIMIntegrator,
-        EulerIntegrator,
-        HeunIntegrator,
-        DPMpp2sIntegrator
+        (EulerMaruyamaIntegrator, {}),
+        (DDIMIntegrator, {}),
+        (DDIMIntegrator, {"stochastic_churn_rate": 0., "churn_min": 0., "churn_max": 0., "noise_inflation_factor": 1.0001}),
+        (HeunIntegrator, {
+            "stochastic_churn_rate": 1.0,
+            "churn_min": 0.5,
+            "churn_max": 2.0,
+            "noise_inflation_factor": 1.0001
+        }),
+        (DPMpp2sIntegrator, {
+            "stochastic_churn_rate": 1.0,
+            "churn_min": 0.5,
+            "churn_max": 2.0,
+            "noise_inflation_factor": 1.0001
+        }),
+        (EulerIntegrator, {
+            "stochastic_churn_rate": 0.0
+        })
     ],
     "timers": [
         ("vp", lambda n_steps, t_final: VpTimer(n_steps=n_steps, eps=0.001, tf=t_final)),
@@ -154,12 +167,12 @@ def test_forward_sde_mixture(test_setup, plot_if_enabled, schedule_name):
         sde
     )
 
-@pytest.mark.parametrize("integrator_class", CONFIG["integrators"])
+@pytest.mark.parametrize("integrator_class,integrator_params", CONFIG["integrators"])
 @pytest.mark.parametrize("timer_name,timer_fn", CONFIG["timers"])
 @pytest.mark.parametrize("schedule_name", ["LinearSchedule", "CosineSchedule"])
 def test_backward_sde_mixture(
     test_setup, plot_if_enabled,
-    integrator_class, timer_name, timer_fn, schedule_name
+    integrator_class, integrator_params, timer_name, timer_fn, schedule_name
 ):
     n_samples = test_setup["n_samples"]
     n_steps = test_setup["n_steps"]
@@ -179,8 +192,8 @@ def test_backward_sde_mixture(
     pdf = partial(rho_t, init_mix_state=mix_state, sde=sde)
     score = lambda x, t: jax.grad(lambda x: jnp.log(pdf(x, t)))(x)
 
-    # Setup denoising process
-    integrator = integrator_class(sde=sde, timer=timer)
+    # Setup denoising process with timer and churn parameters
+    integrator = integrator_class(sde=sde, timer=timer, **integrator_params)
     denoise = Denoiser(
         integrator=integrator, sde=sde, score=score, x0_shape=(1,)
     )
