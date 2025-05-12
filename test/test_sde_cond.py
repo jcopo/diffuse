@@ -39,11 +39,11 @@ from examples.gaussian_mixtures.mixture import (
 CONFIG = {
     "schedules": {
         "LinearSchedule": {
-            "params": {"b_min": 0.1, "b_max": 20.0, "t0": 0.001, "T": 1.0},
+            "params": {"b_min": 0.02, "b_max": 5.0, "t0": 0.0, "T": 1.0},
             "class": LinearSchedule
         },
         "CosineSchedule": {
-            "params": {"b_min": 0.1, "b_max": 20.0, "t0": 0.001, "T": 1.0},
+            "params": {"b_min": 0.1, "b_max": 20.0, "t0": 0.0, "T": 1.0},
             "class": CosineSchedule
         }
     },
@@ -55,12 +55,12 @@ CONFIG = {
         EulerIntegrator
     ],
     "space": {
-        "t_init": 0.001,
+        "t_init": 0.0,
         "t_final": 1.0,
-        "n_samples": 5000,
+        "n_samples": 3000,
         "n_steps": 300,
         "d": 1,  # dimensionality
-        "sigma_y": 0.01  # observation noise
+        "sigma_y": 0.001  # observation noise
     },
     "percentiles": [0.0, 0.05, 0.1, 0.3, 0.6, 0.7, 0.73, 0.75, 0.8, 0.9],
     "timers": [
@@ -97,7 +97,9 @@ def test_setup():
 
     def create_sde(schedule_name):
         schedule_config = CONFIG["schedules"][schedule_name]
-        beta = schedule_config["class"](**schedule_config["params"])
+        params = schedule_config["params"].copy()
+        params["T"] = space_config["t_final"]
+        beta = schedule_config["class"](**params)
         return SDE(beta=beta, tf=space_config["t_final"])
 
     # Create observation setup

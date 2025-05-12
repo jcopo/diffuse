@@ -17,32 +17,32 @@ class TMPDenoiser(CondDenoiser):
     ):
         def _posterior_logpdf(x, t):
             alpha, _ = self.sde.alpha_beta(t)
-            scale = 1 - alpha
+            scale = (1 - alpha) / jnp.sqrt(alpha)
 
             def tweedie_fn(x_):
                 return self.sde.tweedie(SDEState(x_, t), self.score).position
 
-            def efficient(v, tweedie_vjp):
+            def efficient(v):
                 restored_v = self.forward_model.restore_from_mask(
                     design_mask, jnp.zeros_like(x), v
                 )
-                tangents = tweedie_vjp(restored_v)[0]
+                _, tangents = jax.jvp(tweedie_fn, (x,), (restored_v,))
                 measured_tangents = self.forward_model.measure_from_mask(
                     rng_key, design_mask, tangents
                 )
                 return scale * measured_tangents + self.forward_model.std ** 2 * v
 
-            denoised, tweedie_vjp = jax.vjp(tweedie_fn, x)
+
+            denoised = tweedie_fn(x)
             b = y_meas - self.forward_model.measure_from_mask(rng_key, design_mask, denoised)
 
-            efficient_fn = partial(efficient, tweedie_vjp=tweedie_vjp)
-            res, _ = jax.scipy.sparse.linalg.cg(efficient_fn, b, maxiter=3)
+            res, _ = jax.scipy.sparse.linalg.cg(efficient, b, maxiter=3)
             restored_res = self.forward_model.restore_from_mask(
                 design_mask, jnp.zeros_like(x), res
             )
-            guidance = tweedie_vjp(restored_res)[0]
-
+            _, guidance = jax.jvp(tweedie_fn, (x,), (restored_res,))
             score_val = self.score(x, t)
+
             return score_val + guidance
 
         return _posterior_logpdf

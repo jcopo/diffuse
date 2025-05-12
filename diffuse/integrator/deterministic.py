@@ -148,6 +148,7 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
             self.sde.alpha_beta(t_next)[0],
             self.sde.alpha_beta(t_mid)[0],
         )
+
         sigma_churned, sigma_next, sigma_mid = (
             jnp.sqrt(1 - alpha_churned),
             jnp.sqrt(1 - alpha_next),
@@ -182,7 +183,6 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
 
         _, rng_key_next = jax.random.split(rng_key)
         next_state = IntegratorState(next_position, rng_key_next, step + 1)
-
         return next_state
 
 
