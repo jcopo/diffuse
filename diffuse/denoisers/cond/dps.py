@@ -38,11 +38,10 @@ class DPSDenoiser(CondDenoiser):
             val, guidance = jax.value_and_grad(norm_tweedie)(x)
 
             # Compute guidance scale TODO: sort out this
-            xi = 3. / (jnp.sqrt(val) + 1e-3)
-            xi = 1.
+            zeta = 3. / (jnp.sqrt(val) + 1e-3)
+            zeta = 1.
 
-            # Return modified score
-            return self.score(x, t) - xi * guidance
+            return self.score(x, t) - zeta * guidance
 
         # Use integrator to compute next state
         integrator_state_next = self.integrator(state.integrator_state, modified_score)
