@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Tuple, Callable, Optional, NamedTuple
 
 import einops
 import jax
@@ -9,88 +9,112 @@ from jaxtyping import Array, PRNGKeyArray
 from diffuse.diffusion.sde import SDEState
 from diffuse.base_forward_model import MeasurementState
 from diffuse.denoisers.cond import CondDenoiser, CondDenoiserState
+from diffuse.integrator.base import Integrator, IntegratorState
+from diffuse.integrator.deterministic import DDIMIntegrator, HeunIntegrator
+from diffuse.diffusion.sde import SDE
+from diffuse.denoisers.utils import resample_particles, normalize_log_weights
 
 
 @dataclass
 class FPSDenoiser(CondDenoiser):
-    """Filtering Posterior Sampling Denoiser https://openreview.net/pdf?id=tplXNcHZs1"""
+    """Filtering Posterior Sampling Denoiser implementing continuous-time SDE version."""
+
+    def step(
+        self,
+        rng_key: PRNGKeyArray,
+        state: CondDenoiserState,
+        measurement_state: MeasurementState,
+    ) -> CondDenoiserState:
+        """Single step of continuous-time FPS sampling.
+
+        Modifies the score to include measurement term and uses integrator for the update.
+        """
+        mask = measurement_state.mask_history
+        y = measurement_state.y
+
+        # Get noised version of y
+        rng_key, rng_key_resample = jax.random.split(rng_key)
+
+
+        # Define modified score function that includes measurement term
+        def modified_score(x: Array, t: float) -> Array:
+
+            # noise y
+            y_t = self.y_noiser(rng_key, t, measurement_state).position
+
+            # Compute guidance term
+            alpha_t, _ = self.sde.alpha_beta(t)
+            y_pred = self.forward_model.apply(x, measurement_state)
+            residual = y_t - y_pred
+            guidance_term = self.forward_model.restore(residual, measurement_state) / (self.forward_model.std * alpha_t)
+
+            return self.score(x, t) + guidance_term
+
+        # Use integrator to compute next state
+        integrator_state_next = self.integrator(state.integrator_state, modified_score)
+        state_next = CondDenoiserState(integrator_state_next, state.log_weights)
+
+
+        return state_next
+
+    def y_noiser(
+        self, key: PRNGKeyArray, t: float, measurement_state: MeasurementState
+    ) -> SDEState:
+        r"""
+        Generate y^{(t)} = \sqrt{\bar{\alpha}_t} y + \sqrt{1-\bar{\alpha}_t} A_\xi \epsilon
+        """
+        y_0 = measurement_state.y
+        alpha, beta = self.sde.alpha_beta(t)
+
+
+        rndm = jax.random.normal(key, y_0.shape)
+
+        res = alpha * y_0 + jnp.sqrt(beta) * self.forward_model.apply(rndm, measurement_state)
+
+        return SDEState(res, t)
 
     def resampler(
         self,
         state_next: CondDenoiserState,
         measurement_state: MeasurementState,
         rng_key: PRNGKeyArray,
-    ) -> Tuple[Array, Array]:
-        mask = measurement_state.mask_history
-        y = measurement_state.y
-        t = state_next.integrator_state.t
-        tf = self.sde.tf
+    ) -> CondDenoiserState:
+        """
+        Resample particles based on the current state and measurement.
 
-        position = state_next.integrator_state.position
-        y_noised = self.y_noiser(mask, rng_key, SDEState(y, 0), tf - t).position
-        alpha_t = jnp.exp(self.sde.beta.integrate(0.0, tf - t))
-        logsprobs = self.forward_model.logprob_y_t(position, y_noised, mask, alpha_t)
+        This method resamples particles if the Effective Sample Size (ESS) falls below
+        the specified thresholds, ensuring the quality of the particle set.
 
-        position, log_weights = self._resample(position, logsprobs, rng_key)
+        Args:
+            state_next: Next state of the denoiser. Shape: (n_particles, ...)
+            measurement_state: Current measurement state.
+            rng_key: Random number generator key.
+
+        Returns:
+            CondDenoiserState: Updated state after resampling.
+        """
+        integrator_state, log_weights = state_next.integrator_state, state_next.log_weights
+        y_0, mask = measurement_state.y, measurement_state.mask_history
+        x_t = state_next.integrator_state.position
+        rng_key, rng_key_resample = jax.random.split(rng_key)
+
+        t = self.integrator.timer(state_next.integrator_state.step)
+        alpha_t, _ = self.sde.alpha_beta(t)
+
+        y_t = self.y_noiser(rng_key, t, measurement_state).position
+        f_x_t = jax.vmap(self.forward_model.apply, in_axes=(0, None))(x_t, measurement_state)
+        residual = y_t - f_x_t
+
+        # compute log weights
+        log_weights = log_weights - 0.5 * (residual)**2 / (self.forward_model.std * alpha_t)
+        log_weights = normalize_log_weights(log_weights)
+        position, log_weights = resample_particles(
+            integrator_state.position,
+            log_weights,
+            rng_key_resample,
+            self.ess_low,
+            self.ess_high
+        )
 
         integrator_state_next = state_next.integrator_state._replace(position=position)
         return CondDenoiserState(integrator_state_next, log_weights)
-
-    def posterior_logpdf(
-        self, rng_key: PRNGKeyArray, y_meas: Array, design_mask: Array
-    ):
-        def _posterior_logpdf(x, t):
-            y_t = self.y_noiser(design_mask, rng_key, SDEState(y_meas, 0), t).position
-
-            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, t) / 2)
-            guidance = self.forward_model.grad_logprob_y(x, y_t, design_mask) / alpha_t
-
-            return guidance + self.score(x, t)
-
-        return _posterior_logpdf
-
-    def pooled_posterior_logpdf(
-        self,
-        rng_key: PRNGKeyArray,
-        y_cntrst: Array,
-        y_past: Array,
-        design: Array,
-        mask_history: Array,
-    ):
-        rng_key1, rng_key2 = jax.random.split(rng_key)
-        vec_noiser = jax.vmap(
-            self.y_noiser, in_axes=(None, None, SDEState(0, None), None)
-        )
-        mask = self.forward_model.make(design)
-
-        def _pooled_posterior_logpdf(x, t):
-            y_t = vec_noiser(mask, rng_key1, SDEState(y_cntrst, 0), t).position
-            alpha_t = jnp.exp(self.sde.beta.integrate(0.0, t) / 2)
-            guidance: Array = (
-                jax.vmap(self.forward_model.grad_logprob_y, in_axes=(None, 0, None))(
-                    x, y_t, mask
-                )
-                / alpha_t
-            )
-            past_contribution = self.posterior_logpdf(rng_key2, y_past, mask_history)
-            return guidance.mean(axis=0) + past_contribution(x, t)
-
-        return _pooled_posterior_logpdf
-
-    def y_noiser(
-        self, mask: Array, key: PRNGKeyArray, state: SDEState, ts: float
-    ) -> SDEState:
-        r"""
-        Generate y^{(t)} = \sqrt{\bar{\alpha}_t} y + \sqrt{1-\bar{\alpha}_t} A_\xi \epsilon
-        """
-        y, t = state.position, state.t
-
-        int_b = self.sde.beta.integrate(ts, t)
-        alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
-
-        rndm = jax.random.normal(key, y.shape)
-
-        res = alpha * y + jnp.sqrt(beta) * einops.einsum(
-            mask, rndm, "... , ... c -> ... c"
-        )
-        return SDEState(res, ts)

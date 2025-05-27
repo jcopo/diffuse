@@ -6,66 +6,43 @@ import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray
 
 from diffuse.diffusion.sde import SDEState
-from diffuse.denoisers.cond import CondDenoiser
+from diffuse.denoisers.cond import CondDenoiser, CondDenoiserState
+from diffuse.base_forward_model import MeasurementState
 
 
 @dataclass
 class DPSDenoiser(CondDenoiser):
     """Conditional denoiser using Diffusion Posterior Sampling with Tweedie's formula"""
 
-    def posterior_logpdf(
-        self, rng_key: PRNGKeyArray, y_meas: Array, design_mask: Array
-    ):
-        def _residual(x, t):
-            denoised = self.sde.tweedie(SDEState(x, t), self.score).position
-            return jnp.linalg.norm(y_meas - self.forward_model.measure_from_mask(rng_key, design_mask, denoised)) ** 2
-
-        def _posterior_logpdf(x, t):
-            residual, guidance = jax.value_and_grad(_residual)(x, t)
-            xi = 1 / (jnp.sqrt(residual) + 1e-3)
-
-            score_val = self.score(x, t)
-            return score_val - xi * guidance
-
-        return _posterior_logpdf
-
-    def pooled_posterior_logpdf(
+    def step(
         self,
         rng_key: PRNGKeyArray,
-        y_cntrst: Array,
-        y_past: Array,
-        design: Array,
-        mask_history: Array,
-    ):
-        _, subkey = jax.random.split(rng_key)
-        mask = self.forward_model.make(design)
+        state: CondDenoiserState,
+        measurement_state: MeasurementState,
+    ) -> CondDenoiserState:
+        """Single step of DPS sampling.
 
-        def _pooled_posterior_logpdf(x, t):
+        Modifies the score to include measurement term and uses integrator for the update.
+        """
+        y_meas = measurement_state.y
+
+        # Define modified score function that includes measurement term
+        def modified_score(x: Array, t: float) -> Array:
             # Apply Tweedie's formula
             denoised = self.sde.tweedie(SDEState(x, t), self.score).position
 
-            # Compute guidance using denoised prediction for contrast samples
-            residual = jax.vmap(
-                self.forward_model.grad_logprob_y, in_axes=(None, 0, None)
-            )(denoised, y_cntrst, mask).mean(axis=0)
+            # Compute residual and guidance
+            residual = jnp.linalg.norm(y_meas - self.forward_model.apply(denoised, measurement_state)) ** 2
+            _, guidance = jax.value_and_grad(lambda x: jnp.linalg.norm(y_meas - self.forward_model.apply(x, measurement_state)) ** 2)(x)
 
-            int_b = self.sde.beta.integrate(t, 0.0)
-            alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
+            # Compute guidance scale
+            xi = 1 / (jnp.sqrt(residual) + 1e-3)
 
-            # Compute (I + ∇score)ᵀv using forward-mode autodiff
-            def score_fn(x_):
-                return self.score(x_, t)
+            # Return modified score
+            return self.score(x, t) - xi * guidance
 
-            _, tangents = jax.jvp(score_fn, (x,), (residual,))
+        # Use integrator to compute next state
+        integrator_state_next = self.integrator(state.integrator_state, modified_score)
+        state_next = CondDenoiserState(integrator_state_next, state.log_weights)
 
-            scale = 1.0
-            guidance = (
-                scale
-                * (residual + beta * tangents)
-                / (alpha * self.forward_model.sigma_prob + 1e-3)
-            )
-
-            past_contribution = self.posterior_logpdf(subkey, y_past, mask_history)
-            return guidance + past_contribution(x, t)
-
-        return _pooled_posterior_logpdf
+        return state_next

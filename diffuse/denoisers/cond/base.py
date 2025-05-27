@@ -10,7 +10,7 @@ from diffuse.integrator.base import Integrator
 from diffuse.base_forward_model import ForwardModel, MeasurementState
 from diffuse.utils.mapping import pmapper
 import einops
-from diffuse.denoisers.utils import ess, normalize_log_weights
+from diffuse.denoisers.utils import ess, normalize_log_weights, resample_particles
 from blackjax.smc.resampling import stratified
 from typing import Tuple
 from diffuse.denoisers.base import BaseDenoiser
@@ -36,6 +36,17 @@ class CondDenoiser(BaseDenoiser):
     def init(
         self, position: Array, rng_key: PRNGKeyArray, n_particles: int
     ) -> CondDenoiserState:
+        """
+        Initialize the conditional denoiser state.
+
+        Args:
+            position: Initial position array.
+            rng_key: Random number generator key.
+            n_particles: Number of particles to initialize.
+
+        Returns:
+            CondDenoiserState: Initialized state with integrator state and log weights.
+        """
         log_weights = - jnp.log(n_particles)
         integrator_state = self.integrator.init(position, rng_key)
 
@@ -57,118 +68,50 @@ class CondDenoiser(BaseDenoiser):
         state = jax.vmap(self.init, in_axes=(0, 0, None))(rndm_start, keys, n_particles)
 
         def body_fun(state: CondDenoiserState, key: PRNGKeyArray):
-            posterior = self.posterior_logpdf(
-                key, measurement_state.y, measurement_state.mask_history
-            )
-            state_next = self.batch_step(key, state, posterior, measurement_state)
+            #state_next = self.batch_step(key, state, posterior, measurement_state)
+            keys = jax.random.split(key, state.integrator_state.position.shape[0])
+            state_next = jax.vmap(self.step, in_axes=(0, 0, None))(keys, state, measurement_state)
+            if self.resample:
+                state_next = self.resampler(state_next, measurement_state, key)
             return state_next, state_next.integrator_state.position
 
         keys = jax.random.split(rng_key, n_steps)
         return jax.lax.scan(body_fun, state, keys)
 
+    @abstractmethod
     def step(
-        self, state: CondDenoiserState, score: Callable[[Array, float], Array]
+        self, rng_key: PRNGKeyArray, state: CondDenoiserState, measurement_state: MeasurementState
     ) -> CondDenoiserState:
-        r"""
-        sample p(\theta_t-1 | \theta_t, \y_t-1, \xi)
         """
-        integrator_state_next = self.integrator(state.integrator_state, score)
-        return CondDenoiserState(integrator_state_next, state.log_weights)
+        Abstract method to perform a single step of conditional denoising.
+
+        This method should be implemented by subclasses to define how to update the state
+        based on the current measurement and random key.
+
+        Args:
+            rng_key: Random number generator key for stochastic operations
+            state: Current state of the denoiser containing position and weights
+            measurement_state: Current measurement state containing observations
+
+        Returns:
+            CondDenoiserState: Updated state after performing the denoising step
+        """
+        pass
 
     def batch_step(
         self,
         rng_key: PRNGKeyArray,
         state: CondDenoiserState,
-        score: Callable[[Array, float], Array],
         measurement_state: MeasurementState,
     ) -> CondDenoiserState:
         r"""
-        batch step for conditional diffusion
+        Batching for memory efficiency.
         """
 
-        state_next = pmapper(self.step, state, score=score)
+        state_next = pmapper(self.step, state, measurement_state)
 
-        if self.resample:
+        # if self.resample:
+        if True:
             state_next = self.resampler(state_next, measurement_state, rng_key)
 
         return state_next
-
-    def resampler(
-        self,
-        state_next: CondDenoiserState,
-        measurement_state: MeasurementState,
-        rng_key: PRNGKeyArray,
-    ) -> Tuple[Array, Array]:
-        forward_time = self.sde.tf - state_next.integrator_state.t
-        state_forward = state_next.integrator_state._replace(t=forward_time)
-
-        denoised_state = pmapper(
-            self.sde.tweedie, state_forward, score=self.score, batch_size=16
-        )
-        diff = (
-            self.forward_model.measure_from_mask(
-                measurement_state.mask_history, denoised_state.position
-            )
-            - measurement_state.y
-        )
-        abs_diff = jnp.abs(diff[..., 0] + 1j * diff[..., 1])
-        log_weights = jax.scipy.stats.norm.logpdf(
-            abs_diff, 0, self.forward_model.std
-        )
-        log_weights = einops.einsum(
-            measurement_state.mask_history, log_weights, "..., b ... -> b"
-        )
-        _norm = jax.scipy.special.logsumexp(log_weights, axis=0)
-        log_weights = log_weights.reshape((-1,)) - _norm
-        position, log_weights = self._resample(
-            state_next.integrator_state.position, log_weights, rng_key
-        )
-
-        integrator_state_next = state_next.integrator_state._replace(position=position)
-        return CondDenoiserState(integrator_state_next, log_weights)
-
-    def _resample(
-        self, position: Array, log_weights: Array, rng_key: PRNGKeyArray
-    ) -> Tuple[Array, Array]:
-        weights = jax.nn.softmax(log_weights, axis=0)
-        ess_val = ess(log_weights)
-        n_particles = position.shape[0]
-        idx = stratified(rng_key, weights, n_particles)
-
-        return jax.lax.cond(
-            (ess_val < self.ess_high * n_particles)
-            & (ess_val > self.ess_low * n_particles),
-            lambda x: (x[idx], normalize_log_weights(log_weights[idx])),
-            lambda x: (x, normalize_log_weights(log_weights)),
-            position,
-        )
-
-    def batch_step_pooled(
-        self,
-        rng_key: PRNGKeyArray,
-        state: CondDenoiserState,
-        score: Callable[[Array, float], Array],
-        measurement_state: MeasurementState,
-    ) -> CondDenoiserState:
-        r"""
-        batch step for conditional diffusion
-        """
-        state_next: CondDenoiserState = pmapper(self.step, state, score=score)
-        return state_next
-
-    @abstractmethod
-    def posterior_logpdf(
-        self, rng_key: PRNGKeyArray, y_meas: Array, design_mask: Array
-    ) -> Callable[[Array, float], Array]:
-        pass
-
-    @abstractmethod
-    def pooled_posterior_logpdf(
-        self,
-        rng_key: PRNGKeyArray,
-        y_cntrst: Array,
-        y_past: Array,
-        design: Array,
-        mask_history: Array,
-    ) -> Callable[[Array, float], Array]:
-        pass

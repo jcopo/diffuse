@@ -48,11 +48,28 @@ CONFIG = {
         }
     },
     "integrators": [
-        EulerMaruyamaIntegrator,
-        DDIMIntegrator,
-        HeunIntegrator,
-        DPMpp2sIntegrator,
-        EulerIntegrator
+        (EulerMaruyamaIntegrator, {}),
+        (DDIMIntegrator, {}),
+        (DDIMIntegrator, {"stochastic_churn_rate": 0., "churn_min": 0., "churn_max": 0., "noise_inflation_factor": 1.0001}),
+        (HeunIntegrator, {
+            "stochastic_churn_rate": 1.0,
+            "churn_min": 0.5,
+            "churn_max": 2.0,
+            "noise_inflation_factor": 1.0001
+        }),
+        (DPMpp2sIntegrator, {
+            "stochastic_churn_rate": 1.0,
+            "churn_min": 0.5,
+            "churn_max": 2.0,
+            "noise_inflation_factor": 1.0001
+        }),
+        (EulerIntegrator, {
+            "stochastic_churn_rate": 0.0
+        })
+    ],
+    "timers": [
+        ("vp", lambda n_steps, t_final: VpTimer(n_steps=n_steps, eps=0.001, tf=t_final)),
+        ("heun", lambda n_steps, t_final: HeunTimer(n_steps=n_steps, rho=7.0, sigma_min=0.002, sigma_max=1.0)),
     ],
     "space": {
         "t_init": 0.0,
@@ -60,13 +77,14 @@ CONFIG = {
         "n_samples": 3000,
         "n_steps": 300,
         "d": 1,  # dimensionality
-        "sigma_y": 0.001  # observation noise
+        "sigma_y": .1  # observation noise
     },
     "percentiles": [0.0, 0.05, 0.1, 0.3, 0.6, 0.7, 0.73, 0.75, 0.8, 0.9],
-    "timers": [
-        ("vp", lambda n_steps, t_final: VpTimer(n_steps=n_steps, eps=0.001, tf=t_final)),
-        ("heun", lambda n_steps, t_final: HeunTimer(n_steps=n_steps, rho=7.0, sigma_min=0.002, sigma_max=1.0)),
-    ],
+    "cond_denoisers": [
+        DPSDenoiser,
+        TMPDenoiser,
+        FPSDenoiser
+    ]
 }
 
 # Simple dict to store results
@@ -160,9 +178,9 @@ def validate_distributions(position, timer, n_steps, perct, cdf, key=None, metho
         assert p_value > 0.01, error_msg
 
 @pytest.mark.parametrize("schedule_name", ["LinearSchedule", "CosineSchedule"])
-@pytest.mark.parametrize("integrator_class", CONFIG["integrators"])
+@pytest.mark.parametrize("integrator_class,integrator_params", CONFIG["integrators"])
 @pytest.mark.parametrize("timer_name,timer_fn", CONFIG["timers"])
-def test_backward_sde_conditional_mixture(test_setup, plot_if_enabled, integrator_class, schedule_name, timer_name, timer_fn):
+def test_backward_sde_conditional_mixture(test_setup, plot_if_enabled, integrator_class, integrator_params, schedule_name, timer_name, timer_fn):
     # Unpack setup
     key = test_setup["key"]
     key_meas = test_setup["key_meas"]
@@ -192,7 +210,7 @@ def test_backward_sde_conditional_mixture(test_setup, plot_if_enabled, integrato
     pdf, cdf, score = create_score_functions(posterior_state, sde)
 
     # Setup denoising process with timer
-    integrator = integrator_class(sde=sde, timer=timer)
+    integrator = integrator_class(sde=sde, timer=timer, **integrator_params)
     denoise = Denoiser(
         integrator=integrator,
         sde=sde,
@@ -252,18 +270,11 @@ def test_backward_sde_conditional_mixture(test_setup, plot_if_enabled, integrato
 
 
 
-# Add the denoiser classes to the CONFIG
-CONFIG["cond_denoisers"] = [
-    DPSDenoiser,
-    TMPDenoiser,
-    FPSDenoiser
-]
-
 @pytest.mark.parametrize("schedule_name", ["LinearSchedule", "CosineSchedule"])
-@pytest.mark.parametrize("integrator_class", CONFIG["integrators"])
+@pytest.mark.parametrize("integrator_class,integrator_params", CONFIG["integrators"])
 @pytest.mark.parametrize("timer_name,timer_fn", CONFIG["timers"])
 @pytest.mark.parametrize("denoiser_class", CONFIG["cond_denoisers"])
-def test_backward_CondDenoisers(test_setup, plot_if_enabled, integrator_class, schedule_name, timer_name, timer_fn, denoiser_class):
+def test_backward_CondDenoisers(test_setup, plot_if_enabled, integrator_class, integrator_params, schedule_name, timer_name, timer_fn, denoiser_class):
     # Unpack setup
     key = test_setup["key"]
     key_meas = test_setup["key_meas"]
@@ -286,14 +297,14 @@ def test_backward_CondDenoisers(test_setup, plot_if_enabled, integrator_class, s
     # Generate observation
     key_samples = jax.random.split(key_meas)[0]
     x_star = sampler_mixtr(key_samples, mix_state, 1)[0]
-    y = forward_model.measure(key_meas, None, x_star)
+    y = forward_model.measure(key_meas, x_star)
 
     # Compute theoretical posterior and score functions
     posterior_state = compute_posterior(mix_state, y, A, sigma_y)
-    pdf, cdf, score = create_score_functions(posterior_state, sde)
+    pdf, cdf, score = create_score_functions(mix_state, sde)
 
-    # Setup denoising process with timer
-    integrator = integrator_class(sde=sde, timer=timer)
+    # Setup denoising process with timer and integrator parameters
+    integrator = integrator_class(sde=sde, timer=timer, **integrator_params)
     denoise = denoiser_class(
         integrator=integrator,
         sde=sde,
@@ -330,7 +341,7 @@ def test_backward_CondDenoisers(test_setup, plot_if_enabled, integrator_class, s
     # Compute Wasserstein distance
     wasserstein_distance, _ = ott.tools.sliced.sliced_wasserstein(
         state.integrator_state.position,
-        posterior_state.means,
+        x_star[None, :],
     )
 
     # Create a composite key for the results
@@ -339,5 +350,4 @@ def test_backward_CondDenoisers(test_setup, plot_if_enabled, integrator_class, s
 
     print(f"\nWasserstein distance for {result_key}: {float(wasserstein_distance):.6f}")
 
-    # assert wasserstein_distance < 0.1
     assert wasserstein_distance.item() < 0.1

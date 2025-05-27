@@ -65,7 +65,7 @@ CONFIG = {
     "space": {
         "t_init": 0.0,
         "t_final": 1.0,
-        "n_samples": 1,
+        "n_samples": 5000,
         "n_steps": 300,
         "space_min": -5,
         "space_max": 5,

@@ -5,17 +5,29 @@ import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray
 
 from diffuse.diffusion.sde import SDEState
-from diffuse.denoisers.cond import CondDenoiser
+from diffuse.denoisers.cond import CondDenoiser, CondDenoiserState
+from diffuse.base_forward_model import MeasurementState
 
 
 @dataclass
 class TMPDenoiser(CondDenoiser):
     """Conditional denoiser using Tweedie's Moments from https://arxiv.org/pdf/2310.06721v3"""
 
-    def posterior_logpdf(
-        self, rng_key: PRNGKeyArray, y_meas: Array, design_mask: Array
-    ):
-        def _posterior_logpdf(x, t):
+    def step(
+        self,
+        rng_key: PRNGKeyArray,
+        state: CondDenoiserState,
+        measurement_state: MeasurementState,
+    ) -> CondDenoiserState:
+        """Single step of TMP sampling.
+
+        Modifies the score to include measurement term and uses integrator for the update.
+        """
+        y_meas = measurement_state.y
+        design_mask = measurement_state.mask_history
+
+        # Define modified score function that includes measurement term
+        def modified_score(x: Array, t: float) -> Array:
             alpha, _ = self.sde.alpha_beta(t)
             scale = (1 - alpha) / jnp.sqrt(alpha)
 
@@ -23,76 +35,23 @@ class TMPDenoiser(CondDenoiser):
                 return self.sde.tweedie(SDEState(x_, t), self.score).position
 
             def efficient(v):
-                restored_v = self.forward_model.restore_from_mask(
-                    design_mask, jnp.zeros_like(x), v
-                )
+                restored_v = self.forward_model.restore(v, measurement_state)
                 _, tangents = jax.jvp(tweedie_fn, (x,), (restored_v,))
-                measured_tangents = self.forward_model.measure_from_mask(
-                    rng_key, design_mask, tangents
-                )
+                measured_tangents = self.forward_model.apply(tangents, measurement_state)
                 return scale * measured_tangents + self.forward_model.std ** 2 * v
 
-
             denoised = tweedie_fn(x)
-            b = y_meas - self.forward_model.measure_from_mask(rng_key, design_mask, denoised)
+            b = y_meas - self.forward_model.apply(denoised, measurement_state)
 
             res, _ = jax.scipy.sparse.linalg.cg(efficient, b, maxiter=3)
-            restored_res = self.forward_model.restore_from_mask(
-                design_mask, jnp.zeros_like(x), res
-            )
+            restored_res = self.forward_model.restore(res, measurement_state)
             _, guidance = jax.jvp(tweedie_fn, (x,), (restored_res,))
             score_val = self.score(x, t)
 
             return score_val + guidance
 
-        return _posterior_logpdf
+        # Use integrator to compute next state
+        integrator_state_next = self.integrator(state.integrator_state, modified_score)
+        state_next = CondDenoiserState(integrator_state_next, state.log_weights)
 
-    def pooled_posterior_logpdf(
-        self,
-        rng_key: PRNGKeyArray,
-        y_cntrst: Array,
-        y_past: Array,
-        design: Array,
-        mask_history: Array,
-    ):
-        _, rng_key2 = jax.random.split(rng_key)
-        mask = self.forward_model.make(design)
-
-        def _pooled_posterior_logpdf(x, t):
-            # Compute alpha, beta
-            int_b = jnp.squeeze(self.sde.beta.integrate(t, self.sde.beta.t0))
-            alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
-            scale = beta / alpha
-
-            # Compute (A C A^T + \sigma^2 I) v efficiently
-            def tweedie_fn(x_):
-                return self.sde.tweedie(SDEState(x_, t), self.score).position
-
-            def efficient(v):
-                restored_v = self.forward_model.restore_from_mask(
-                    mask, jnp.zeros_like(x), v
-                )
-                _, tangents = jax.jvp(tweedie_fn, (x,), (restored_v,))
-                measured_tangents = self.forward_model.measure_from_mask(mask, tangents)
-                return scale * measured_tangents + self.forward_model.std * v
-
-            # Compute residual: (y - AE[X_0|X_t])
-            score_val = self.score(
-                x, t
-            )  # Don't use tweedie function to avoid computing the score twice
-            denoised = (x + beta * score_val) / alpha
-
-            b = jnp.mean(
-                y_cntrst - self.forward_model.measure_from_mask(mask, denoised), axis=0
-            )
-
-            res, _ = jax.scipy.sparse.linalg.cg(efficient, b, maxiter=5)
-            restored_res = self.forward_model.restore_from_mask(
-                mask, jnp.zeros_like(x), res
-            )
-            _, guidance = jax.jvp(tweedie_fn, (x,), (restored_res,))
-
-            past_contribution = self.posterior_logpdf(rng_key2, y_past, mask_history)
-            return guidance + past_contribution(x, t)
-
-        return _pooled_posterior_logpdf
+        return state_next

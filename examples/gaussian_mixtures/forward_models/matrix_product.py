@@ -14,14 +14,43 @@ class MatrixProduct:
     A: Array
     std: float
 
-    def measure(self, key: PRNGKeyArray, design: Array, x: Array) -> Array:
+    def measure(self, key: PRNGKeyArray, x: Array, *args) -> Array:
+        """
+        Measure the output of the forward model:
+        y = A x + \epsilon
+
+        Args:
+            key: Random key.
+            x: Input to the forward model.
+
+        Returns:
+            Array: Result of measuring the output of the forward model.
+        """
         return self.A @ x + jax.random.normal(key, shape=x.shape) * self.std
 
-    def measure_from_mask(self, key: PRNGKeyArray, mask: Array, x: Array) -> Array:
-        return self.A @ x + jax.random.normal(key, shape=x.shape) * self.std
+    def apply(self, x: Array, *args) -> Array:
+        """
+        Apply the forward model to the input:
+        y = A x
 
-    def restore_from_mask(self, mask: Array, x: Array, measured: Array) -> Array:
-        return self.A.T @ measured
+        Args:
+            x: Input to the forward model.
+            *args: Additional arguments (not used in this implementation).
 
-    def restore(self, measured: Array) -> Array:
+        Returns:
+            Array: Result of applying the forward model to the input.
+        """
+        return self.A @ x
+
+    def restore(self, measured: Array, *args) -> Array:
+        """
+        Restore the input from the measured output x = A^T y
+
+        Args:
+            measured: Measured output.
+            *args: Additional arguments (not used in this implementation).
+
+        Returns:
+            Array: Result of restoring the input from the measured output.
+        """
         return self.A.T @ measured
