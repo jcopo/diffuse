@@ -1,7 +1,5 @@
 from dataclasses import dataclass
-from typing import Tuple, Callable, Optional, NamedTuple
 
-import einops
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray
@@ -9,9 +7,6 @@ from jaxtyping import Array, PRNGKeyArray
 from diffuse.diffusion.sde import SDEState
 from diffuse.base_forward_model import MeasurementState
 from diffuse.denoisers.cond import CondDenoiser, CondDenoiserState
-from diffuse.integrator.base import Integrator, IntegratorState
-from diffuse.integrator.deterministic import DDIMIntegrator, HeunIntegrator
-from diffuse.diffusion.sde import SDE
 from diffuse.denoisers.utils import resample_particles, normalize_log_weights
 
 
@@ -29,12 +24,6 @@ class FPSDenoiser(CondDenoiser):
 
         Modifies the score to include measurement term and uses integrator for the update.
         """
-        mask = measurement_state.mask_history
-        y = measurement_state.y
-
-        # Get noised version of y
-        rng_key, rng_key_resample = jax.random.split(rng_key)
-
 
         # Define modified score function that includes measurement term
         def modified_score(x: Array, t: float) -> Array:
@@ -64,12 +53,12 @@ class FPSDenoiser(CondDenoiser):
         Generate y^{(t)} = \sqrt{\bar{\alpha}_t} y + \sqrt{1-\bar{\alpha}_t} A_\xi \epsilon
         """
         y_0 = measurement_state.y
-        alpha, beta = self.sde.alpha_beta(t)
+        alpha, _ = self.sde.alpha_beta(t)
 
-
-        rndm = jax.random.normal(key, y_0.shape)
-
-        res = alpha * y_0 + jnp.sqrt(beta) * self.forward_model.apply(rndm, measurement_state)
+        # Noise y_t as the mean to keep deterministic sampling methods deterministic
+        #rndm = jax.random.normal(key, y_0.shape)
+        #res = jnp.sqrt(alpha) * y_0 #+ jnp.sqrt(1 - alpha) * self.forward_model.apply(rndm, measurement_state)
+        res = jnp.sqrt(alpha) * y_0
 
         return SDEState(res, t)
 
