@@ -28,15 +28,18 @@ class DPSDenoiser(CondDenoiser):
 
         # Define modified score function that includes measurement term
         def modified_score(x: Array, t: float) -> Array:
-            # Apply Tweedie's formula
-            denoised = self.sde.tweedie(SDEState(x, t), self.score).position
+            def norm_tweedie(x: Array):
+                # Apply Tweedie's formula
+                denoised = self.sde.tweedie(SDEState(x, t), self.score).position
+                norm = jnp.linalg.norm(y_meas - self.forward_model.apply(denoised, measurement_state)) ** 2
+                return norm
 
             # Compute residual and guidance
-            residual = jnp.linalg.norm(y_meas - self.forward_model.apply(denoised, measurement_state)) ** 2
-            _, guidance = jax.value_and_grad(lambda x: jnp.linalg.norm(y_meas - self.forward_model.apply(x, measurement_state)) ** 2)(x)
+            val, guidance = jax.value_and_grad(norm_tweedie)(x)
 
-            # Compute guidance scale
-            xi = 1 / (jnp.sqrt(residual) + 1e-3)
+            # Compute guidance scale TODO: sort out this
+            xi = 3. / (jnp.sqrt(val) + 1e-3)
+            xi = 1.
 
             # Return modified score
             return self.score(x, t) - xi * guidance
