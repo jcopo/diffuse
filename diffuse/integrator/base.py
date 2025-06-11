@@ -82,10 +82,10 @@ class ChurnedIntegrator(Integrator):
         noise_inflation_factor: Factor to scale injected noise (default: 1.0001)
     """
 
-    stochastic_churn_rate: float = 1.0
-    churn_min: float = 0.5
-    churn_max: float = 2.0
-    noise_inflation_factor: float = 1.0001
+    stochastic_churn_rate: float = 0.
+    churn_min: float = 0.
+    churn_max: float = 0.
+    noise_inflation_factor: float = 1.
 
     def _churn_fn(self, integrator_state: IntegratorState) -> Tuple[Array, float]:
         """Apply stochastic churning to the current state.

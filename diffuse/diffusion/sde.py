@@ -117,7 +117,7 @@ class DiffusionModel(ABC):
 
     def score(self, state: SDEState, state_0: SDEState) -> Array:
         """
-        Close form for the Gaussian thingy \nabla \log p(x_t | x_{t_0})
+        Closed-form expression for the score function ∇ₓ log p(xₜ | xₜ₀) of the Gaussian transition kernel
         """
         x, t = state.position, state.t
         x0, t0 = state_0.position, state_0.t
@@ -174,6 +174,17 @@ class SDE(DiffusionModel):
     tf: float
 
     def alpha_beta(self, t: float) -> Tuple[float, float]:
+        """Compute noise schedule parameters for diffusion process.
+
+        For a diffusion process dX(t) = -0.5 β(t)X(t)dt + √β(t)dW(t):
+        - α(t) = exp(-∫β(s)ds)
+        - β(t) is the noise schedule that controls the diffusion rate
+
+        Solution: X(t) = √α(t) * X₀ + √(1-α(t)) * ε, where ε ~ N(0,I)
+
+        Returns:
+            Tuple of (α(t), β(t)) with α(t) clipped to [0.001, 0.9999] for numerical stability
+        """
         alpha = jnp.exp(-self.beta.integrate(t, 0.))
         beta = self.beta(t)
         return jnp.clip(alpha, 0.001, 0.9999), beta

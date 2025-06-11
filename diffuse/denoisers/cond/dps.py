@@ -8,6 +8,7 @@ from jaxtyping import Array, PRNGKeyArray
 from diffuse.diffusion.sde import SDEState
 from diffuse.denoisers.cond import CondDenoiser, CondDenoiserState
 from diffuse.base_forward_model import MeasurementState
+from diffuse.utils.plotting import sigle_plot
 
 
 @dataclass
@@ -26,20 +27,22 @@ class DPSDenoiser(CondDenoiser):
         """
         y_meas = measurement_state.y
 
-        # Define modified score function that includes measurement term
+        # Define modified score function that includes guidance term
         def modified_score(x: Array, t: float) -> Array:
             def norm_tweedie(x: Array):
                 # Apply Tweedie's formula
                 denoised = self.sde.tweedie(SDEState(x, t), self.score).position
                 norm = jnp.linalg.norm(y_meas - self.forward_model.apply(denoised, measurement_state)) ** 2
-                return norm
+                return norm, denoised  # Return both norm and denoised
 
             # Compute residual and guidance
-            val, guidance = jax.value_and_grad(norm_tweedie)(x)
+            (val, denoised), guidance = jax.value_and_grad(norm_tweedie, has_aux=True)(x)
 
-            # Compute guidance scale TODO: sort out this
+            # Plot outside the differentiated function
+            jax.experimental.io_callback(sigle_plot, None, denoised, t)
+
+            # Compute guidance scale
             zeta = 3. / (jnp.sqrt(val) + 1e-3)
-            zeta = 1.
 
             return self.score(x, t) - zeta * guidance
 

@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 
 from diffuse.diffusion.sde import SDEState
-from diffuse.integrator.base import IntegratorState, ChurnedIntegrator
+from diffuse.integrator.base import IntegratorState, ChurnedIntegrator, Integrator
 
 
 __all__ = ["EulerIntegrator", "HeunIntegrator", "DPMpp2sIntegrator", "DDIMIntegrator"]
