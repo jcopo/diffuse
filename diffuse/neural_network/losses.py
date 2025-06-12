@@ -5,6 +5,9 @@ from typing import Callable
 from jaxtyping import PyTreeDef, PRNGKeyArray, Array
 from diffuse.diffusion.sde import SDE, SDEState
 from functools import partial
+from dataclasses import dataclass
+from diffuse.timer.base import Timer, VpTimer
+from diffuse.neural_network.autoencoderKL import AutoencoderKL
 
 
 @dataclass
@@ -31,8 +34,8 @@ def score_match_loss(
     x0_samples,
     sde: SDE,
     network: Callable,
-    lmbda: Callable = None,
-    timer: Timer = TimerEuler(),
+    timer: Timer,
+    lmbda: Callable = None
 ):
     """
     Calculate the score matching loss. This version shares the batch of x0 and t. Meaning nt_samples and n_x0 must be the same.

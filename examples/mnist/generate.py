@@ -61,28 +61,41 @@ CONFIG = {
         "n_steps": 300
     }
 }
-
-def initialize_experiment(key: jax.random.PRNGKey):
+def initialize_experiment(key: jax.random.PRNGKey, config_train: dict):
     """Initialize the experiment components"""
     # Load MNIST dataset
-    data = np.load("dataset/mnist.npz")
+    data = np.load(os.path.join(config_train['path_dataset'], 'mnist.npz'))
     xs = jnp.array(data["X"])
     xs = xs.reshape(xs.shape[0], xs.shape[1], xs.shape[2], 1)
 
     # Initialize SDE
     schedule_config = CONFIG["schedules"]["LinearSchedule"]
     params = schedule_config["params"].copy()
-    params["T"] = CONFIG["space"]["t_final"]
+    params["T"] = config_train["sde"]["tf"]
     beta = schedule_config["class"](**params)
-    sde = SDE(beta=beta, tf=CONFIG["space"]["t_final"])
+    sde = SDE(beta=beta, tf=config_train["sde"]["tf"])
 
     # Initialize ScoreNetwork
-    score_net = UNet(CONFIG["space"]["t_final"] / CONFIG["space"]["n_steps"], 64, upsampling="pixel_shuffle")
-    nn_trained = jnp.load("weights/ann_2999.npz", allow_pickle=True)
-    params = nn_trained["params"].item()
+    score_net = UNet(
+        dt=config_train["neural_network"]["unet"]["dt"],
+        dim=config_train["neural_network"]["unet"]["dim"],
+        upsampling=config_train["neural_network"]["unet"]["upsampling"],
+        dim_mults=config_train["neural_network"]["unet"]["dim_mults"],
+        sample_size=config_train["neural_network"]["unet"]["sample_size"],
+        channel_size=config_train["neural_network"]["unet"]["channel_size"]
+    )
+
+    # Load trained model parameters
+    model_path = f"{config_train['model_dir']}/best_model.npz"
+    nn_trained = jnp.load(model_path, allow_pickle=True)
+    params = nn_trained["ema_params"].item()  # Use EMA parameters for better stability
 
     def nn_score(x, t):
         return score_net.apply(params, x, t)
+
+    # If using noise matching loss, convert to score
+    if config_train.get("training", {}).get("loss") in ["noise_matching", "mae_noise_matching"]:
+        nn_score = sde.noise_to_score(nn_score)
 
     return sde, nn_score, xs
 
@@ -122,7 +135,7 @@ def run_unconditional_experiment(
 ):
     """Run unconditional sampling experiment"""
     # Initialize experiment components
-    sde, nn_score, _ = initialize_experiment(key)  # Ignore ground truth data
+    sde, nn_score, _ = initialize_experiment(key, config_train)  # Ignore ground truth data
 
     # Create timer
     timer = VpTimer(
@@ -156,7 +169,7 @@ def run_conditional_experiment(
 ):
     """Run conditional sampling experiment with measurement"""
     # Initialize experiment components
-    sde, nn_score, ground_truth_data = initialize_experiment(key)
+    sde, nn_score, ground_truth_data = initialize_experiment(key, config_train)
 
     # Select ground truth image
     ground_truth = jax.random.choice(key, ground_truth_data)
