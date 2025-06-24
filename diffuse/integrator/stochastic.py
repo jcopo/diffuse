@@ -3,42 +3,65 @@ from typing import Callable
 
 import jax
 import jax.numpy as jnp
-from jaxtyping import Array, PRNGKeyArray
 
-from diffuse.integrator.base import IntegratorState
-from diffuse.diffusion.sde import SDE
+from diffuse.integrator.base import IntegratorState, Integrator
 
-
-class EulerMaruyamaState(IntegratorState):
-    """Euler-Maruyama integrator state"""
-
-    position: Array
-    rng_key: PRNGKeyArray
-    t: float
-    dt: float
+__all__ = ["EulerMaruyamaIntegrator"]
 
 
 @dataclass
-class EulerMaruyama:
-    """Euler-Maruyama stochastic integrator for SDEs"""
+class EulerMaruyamaIntegrator(Integrator):
+    """Euler-Maruyama stochastic integrator for Stochastic Differential Equations (SDEs).
 
-    sde: SDE
+    Implements the Euler-Maruyama method for numerical integration of SDEs of the form:
+    dX(t) = μ(X,t)dt + σ(X,t)dW(t)
 
-    def init(
-        self, position: Array, rng_key: PRNGKeyArray, t: float, dt: float
-    ) -> EulerMaruyamaState:
-        """Initialize integrator state with position, random key and timestep"""
-        return EulerMaruyamaState(position, rng_key, t, dt)
+    where:
+    - μ(X,t) is the drift term: β(t) * (0.5 * X + score(X,t))
+    - σ(X,t) is the diffusion term: sqrt(β(t))
+    - dW(t) is the Wiener process increment
+    - β(t) is the noise schedule
+
+    The method advances the solution using the discrete approximation:
+    X(t + dt) = X(t) + μ(X,t)dt + σ(X,t)√dt * N(0,1)
+
+    This is the simplest stochastic integration scheme with strong order 0.5
+    convergence for general SDEs.
+    """
 
     def __call__(
-        self, integrator_state: EulerMaruyamaState, score: Callable
-    ) -> EulerMaruyamaState:
-        """Perform one Euler-Maruyama integration step: dx = drift*dt + diffusion*dW"""
-        position, rng_key, t, dt = integrator_state
-        drift = self.sde.reverse_drift(integrator_state, score)
-        diffusion = self.sde.reverse_diffusion(integrator_state)
+        self, integrator_state: IntegratorState, score: Callable
+    ) -> IntegratorState:
+        """Perform one Euler-Maruyama integration step.
+
+        Args:
+            integrator_state: Current state containing:
+                - position: Current position X(t)
+                - rng_key: JAX random number generator key
+                - step: Current integration step
+            score: Score function that approximates ∇ₓ log p(x|t)
+
+        Returns:
+            Updated IntegratorState containing:
+                - New position X(t + dt)
+                - Updated RNG key
+                - Incremented step count
+
+        Notes:
+            The integration step implements:
+            dx = drift*dt + diffusion*√dt*ε
+            where:
+            - drift = β(t) * (0.5 * position + score(position, t))
+            - diffusion = √β(t)
+            - ε ~ N(0,1)
+        """
+        position, rng_key, step = integrator_state
+        t, t_next = self.timer(step), self.timer(step + 1)
+        dt = t - t_next
+        drift = self.sde.beta(t) * (0.5 * position + score(position, t))
+        diffusion = jnp.sqrt(self.sde.beta(t))
         noise = jax.random.normal(rng_key, position.shape) * jnp.sqrt(dt)
 
         dx = drift * dt + diffusion * noise
         _, rng_key_next = jax.random.split(rng_key)
-        return EulerMaruyamaState(position + dx, rng_key_next, t + dt, dt)
+        return IntegratorState(position + dx, rng_key_next, step + 1)

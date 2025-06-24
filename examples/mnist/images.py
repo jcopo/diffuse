@@ -8,10 +8,16 @@ from diffuse.base_forward_model import MeasurementState
 from diffuse.utils.plotting import sigle_plot
 
 @dataclass
+class MaskState:
+    y: Array
+    mask_history: Array
+    xi: Array
+
+@dataclass
 class SquareMask:
     size: int
     img_shape: tuple
-    sigma: float = 1.
+    std: float = 1.
 
     def make(self, xi: Array) -> Array:
         """Create a differentiable square mask."""
@@ -34,60 +40,63 @@ class SquareMask:
         # return jnp.where(mask > 0.5, 1.0, 0.0)[..., None]
         return mask[..., None]
 
-    def measure_from_mask(self, hist_mask: Array, img: Array):
+    def apply(self, img: Array, measurement_state: MeasurementState):
+        hist_mask = measurement_state.mask_history
         return img * hist_mask
 
-    def restore_from_mask(self, hist_mask: Array, img: Array, measured: Array):
-        return img * hist_mask + measured
+    def measure(self, rng_key: PRNGKeyArray, img: Array, xi: Array):
+        return img * self.make(xi)
 
-    def measure(self, xi: Array, img: Array):
-        return self.measure_from_mask(self.make(xi), img)
-
-    def restore(self, xi: Array, img: Array, measured: Array):
-        inv_mask = 1 - self.make(xi)
-        return self.restore_from_mask(inv_mask, img, measured)
-
-    def init_measurement(self) -> MeasurementState:
-        y = jnp.zeros(self.img_shape)
-        mask_history = jnp.zeros_like(self.make(jnp.array([0.0, 0.0])))
-        return MeasurementState(y=y, mask_history=mask_history)
-
-    def update_measurement(
-        self, measurement_state: MeasurementState, new_measurement: Array, design: Array
-    ) -> MeasurementState:
-        joint_y = self.restore(design, measurement_state.y, new_measurement)
-        mask_history = self.restore(
-            design, measurement_state.mask_history, self.make(design)
-        )
-
-        return MeasurementState(y=joint_y, mask_history=mask_history)
-
-    def logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
-        f_y = self.measure(design, theta)
-        # Preserve batch dimension while flattening spatial dimensions
-        # If input is (batch, 28, 28, 1), output will be (batch, 784)
-        f_y_flat = einops.rearrange(f_y, "... h w c -> ... (h w c)")
-        y_flat = einops.rearrange(y, "... h w c -> ... (h w c)")
-
-        #import pdb; pdb.set_trace()
-        return jax.scipy.stats.multivariate_normal.logpdf(
-            y_flat, mean=f_y_flat, cov=self.sigma**2
-        )  # returns shape (batch,)
-
-    def grad_logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
-        meas_x = self.measure_from_mask(design, theta)
-        #jax.experimental.io_callback(sigle_plot, None, y)
-        # jax.experimental.io_callback(sigle_plot, None, meas_x)
-        return self.restore_from_mask(design, jnp.zeros_like(theta), (y - meas_x)) / self.sigma
+    def restore(self, img: Array, measurement_state: MeasurementState):
+        mask = measurement_state.mask_history
+        inv_mask = 1 - mask
+        return img * inv_mask
 
     def init_design(self, rng_key: PRNGKeyArray) -> Array:
         return jax.random.uniform(rng_key, (2,), minval=0, maxval=28)
 
-    def logprob_y_t(self, theta: Array, y: Array, mask: Array, alpha_t: float) -> Array:
-        A_theta = self.measure_from_mask(mask, theta)
-        logsprobs = jax.scipy.stats.norm.logpdf(y, A_theta, alpha_t)
-        logsprobs = einops.reduce(logsprobs, "t ... -> t ", "sum")
-        return logsprobs
+    def init(self, rng_key: PRNGKeyArray) -> Array:
+        xi = jax.random.uniform(rng_key, (2,), minval=0, maxval=28)
+        y = jnp.zeros(self.img_shape)
+        mask_history = jnp.zeros_like(self.make(xi))
+        return MaskState(y=y, mask_history=mask_history, xi=xi)
+
+    def update_measurement(
+        self, mask_state: MaskState, new_measurement: Array, design: Array
+    ) -> MaskState:
+        new_mask = self.make(design)
+        # Compute the new part of the mask (i.e. the part not already measured)
+        new_part_mask = new_mask * (1 - mask_state.mask_history)
+        # Superpose the new measurement only on the new part
+        joint_y = mask_state.y + new_measurement * new_part_mask
+        # Update the mask history by adding the new part
+        mask_history = mask_state.mask_history + new_part_mask
+        return MaskState(y=joint_y, mask_history=mask_history, xi=design)
+
+    # def logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
+    #     f_y = self.measure(design, theta)
+    #     # Preserve batch dimension while flattening spatial dimensions
+    #     # If input is (batch, 28, 28, 1), output will be (batch, 784)
+    #     f_y_flat = einops.rearrange(f_y, "... h w c -> ... (h w c)")
+    #     y_flat = einops.rearrange(y, "... h w c -> ... (h w c)")
+
+    #     #import pdb; pdb.set_trace()
+    #     return jax.scipy.stats.multivariate_normal.logpdf(
+    #         y_flat, mean=f_y_flat, cov=self.sigma**2
+    #     )  # returns shape (batch,)
+
+    # def grad_logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
+    #     meas_x = self.measure_from_mask(design, theta)
+    #     #jax.experimental.io_callback(sigle_plot, None, y)
+    #     # jax.experimental.io_callback(sigle_plot, None, meas_x)
+    #     return self.restore_from_mask(design, jnp.zeros_like(theta), (y - meas_x)) / self.sigma
+
+
+    # def logprob_y_t(self, theta: Array, y: Array, mask: Array, alpha_t: float) -> Array:
+    #     A_theta = self.measure_from_mask(mask, theta)
+    #     logsprobs = jax.scipy.stats.norm.logpdf(y, A_theta, alpha_t)
+    #     logsprobs = einops.reduce(logsprobs, "t ... -> t ", "sum")
+    #     return logsprobs
 
 
 if __name__ == "__main__":

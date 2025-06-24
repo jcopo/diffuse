@@ -1,504 +1,211 @@
-"""
-This script is adapted from https://raw.githubusercontent.com/yiyixuxu/denoising-diffusion-flax/main/denoising_diffusion_flax/unet.py
-under the Apache-2.0 license.
+from dataclasses import dataclass
+from typing import Callable
 
-- You may find a copy of the license in https://github.com/yiyixuxu/denoising-diffusion-flax/tree/main?tab=Apache-2.0-1-ov-file#readme.
-- The original author is https://github.com/yiyixuxu.
-- Modifications:
-    - Deleted the batch in time embedding.
-    - Added pixel_shuffle upsampling.
-    - Changed resize from 'nearest' to 'linear'.
-    - Removed assert statements.
-    - Removed "name".
-    - Used in-house sinusoidal_embedding.
-    - Some variable names refactorisation.
-"""
-
-import jax
 import jax.numpy as jnp
 import flax.linen as nn
+from chex import Array
 from einops import rearrange
-from typing import Any, Sequence, Tuple, Optional, Union
+from jax.typing import DTypeLike
 
-import math
-from jaxtyping import ArrayLike, PRNGKeyArray
-
-
-class PixelShuffle(nn.Module):
-    scale: int
-
-    def __call__(self, x: ArrayLike) -> ArrayLike:
-        return rearrange(
-            x, "b h w (h2 w2 c) -> b (h h2) (w w2) c", h2=self.scale, w2=self.scale
-        )
+from diffuse.neural_network.block import (
+    AttnBlock,
+    Timesteps,
+    TimestepEmbedding,
+    ResnetBlock,
+    Downsample,
+    Upsample,
+    TimestepEmbedSequential,
+)
 
 
-def sinusoidal_embedding(
-    t: Union[ArrayLike, float], out_dim: int = 64, max_period: int = 10_000
-) -> ArrayLike:
-    """The so-called sinusoidal positional embedding.
+@dataclass
+class UNetParams:
+    """Configuration parameters for the UNet model.
 
-    Parameters
-    ----------
-    t : FloatScalar
-        A time variable. Note that this is the discrete time.
-    out_dim : int
-        The output dimension.
-    max_period : int
-        The maximum period.
+    This dataclass defines all the hyperparameters needed to configure
+    a UNet model for diffusion processes.
 
-    Returns
-    -------
-    JArray (..., out_dim)
-        An array.
-
-    Notes
-    -----
-    I have no idea what a sinusoidal positional embedding does. Perhaps, it means to find a function that maps a time
-    scalar to a sequence. The implementation is based on
-        - https://github.com/JTT94/diffusion_schrodinger_bridge/blob/1c82eba0a16aea3333ac738dde376b12a3f97f21/
-        bridge/models/basic/time_embedding.py#L6
-        - https://github.com/vdeborto/cdsb/blob/8fc9cc2a08daa083b84b5ddd38190bec931edeb0/
-        bridge/models/unet/layers.py#L95
-    """
-    half = out_dim // 2
-
-    fs = jnp.exp(-math.log(max_period) * jnp.arange(half) / (half - 1))
-    embs = t * fs
-    embs = jnp.concatenate([jnp.sin(embs), jnp.cos(embs)], axis=-1)
-    if out_dim % 2 == 1:
-        raise NotImplementedError(
-            f"out_dim is implemented for even number only, while {out_dim} is given."
-        )
-    return embs
-
-
-def l2norm(t, axis=1, eps=1e-12):
-    """Performs L2 normalization of inputs over specified axis.
-
-    Args:
-      t: jnp.ndarray of any shape
-      axis: the dimension to reduce, default -1
-      eps: small value to avoid division by zero. Default 1e-12
-    Returns:
-      normalized array of same shape as t
-
-
-    """
-    denom = jnp.clip(jnp.linalg.norm(t, ord=2, axis=axis, keepdims=True), eps)
-    out = t / denom
-    return out
-
-
-class Downsample(nn.Module):
-    dim: Optional[int] = None
-    dtype: Any = jnp.float32
-
-    @nn.compact
-    def __call__(self, x):
-        B, H, W, C = x.shape
-        dim = self.dim if self.dim is not None else C
-        x = nn.Conv(
-            dim, kernel_size=(4, 4), strides=(2, 2), padding=1, dtype=self.dtype
-        )(x)
-        assert x.shape == (B, H // 2, W // 2, dim)
-        return x
-
-
-class Upsample(nn.Module):
-    method: str = "resize"
-    dim: Optional[int] = None
-    dtype: Any = jnp.float32
-
-    @nn.compact
-    def __call__(self, x):
-        B, H, W, C = x.shape
-        dim = self.dim if self.dim is not None else C
-        if self.method == "resize":
-            x = jax.image.resize(x, (B, H * 2, W * 2, C), "linear")
-            x = nn.Conv(dim, kernel_size=(3, 3), padding=1, dtype=self.dtype)(x)
-        elif self.method == "pixel_shuffle":
-            x = nn.Conv(C * 4, kernel_size=(3, 3), padding=1, dtype=self.dtype)(x)
-            x = PixelShuffle(scale=2)(x)
-            x = nn.Conv(dim, kernel_size=(3, 3), padding=1, dtype=self.dtype)(x)
-        else:
-            raise ValueError(f"Unknown upsampling method: {self.method}")
-        assert x.shape == (B, H * 2, W * 2, dim)
-        return x
-
-
-class WeightStandardizedConv(nn.Module):
-    """
-    apply weight standardization  https://arxiv.org/abs/1903.10520
+    Attributes:
+        in_channels: Number of input channels for the model (default: 3)
+        ch: Base number of channels in the model (default: 64)
+        ch_mult: List of channel multipliers for different resolution levels (default: [1, 2, 3, 4])
+        num_res_blocks: Number of residual blocks per resolution level (default: 2)
+        num_head_channels: Number of channels per attention head (default: 32)
+        attention_resolutions: List of resolution levels where attention is applied (default: [1, 2, 4, 8])
+        deterministic: Whether to use deterministic behavior (affects dropout) (default: True)
+        activation: Activation function to use throughout the model (default: nn.swish)
+        param_dtype: Data type for model parameters (default: jnp.bfloat16)
     """
 
-    features: int
-    kernel_size: Sequence[int] = 3
-    strides: Union[None, int, Sequence[int]] = 1
-    padding: Any = 1
-    dtype: Any = jnp.float32
-    param_dtype: Any = jnp.float32
-
-    @nn.compact
-    def __call__(self, x):
-        """
-        Applies a weight standardized convolution to the inputs.
-
-        Args:
-          inputs: input data with dimensions (batch, spatial_dims..., features).
-
-        Returns:
-          The convolved data.
-        """
-        x = x.astype(self.dtype)
-
-        conv = nn.Conv(
-            features=self.features,
-            kernel_size=self.kernel_size,
-            strides=self.strides,
-            padding=self.padding,
-            dtype=self.dtype,
-            param_dtype=self.param_dtype,
-            parent=None,
-        )
-
-        kernel_init = lambda rng, x: conv.init(rng, x)["params"]["kernel"]
-        bias_init = lambda rng, x: conv.init(rng, x)["params"]["bias"]
-
-        # standardize kernel
-        kernel = self.param("kernel", kernel_init, x)
-        eps = 1e-5 if self.dtype == jnp.float32 else 1e-3
-        # reduce over dim_out
-        redux = tuple(range(kernel.ndim - 1))
-        mean = jnp.mean(kernel, axis=redux, dtype=self.dtype, keepdims=True)
-        var = jnp.var(kernel, axis=redux, dtype=self.dtype, keepdims=True)
-        standardized_kernel = (kernel - mean) / jnp.sqrt(var + eps)
-
-        bias = self.param("bias", bias_init, x)
-
-        return conv.apply({"params": {"kernel": standardized_kernel, "bias": bias}}, x)
-
-
-class ResnetBlock(nn.Module):
-    """Convolutional residual block."""
-
-    dim: int = None
-    groups: Optional[int] = 8
-    dtype: Any = jnp.float32
-
-    @nn.compact
-    def __call__(self, x, time_emb):
-        """
-        Args:
-          x: jnp.ndarray of shape [B, H, W, C]
-          time_emb: jnp.ndarray of shape [B,D]
-        Returns:
-          x: jnp.ndarray of shape [B, H, W, C]
-        """
-
-        B, _, _, C = x.shape
-        assert time_emb.shape[0] == B and len(time_emb.shape) == 2
-
-        h = WeightStandardizedConv(
-            features=self.dim, kernel_size=(3, 3), padding=1, name="conv_0"
-        )(x)
-        h = nn.GroupNorm(num_groups=self.groups, dtype=self.dtype, name="norm_0")(h)
-
-        # add in timestep embedding
-        time_emb = nn.Dense(
-            features=2 * self.dim, dtype=self.dtype, name="time_mlp.dense_0"
-        )(nn.swish(time_emb))
-        time_emb = time_emb[:, jnp.newaxis, jnp.newaxis, :]  # [B, H, W, C]
-        scale, shift = jnp.split(time_emb, 2, axis=-1)
-        h = h * (1 + scale) + shift
-
-        h = nn.swish(h)
-
-        h = WeightStandardizedConv(
-            features=self.dim, kernel_size=(3, 3), padding=1, name="conv_1"
-        )(h)
-        h = nn.swish(
-            nn.GroupNorm(num_groups=self.groups, dtype=self.dtype, name="norm_1")(h)
-        )
-
-        if C != self.dim:
-            x = nn.Conv(
-                features=self.dim,
-                kernel_size=(1, 1),
-                dtype=self.dtype,
-                name="res_conv_0",
-            )(x)
-
-        assert x.shape == h.shape
-
-        return x + h
-
-
-class Attention(nn.Module):
-    heads: int = 4
-    dim_head: int = 32
-    scale: int = 10
-    dtype: Any = jnp.float32
-
-    @nn.compact
-    def __call__(self, x):
-        B, H, W, C = x.shape
-        dim = self.dim_head * self.heads
-
-        qkv = nn.Conv(
-            features=dim * 3,
-            kernel_size=(1, 1),
-            use_bias=False,
-            dtype=self.dtype,
-            name="to_qkv.conv_0",
-        )(x)  # [B, H, W, dim *3]
-        q, k, v = jnp.split(qkv, 3, axis=-1)  # [B, H, W, dim]
-        q, k, v = map(
-            lambda t: rearrange(t, "b x y (h d) -> b (x y) h d", h=self.heads),
-            (q, k, v),
-        )
-
-        assert q.shape == k.shape == v.shape == (B, H * W, self.heads, self.dim_head)
-
-        q, k = map(l2norm, (q, k))
-
-        sim = jnp.einsum("b i h d, b j h d -> b h i j", q, k) * self.scale
-        attn = nn.softmax(sim, axis=-1)
-        assert attn.shape == (B, self.heads, H * W, H * W)
-
-        out = jnp.einsum("b h i j , b j h d  -> b h i d", attn, v)
-        out = rearrange(out, "b h (x y) d -> b x y (h d)", x=H)
-        assert out.shape == (B, H, W, dim)
-
-        out = nn.Conv(
-            features=C, kernel_size=(1, 1), dtype=self.dtype, name="to_out.conv_0"
-        )(out)
-        return out
-
-
-class LinearAttention(nn.Module):
-    heads: int = 4
-    dim_head: int = 32
-    dtype: Any = jnp.float32
-
-    @nn.compact
-    def __call__(self, x):
-        B, H, W, C = x.shape
-        dim = self.dim_head * self.heads
-
-        qkv = nn.Conv(
-            features=dim * 3,
-            kernel_size=(1, 1),
-            use_bias=False,
-            dtype=self.dtype,
-            name="to_qkv.conv_0",
-        )(x)  # [B, H, W, dim *3]
-        q, k, v = jnp.split(qkv, 3, axis=-1)  # [B, H, W, dim]
-        q, k, v = map(
-            lambda t: rearrange(t, "b x y (h d) -> b (x y) h d", h=self.heads),
-            (q, k, v),
-        )
-        assert q.shape == k.shape == v.shape == (B, H * W, self.heads, self.dim_head)
-        # compute softmax for q along its embedding dimensions
-        q = nn.softmax(q, axis=-1)
-        # compute softmax for k along its spatial dimensions
-        k = nn.softmax(k, axis=-3)
-
-        q = q / jnp.sqrt(self.dim_head)
-        v = v / (H * W)
-
-        context = jnp.einsum("b n h d, b n h e -> b h d e", k, v)
-        out = jnp.einsum("b h d e, b n h d -> b h e n", context, q)
-        out = rearrange(out, "b h e (x y) -> b x y (h e)", x=H)
-        assert out.shape == (B, H, W, dim)
-
-        out = nn.Conv(
-            features=C, kernel_size=(1, 1), dtype=self.dtype, name="to_out.conv_0"
-        )(out)
-        out = nn.LayerNorm(
-            epsilon=1e-5, use_bias=False, dtype=self.dtype, name="to_out.norm_0"
-        )(out)
-        return out
-
-
-class AttnBlock(nn.Module):
-    heads: int = 4
-    dim_head: int = 32
-    use_linear_attention: bool = True
-    dtype: Any = jnp.float32
-
-    @nn.compact
-    def __call__(self, x):
-        B, H, W, C = x.shape
-        normed_x = nn.LayerNorm(epsilon=1e-5, use_bias=False, dtype=self.dtype)(x)
-        if self.use_linear_attention:
-            attn = LinearAttention(self.heads, self.dim_head, dtype=self.dtype)
-        else:
-            attn = Attention(self.heads, self.dim_head, dtype=self.dtype)
-        out = attn(normed_x)
-        assert out.shape == (B, H, W, C)
-        return out + x
+    in_channels: int = 3
+    ch: int = 64
+    ch_mult: list[int] = [1, 2, 3, 4]
+    num_res_blocks: int = 2
+    attention_resolutions: list[int] = [1, 2, 4, 8]
+    deterministic: bool = True
+    activation: Callable = nn.swish
+    param_dtype: DTypeLike = jnp.bfloat16
 
 
 class UNet(nn.Module):
-    dt: float
-    dim: int
-    upsampling: str = "resize"
-    init_dim: Optional[int] = None  # if None, same as dim
-    out_dim: Optional[int] = None
-    dim_mults: Tuple[int, int, int, int] = (1, 2, 4)
-    resnet_block_groups: int = 8
-    learnt_variance: bool = False
-    dtype: Any = jnp.float32
-    sample_size: int = 320
-    channel_size: int = 2
+    params: UNetParams
 
-    def init_weights(self, key: PRNGKeyArray):
-        sample_shape = (1, self.sample_size, self.sample_size, self.channel_size)
-        sample = jnp.zeros(sample_shape, dtype=self.dtype)
-        time = jnp.zeros((1,), dtype=jnp.float32)
-        return self.init(key, sample, time)
+    def setup(self) -> None:
+        time_embed_dim = self.params.ch * 4
 
-    @nn.compact
-    def __call__(self, x, time):
-        if x.ndim < 4:
-            x = jnp.expand_dims(x, 0)
-        B, H, W, C = x.shape
+        self.time_proj = Timesteps(
+            embedding_dim=time_embed_dim,
+            max_period=10_000,
+        )
+        self.time_embedding = TimestepEmbedding(
+            embedding_dim=time_embed_dim,
+            activation=self.params.activation,
+            param_dtype=self.params.param_dtype,
+        )
 
-        init_dim = self.dim if self.init_dim is None else self.init_dim
+        ch = int(self.params.ch_mult[0] * self.params.ch)
+        conv_in = nn.Conv(
+            features=ch,
+            kernel_size=(3, 3),
+            strides=(1, 1),
+            padding=(1, 1),
+            param_dtype=self.params.param_dtype,
+        )
+        blocks_down = [TimestepEmbedSequential([conv_in])]
+
+        input_block_channels = [ch]
+        ds = 1
+        for level, mult in enumerate(self.params.ch_mult):
+            for _ in range(self.params.num_res_blocks):
+                layers = [
+                    ResnetBlock(
+                        in_channels=ch,
+                        out_channels=int(mult * self.params.ch),
+                        activation=self.params.activation,
+                        time_embedding=True,
+                        deterministic=self.params.deterministic,
+                        param_dtype=self.params.param_dtype,
+                    )
+                ]
+                ch = int(mult * self.params.ch)
+                if ds in self.params.attention_resolutions:
+                    layers.append(
+                        AttnBlock(in_channels=ch, param_dtype=self.params.param_dtype)
+                    )
+
+                blocks_down.append(TimestepEmbedSequential(layers))
+                input_block_channels.append(ch)
+
+            if level != len(self.params.ch_mult) - 1:
+                blocks_down.append(
+                    TimestepEmbedSequential(
+                        [
+                            Downsample(
+                                in_channels=ch, param_dtype=self.params.param_dtype
+                            )
+                        ]
+                    )
+                )
+                input_block_channels.append(ch)
+                ds *= 2
+
+        self.blocks_down = blocks_down
+
+        # mid
+        self.block_mid = TimestepEmbedSequential(
+            [
+                ResnetBlock(
+                    in_channels=ch,
+                    out_channels=ch,
+                    activation=self.params.activation,
+                    time_embedding=True,
+                    deterministic=self.params.deterministic,
+                    param_dtype=self.params.param_dtype,
+                ),
+                AttnBlock(in_channels=ch, param_dtype=self.params.param_dtype),
+                ResnetBlock(
+                    in_channels=ch,
+                    out_channels=ch,
+                    activation=self.params.activation,
+                    time_embedding=True,
+                    deterministic=self.params.deterministic,
+                    param_dtype=self.params.param_dtype,
+                ),
+            ]
+        )
+
+        # up
+        blocks_up = []
+        for level, mult in reversed(list(enumerate(self.params.ch_mult))):
+            for i in range(self.params.num_res_blocks + 1):
+                ich = input_block_channels.pop()
+                layers = [
+                    ResnetBlock(
+                        in_channels=ch + ich,
+                        out_channels=int(mult * self.params.ch),
+                        activation=self.params.activation,
+                        time_embedding=True,
+                        deterministic=self.params.deterministic,
+                        param_dtype=self.params.param_dtype,
+                    )
+                ]
+
+                ch = int(mult * self.params.ch)
+                if ds in self.params.attention_resolutions:
+                    layers.append(
+                        AttnBlock(in_channels=ch, param_dtype=self.params.param_dtype)
+                    )
+
+                if level and i == self.params.num_res_blocks:
+                    layers.append(
+                        Upsample(
+                            in_channels=ch,
+                            method="pixel_shuffle",
+                            scale_factor=2,
+                            param_dtype=self.params.param_dtype,
+                        )
+                    )
+                    ds //= 2
+
+                blocks_up.append(TimestepEmbedSequential(layers))
+        self.blocks_up = blocks_up
+
+        norm_out = nn.GroupNorm(
+            num_groups=32, epsilon=1e-6, param_dtype=self.params.param_dtype
+        )
+
+        activation_out = self.params.activation
+
+        conv_out = nn.Conv(
+            features=self.params.in_channels,
+            kernel_size=(3, 3),
+            strides=(1, 1),
+            padding=(1, 1),
+            param_dtype=self.params.param_dtype,
+        )
+
+        self.out = nn.Sequential([norm_out, activation_out, conv_out])
+
+    def __call__(self, x: Array, t: Array) -> Array:
+        h = rearrange(x, "b c h w -> b h w c")
+
+        t_emb = self.time_proj(t).astype(self.params.param_dtype)
+        t_emb = self.time_embedding(t_emb)
+
         hs = []
-        h = nn.Conv(
-            features=init_dim,
-            kernel_size=(7, 7),
-            padding=3,
-            name="init.conv_0",
-            dtype=self.dtype,
-        )(x)
-
-        hs.append(h)
-        # use sinusoidal embeddings to encode timesteps
-        if time.ndim < 1:
-            time_emb = jnp.broadcast_to(
-                sinusoidal_embedding(time / self.dt, out_dim=self.dim), (B, self.dim)
-            )
-        else:
-            time_emb = jax.vmap(lambda z: sinusoidal_embedding(z, out_dim=self.dim))(
-                time / self.dt
-            )
-        time_emb = nn.Dense(features=self.dim * 4, dtype=self.dtype)(time_emb)
-        time_emb = nn.Dense(features=self.dim * 4, dtype=self.dtype)(
-            nn.gelu(time_emb)
-        )  # [B, 4*dim]
-
-        # downsampling
-        num_resolutions = len(self.dim_mults)
-        for ind in range(num_resolutions):
-            dim_in = h.shape[-1]
-            h = ResnetBlock(
-                dim=dim_in, groups=self.resnet_block_groups, dtype=self.dtype
-            )(h, time_emb)
+        for block in self.blocks_down:
+            print(h.shape)
+            h = block(h, t_emb)
             hs.append(h)
-
-            h = ResnetBlock(
-                dim=dim_in, groups=self.resnet_block_groups, dtype=self.dtype
-            )(h, time_emb)
-            h = AttnBlock(dtype=self.dtype, name=f"down_{ind}.attnblock_0")(h)
-            hs.append(h)
-
-            if ind < num_resolutions - 1:
-                h = Downsample(
-                    dim=self.dim * self.dim_mults[ind],
-                    dtype=self.dtype,
-                    name=f"down_{ind}.downsample_0",
-                )(h)
-
-        mid_dim = self.dim * self.dim_mults[-1]
-        h = nn.Conv(
-            features=mid_dim,
-            kernel_size=(3, 3),
-            padding=1,
-            dtype=self.dtype,
-            name=f"down_{num_resolutions - 1}.conv_0",
-        )(h)
-
-        # middle
-        h = ResnetBlock(
-            dim=mid_dim,
-            groups=self.resnet_block_groups,
-            dtype=self.dtype,
-            name="mid.resblock_0",
-        )(h, time_emb)
-        h = AttnBlock(
-            use_linear_attention=False, dtype=self.dtype, name="mid.attenblock_0"
-        )(h)
-        h = ResnetBlock(
-            dim=mid_dim,
-            groups=self.resnet_block_groups,
-            dtype=self.dtype,
-            name="mid.resblock_1",
-        )(h, time_emb)
-
-        # upsampling
-        for ind in reversed(range(num_resolutions)):
-            dim_in = self.dim * self.dim_mults[ind]
-            dim_out = self.dim * self.dim_mults[ind - 1] if ind > 0 else init_dim
-
-            assert h.shape[-1] == dim_in
+        print("*********")
+        h = self.block_mid(h, t_emb)
+        print(h.shape)
+        print("*********")
+        for block in self.blocks_up:
+            print(h.shape)
             h = jnp.concatenate([h, hs.pop()], axis=-1)
-            assert h.shape[-1] == dim_in + dim_out
-            h = ResnetBlock(
-                dim=dim_in,
-                groups=self.resnet_block_groups,
-                dtype=self.dtype,
-                name=f"up_{ind}.resblock_0",
-            )(h, time_emb)
+            h = block(h, t_emb)
 
-            h = jnp.concatenate([h, hs.pop()], axis=-1)
-            assert h.shape[-1] == dim_in + dim_out
-            h = ResnetBlock(
-                dim=dim_in,
-                groups=self.resnet_block_groups,
-                dtype=self.dtype,
-                name=f"up_{ind}.resblock_1",
-            )(h, time_emb)
-            h = AttnBlock(dtype=self.dtype, name=f"up_{ind}.attnblock_0")(h)
+        h = self.out(h)
 
-            assert h.shape[-1] == dim_in
-            if ind > 0:
-                h = Upsample(
-                    dim=dim_out,
-                    method=self.upsampling,
-                    dtype=self.dtype,
-                    name=f"up_{ind}.upsample_0",
-                )(h)
-
-        h = nn.Conv(
-            features=init_dim,
-            kernel_size=(3, 3),
-            padding=1,
-            dtype=self.dtype,
-            name="up_0.conv_0",
-        )(h)
-
-        # final
-        h = jnp.concatenate([h, hs.pop()], axis=-1)
-        assert h.shape[-1] == init_dim * 2
-
-        out = ResnetBlock(
-            dim=self.dim,
-            groups=self.resnet_block_groups,
-            dtype=self.dtype,
-            name="final.resblock_0",
-        )(h, time_emb)
-
-        default_out_dim = C * (1 if not self.learnt_variance else 2)
-        out_dim = default_out_dim if self.out_dim is None else self.out_dim
-
-        out = nn.Conv(
-            out_dim, kernel_size=(1, 1), dtype=self.dtype, name="final.conv_0"
-        )(out)
-
-        if B == 1:
-            return out[0]
-        else:
-            return out
+        return rearrange(h, "b h w c -> b c h w")
