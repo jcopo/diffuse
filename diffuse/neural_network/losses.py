@@ -7,7 +7,7 @@ from diffuse.diffusion.sde import SDE, SDEState
 from functools import partial
 from dataclasses import dataclass
 from diffuse.timer.base import Timer, VpTimer
-from diffuse.neural_network.autoencoderKL import AutoencoderKL
+from diffuse.neural_network import AutoEncoder
 
 
 @dataclass
@@ -16,16 +16,19 @@ class Losses:
     sde: SDE
     timer: Timer
 
-    def make_loss(self, loss_fn: Callable, *args, **kwargs)->Callable[[PyTreeDef, PRNGKeyArray, Array], float]:
+    def make_loss(
+        self, loss_fn: Callable, *args, **kwargs
+    ) -> Callable[[PyTreeDef, PRNGKeyArray, Array], float]:
         def loss(
             nn_params: PyTreeDef,
             rng_key: PRNGKeyArray,
             x0_samples: Array,
         ):
-            return loss_fn(nn_params, rng_key, x0_samples, self.sde, self.network, *args, **kwargs)
+            return loss_fn(
+                nn_params, rng_key, x0_samples, self.sde, self.network, *args, **kwargs
+            )
+
         return loss
-
-
 
 
 def score_match_loss(
@@ -35,7 +38,7 @@ def score_match_loss(
     sde: SDE,
     network: Callable,
     timer: Timer,
-    lmbda: Callable = None
+    lmbda: Callable = None,
 ):
     """
     Calculate the score matching loss. This version shares the batch of x0 and t. Meaning nt_samples and n_x0 must be the same.
@@ -75,6 +78,7 @@ def score_match_loss(
     )  # (n_ts)
 
     return jnp.mean(lmbda(ts) * sq_diff, axis=0)
+
 
 def weight_fun(t, sde: SDE):
     int_b = sde.beta.integrate(t, 0).squeeze()
@@ -123,8 +127,14 @@ def noise_match_loss(
 
     return jnp.mean(mse)
 
-def kl_loss(nn_params: PyTreeDef, rng_key: PRNGKeyArray, x0_samples: Array, beta: float, network: AutoencoderKL):
-    posterior, sample = network.apply(nn_params, x0_samples, deterministic=False, training=True, rngs=rng_key)
-    kl_value = posterior.kl()
+
+def kl_loss(
+    nn_params: PyTreeDef,
+    rng_key: PRNGKeyArray,
+    x0_samples: Array,
+    beta: float,
+    network: AutoEncoder,
+):
+    sample, kl = network.apply(nn_params, x0_samples, rngs={"reg": rng_key})
     mse_value = einops.reduce((sample - x0_samples) ** 2, "t ... -> t ", "mean")
-    return jnp.mean(beta * kl_value + mse_value)
+    return jnp.mean(beta * kl + mse_value)
