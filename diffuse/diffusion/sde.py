@@ -55,7 +55,9 @@ class LinearSchedule:
 
     def integrate(self, t, s):
         b_min, b_max, t0, T = self.b_min, self.b_max, self.t0, self.T
-        return 0.5 * (t - s) * ((b_max - b_min) / (T - t0) * (t + s) + 2 * (b_min * T - b_max * t0) / (T - t0))
+        slope = (b_max - b_min) / (T - t0)
+        intercept = (b_min * T - b_max * t0) / (T - t0)
+        return 0.5 * (t - s) * (slope * (t + s) + 2 * intercept)
 
 
 @dataclass
@@ -90,14 +92,17 @@ class CosineSchedule(Schedule):
         return beta_t
 
     def integrate(self, t, s):
-        t_normalized = (t - self.t0) / (self.T - self.t0)
-        ft = jnp.cos((t_normalized + self.s) / (1 + self.s) * jnp.pi * 0.5) ** 2
-        f0 = jnp.cos(self.s / (1 + self.s) * jnp.pi * 0.5) ** 2
-        alpha_t = jnp.clip(ft / f0, 0.001, 0.9999)
+        time_scale = self.T - self.t0
+        offset_scale = 1 + self.s
 
-        s_normalized = (s - self.t0) / (self.T - self.t0)
-        fs = jnp.cos((s_normalized + self.s) / (1 + self.s) * jnp.pi * 0.5) ** 2
-        f0 = jnp.cos(self.s / (1 + self.s) * jnp.pi * 0.5) ** 2
+        t_norm = (t - self.t0) / time_scale
+        s_norm = (s - self.t0) / time_scale
+
+        f0 = jnp.cos(self.s / offset_scale * jnp.pi * 0.5) ** 2
+        ft = jnp.cos((t_norm + self.s) / offset_scale * jnp.pi * 0.5) ** 2
+        fs = jnp.cos((s_norm + self.s) / offset_scale * jnp.pi * 0.5) ** 2
+
+        alpha_t = jnp.clip(ft / f0, 0.001, 0.9999)
         alpha_s = jnp.clip(fs / f0, 0.001, 0.9999)
 
         return jnp.log(alpha_s / alpha_t)
