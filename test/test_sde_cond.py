@@ -26,11 +26,17 @@ from examples.gaussian_mixtures.plotting import (
     plot_2d_mixture_and_samples,
     display_2d_trajectories_at_times,
 )
-from examples.gaussian_mixtures.test_config import CONFIG, create_basic_setup, create_sde, create_timer
+from examples.gaussian_mixtures.test_config import (
+    CONFIG,
+    create_basic_setup,
+    create_sde,
+    create_timer,
+)
 
 
 # Simple dict to store results
 wasserstein_results = defaultdict(list)
+
 
 @pytest.fixture(autouse=True)
 def collect_wasserstein():
@@ -46,13 +52,16 @@ def collect_wasserstein():
         for config, distances in wasserstein_results.items():
             print(f"{config:<50} {distances}")
 
+
 @pytest.fixture
 def test_setup():
     """Single fixture that provides all necessary test configuration and objects"""
     return create_basic_setup()
 
+
 def create_score_functions(posterior_state, sde):
     """Helper to create pdf, cdf and score functions for the posterior"""
+
     def pdf(x, t):
         mix_state_t = compute_xt_given_y(posterior_state, sde, t)
         return pdf_mixtr(mix_state_t, x)
@@ -66,21 +75,23 @@ def create_score_functions(posterior_state, sde):
 
     return pdf, cdf, score
 
-def validate_distributions(position, timer, n_steps, perct, cdf, key=None, method=None, forward=True):
+
+def validate_distributions(
+    position, timer, n_steps, perct, cdf, key=None, method=None, forward=True
+):
     """Helper function to validate sample distributions against theoretical ones."""
     for i, x in enumerate(perct):
         k = int(x * n_steps)
-        t = timer(0) - timer(k+1)
+        t = timer(0) - timer(k + 1)
         samples = position[:, k].squeeze()
         sample_indices = jax.random.choice(key, samples.shape[0], shape=(300,))
         samples = samples[sample_indices]
-
 
         if key is not None:  # Use subset of samples if key provided
             sample_indices = jax.random.choice(key, samples.shape[0], shape=(200,))
             samples = samples[sample_indices]
 
-        #time = t if forward else timer(0) - t
+        # time = t if forward else timer(0) - t
         ks_statistic, p_value = sp.stats.kstest(
             np.array(samples),
             lambda x: cdf(x, t),
@@ -92,10 +103,69 @@ def validate_distributions(position, timer, n_steps, perct, cdf, key=None, metho
 
         assert p_value > 0.01, error_msg
 
+
+def print_detailed_schedule_info(
+    sde, timer, n_steps, schedule_name, timer_name, verbose=False
+):
+    """Print detailed schedule information with optional verbose output"""
+    print(f"\nSchedule Information:")
+    print(f"Timer: {timer_name}, Schedule: {schedule_name}")
+    print("-" * 80)
+
+    # Key time points to examine
+    key_steps = [0, n_steps // 4, n_steps // 2, 3 * n_steps // 4, n_steps]
+
+    if verbose:
+        # Detailed table format
+        print(f"{'Step':<6} {'Time':<12} {'Beta':<12} {'Alpha':<12} {'1-Alpha':<12}")
+        print("-" * 80)
+
+        for step in key_steps:
+            time = timer(step)
+            alpha, beta = sde.alpha_beta(time)
+            print(
+                f"{step:<6} {time:<12.6f} {beta:<12.6f} {alpha:<12.6f} {1 - alpha:<12.6f}"
+            )
+    else:
+        # Compact format (original)
+        print(f"Timer times:")
+        print(f"  Initial time (step 0): {timer(0):.6f}")
+        print(f"  Middle time (step {n_steps // 2}): {timer(n_steps // 2):.6f}")
+        print(f"  Final time (step {n_steps}): {timer(n_steps):.6f}")
+
+        print(f"\nSDE noise levels ({schedule_name}):")
+        print(f"  Initial noise (t={timer(0):.6f}): β={sde.beta(timer(0)):.6f}")
+        print(
+            f"  Middle noise (t={timer(n_steps // 2):.6f}): β={sde.beta(timer(n_steps // 2)):.6f}"
+        )
+        print(
+            f"  Final noise (t={timer(n_steps):.6f}): β={sde.beta(timer(n_steps)):.6f}"
+        )
+
+        print(f"\nSDE alpha values ({schedule_name}):")
+        alpha_0, _ = sde.alpha_beta(timer(0))
+        alpha_mid, _ = sde.alpha_beta(timer(n_steps // 2))
+        alpha_final, _ = sde.alpha_beta(timer(n_steps))
+
+        print(f"  Initial alpha (t={timer(0):.6f}): α={alpha_0:.6f}")
+        print(f"  Middle alpha (t={timer(n_steps // 2):.6f}): α={alpha_mid:.6f}")
+        print(f"  Final alpha (t={timer(n_steps):.6f}): α={alpha_final:.6f}")
+
+    print("-" * 80)
+
+
 @pytest.mark.parametrize("schedule_name", ["LinearSchedule", "CosineSchedule"])
 @pytest.mark.parametrize("integrator_class,integrator_params", CONFIG["integrators"])
 @pytest.mark.parametrize("timer_name,timer_fn", CONFIG["timers"])
-def test_backward_sde_conditional_mixture(test_setup, plot_if_enabled, integrator_class, integrator_params, schedule_name, timer_name, timer_fn):
+def test_backward_sde_conditional_mixture(
+    test_setup,
+    plot_if_enabled,
+    integrator_class,
+    integrator_params,
+    schedule_name,
+    timer_name,
+    timer_fn,
+):
     # Unpack setup
     key = test_setup["key"]
     key_samples, key_meas, key_gen = jax.random.split(key, 3)
@@ -113,6 +183,9 @@ def test_backward_sde_conditional_mixture(test_setup, plot_if_enabled, integrato
     sde = create_sde(schedule_name, t_final)
     timer = create_timer(timer_name, n_steps, t_final)
 
+    # Print schedule information (compact format)
+    print_detailed_schedule_info(sde, timer, n_steps, schedule_name, timer_name)
+
     # Generate observation
     x_star = sampler_mixtr(key_samples, mix_state, 1)[0]
     y = forward_model.measure(key_meas, x_star)
@@ -124,10 +197,7 @@ def test_backward_sde_conditional_mixture(test_setup, plot_if_enabled, integrato
     # Setup denoising process with timer
     integrator = integrator_class(sde=sde, timer=timer, **integrator_params)
     denoise = Denoiser(
-        integrator=integrator,
-        sde=sde,
-        score=score,
-        x0_shape=x_star.shape
+        integrator=integrator, sde=sde, score=score, x0_shape=x_star.shape
     )
 
     # Generate samples
@@ -136,10 +206,14 @@ def test_backward_sde_conditional_mixture(test_setup, plot_if_enabled, integrato
 
     # Visualization
     space = jnp.linspace(-10, 10, 100)
-    plot_title = f"{integrator_class.__name__} (Timer: {timer_name}, Schedule: {schedule_name})"
+    plot_title = (
+        f"{integrator_class.__name__} (Timer: {timer_name}, Schedule: {schedule_name})"
+    )
 
     if test_setup["d"] == 1:
-        plot_if_enabled(lambda: display_trajectories(hist_position, 100, title=plot_title))
+        plot_if_enabled(
+            lambda: display_trajectories(hist_position, 100, title=plot_title)
+        )
         plot_if_enabled(
             lambda: display_trajectories_at_times(
                 hist_position,
@@ -148,13 +222,15 @@ def test_backward_sde_conditional_mixture(test_setup, plot_if_enabled, integrato
                 space,
                 perct,
                 lambda x, t: pdf(x, t_final - t),
-                title=plot_title
+                title=plot_title,
             )
         )
     elif test_setup["d"] == 2:
-        plot_if_enabled(lambda: plot_2d_mixture_and_samples(
-            posterior_state, hist_position, plot_title
-        ))
+        plot_if_enabled(
+            lambda: plot_2d_mixture_and_samples(
+                posterior_state, hist_position, plot_title
+            )
+        )
         plot_if_enabled(
             lambda: display_2d_trajectories_at_times(
                 hist_position,
@@ -162,7 +238,8 @@ def test_backward_sde_conditional_mixture(test_setup, plot_if_enabled, integrato
                 n_steps,
                 perct,
                 lambda x, t: pdf(x, t_final - t),
-                title=plot_title
+                title=plot_title,
+                sde=sde,
             )
         )
 
@@ -179,7 +256,6 @@ def test_backward_sde_conditional_mixture(test_setup, plot_if_enabled, integrato
     # assert wasserstein_distance < 0.1
     assert wasserstein_distance.item() < 0.1
 
-
     # # Validate distributions
     # validate_distributions(
     #     hist_position,
@@ -193,14 +269,20 @@ def test_backward_sde_conditional_mixture(test_setup, plot_if_enabled, integrato
     # )
 
 
-
-
-
 @pytest.mark.parametrize("schedule_name", ["LinearSchedule", "CosineSchedule"])
 @pytest.mark.parametrize("integrator_class,integrator_params", CONFIG["integrators"])
 @pytest.mark.parametrize("timer_name,timer_fn", CONFIG["timers"])
 @pytest.mark.parametrize("denoiser_class", CONFIG["cond_denoisers"])
-def test_backward_CondDenoisers(test_setup, plot_if_enabled, integrator_class, integrator_params, schedule_name, timer_name, timer_fn, denoiser_class):
+def test_backward_CondDenoisers(
+    test_setup,
+    plot_if_enabled,
+    integrator_class,
+    integrator_params,
+    schedule_name,
+    timer_name,
+    timer_fn,
+    denoiser_class,
+):
     # Unpack setup
     key = test_setup["key"]
     key_samples, key_meas, key_gen = jax.random.split(key, 3)
@@ -218,6 +300,9 @@ def test_backward_CondDenoisers(test_setup, plot_if_enabled, integrator_class, i
     sde = create_sde(schedule_name, t_final)
     timer = create_timer(timer_name, n_steps, t_final)
 
+    # Print schedule information (compact format)
+    print_detailed_schedule_info(sde, timer, n_steps, schedule_name, timer_name)
+
     # Generate observation
     x_star = sampler_mixtr(key_samples, mix_state, 1)[0]
     y = forward_model.measure(key_meas, x_star)
@@ -233,7 +318,7 @@ def test_backward_CondDenoisers(test_setup, plot_if_enabled, integrator_class, i
         sde=sde,
         score=score,
         forward_model=forward_model,
-        x0_shape=x_star.shape
+        x0_shape=x_star.shape,
     )
 
     # Create measurement state with mask
@@ -241,7 +326,9 @@ def test_backward_CondDenoisers(test_setup, plot_if_enabled, integrator_class, i
     measurement_state = MeasurementState(y=y, mask_history=mask)
 
     # Generate samples
-    state, hist_position = denoise.generate(key_gen, measurement_state, n_steps, n_samples)
+    state, hist_position = denoise.generate(
+        key_gen, measurement_state, n_steps, n_samples
+    )
     hist_position = hist_position.squeeze()
 
     # Visualization
@@ -249,7 +336,9 @@ def test_backward_CondDenoisers(test_setup, plot_if_enabled, integrator_class, i
     plot_title = f"{denoiser_class.__name__} (Integrator: {integrator_class.__name__}, Timer: {timer_name}, Schedule: {schedule_name})"
 
     if test_setup["d"] == 1:
-        plot_if_enabled(lambda: display_trajectories(hist_position, 100, title=plot_title))
+        plot_if_enabled(
+            lambda: display_trajectories(hist_position, 100, title=plot_title)
+        )
         plot_if_enabled(
             lambda: display_trajectories_at_times(
                 hist_position,
@@ -258,13 +347,15 @@ def test_backward_CondDenoisers(test_setup, plot_if_enabled, integrator_class, i
                 space,
                 perct,
                 lambda x, t: pdf(x, t_final - t),
-                title=plot_title
+                title=plot_title,
             )
         )
     elif test_setup["d"] == 2:
-        plot_if_enabled(lambda: plot_2d_mixture_and_samples(
-            posterior_state, hist_position, plot_title
-        ))
+        plot_if_enabled(
+            lambda: plot_2d_mixture_and_samples(
+                posterior_state, hist_position, plot_title
+            )
+        )
         print(hist_position.shape)
         plot_if_enabled(
             lambda: display_2d_trajectories_at_times(
@@ -273,7 +364,8 @@ def test_backward_CondDenoisers(test_setup, plot_if_enabled, integrator_class, i
                 n_steps,
                 perct,
                 lambda x, t: pdf(x, t_final - t),
-                title=plot_title
+                title=plot_title,
+                sde=sde,
             )
         )
 

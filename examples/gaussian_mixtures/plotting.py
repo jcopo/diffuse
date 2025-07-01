@@ -17,7 +17,7 @@ def display_histogram(samples, ax):
     percentiles = jnp.array([75, 25])
     q75, q25 = jnp.percentile(flat_samples, percentiles)
     iqr = q75 - q25
-    bin_width = 2 * iqr * (nb ** (-1/3))
+    bin_width = 2 * iqr * (nb ** (-1 / 3))
 
     h0, b = jnp.histogram(flat_samples, bins=nbins, range=[-xmax, xmax])
     h0 = h0 / nb * nbins / (2 * xmax)
@@ -43,16 +43,15 @@ def display_trajectories(Y, m, title=None):
     for i, idx in enumerate(I):
         color_marker = i / (m - 1)
         plt.plot(
-            Y[idx, :],
-            c=[color_marker, 0, 1 - color_marker],
-            alpha=0.3,
-            linewidth=0.5
+            Y[idx, :], c=[color_marker, 0, 1 - color_marker], alpha=0.3, linewidth=0.5
         )
     if title:
         plt.title(title)
 
 
-def display_trajectories_at_times(particles, timer, n_steps, space, perct, pdf, title=None):
+def display_trajectories_at_times(
+    particles, timer, n_steps, space, perct, pdf, title=None
+):
     """Display histograms vs theoretical PDFs at different time points."""
     n_plots = len(perct)
     fig, axs = plt.subplots(n_plots, 1, figsize=(10 * n_plots, n_plots))
@@ -61,7 +60,7 @@ def display_trajectories_at_times(particles, timer, n_steps, space, perct, pdf, 
 
     for i, x in enumerate(perct):
         k = int(x * n_steps)
-        t = timer(0) - timer(k+1)
+        t = timer(0) - timer(k + 1)
         display_histogram(particles[:, k], axs[i])
         axs[i].plot(space, jax.vmap(pdf, in_axes=(0, None))(space, t))
 
@@ -80,12 +79,20 @@ def plot_2d_mixture_and_samples(mixture_state, final_samples, title):
 
     # plot whole trajectory for 100 particles randomly selected with different colors
     # colors depends on the last position of the particle
-    idxs = jax.random.choice(jax.random.PRNGKey(0), final_samples.shape[0], (10,), replace=False)
+    idxs = jax.random.choice(
+        jax.random.PRNGKey(0), final_samples.shape[0], (10,), replace=False
+    )
     sorted_idxs = jnp.argsort(final_samples[-1, idxs, 0])
     for i in sorted_idxs:
         color_marker = i / (sorted_idxs.shape[0] - 1)
-        plt.plot(final_samples[::10, i, 0], final_samples[::10, i, 1], '-o',
-                 alpha=0.6, linewidth=1, c=[float(color_marker), 0, float(1 - color_marker)])
+        plt.plot(
+            final_samples[::10, i, 0],
+            final_samples[::10, i, 1],
+            "-o",
+            alpha=0.6,
+            linewidth=1,
+            c=[float(color_marker), 0, float(1 - color_marker)],
+        )
 
     # Determine plot range based on samples
     sample_range = jnp.max(jnp.abs(final_samples)) * 1.2
@@ -99,12 +106,11 @@ def plot_2d_mixture_and_samples(mixture_state, final_samples, title):
     pdf_grid = pdf_values.reshape(X.shape)
 
     # Plot contours of theoretical distribution
-    plt.contour(X, Y, pdf_grid, levels=10, colors='blue', alpha=0.6, linewidths=1.5)
-
+    plt.contour(X, Y, pdf_grid, levels=10, colors="blue", alpha=0.6, linewidths=1.5)
 
     plt.title(title)
     plt.legend()
-    plt.axis('equal')
+    plt.axis("equal")
     plt.grid(True, alpha=0.3)
 
     # Save plot if title is provided
@@ -122,8 +128,9 @@ def plot_2d_mixture_and_samples(mixture_state, final_samples, title):
     #     print(f"Plot saved to: {filepath}")
 
 
-
-def display_2d_trajectories_at_times(particles, timer, n_steps, perct, pdf, title=None, score=None):
+def display_2d_trajectories_at_times(
+    particles, timer, n_steps, perct, pdf, title=None, score=None, sde=None
+):
     """
     Display 2D particle evolution at different time points in a single horizontal line.
     Shows samples as scatter plots overlaid on theoretical PDF contours and score field.
@@ -136,6 +143,7 @@ def display_2d_trajectories_at_times(particles, timer, n_steps, perct, pdf, titl
         pdf: PDF function that takes (x, t)
         title: Optional title for the plot
         score: Optional score function that takes (x, t) and returns gradient
+        sde: Optional SDE object to compute alpha values
     """
     n_plots = len(perct)
 
@@ -156,7 +164,7 @@ def display_2d_trajectories_at_times(particles, timer, n_steps, perct, pdf, titl
         ax = axes[i]
 
         k = int(x * n_steps)
-        t = timer(0) - timer(k+1)
+        t = timer(0) - timer(k + 1)
         samples_at_t = particles[k, :]  # Shape: (n_particles, 2)
 
         # Create grid for contours
@@ -170,7 +178,7 @@ def display_2d_trajectories_at_times(particles, timer, n_steps, perct, pdf, titl
         pdf_grid = pdf_values.reshape(X.shape)
 
         # Plot contours
-        ax.contour(X, Y, pdf_grid, levels=8, colors='blue', alpha=0.6, linewidths=1)
+        ax.contour(X, Y, pdf_grid, levels=8, colors="blue", alpha=0.6, linewidths=1)
 
         # Plot score field if provided
         if score is not None:
@@ -186,19 +194,39 @@ def display_2d_trajectories_at_times(particles, timer, n_steps, perct, pdf, titl
             score_y = score_vectors[:, 1].reshape(X_coarse.shape)
 
             # Plot score field as arrows
-            ax.quiver(X_coarse, Y_coarse, score_x, score_y,
-                     alpha=0.4, scale=50, width=0.003, color='green',
-                     label='Score field' if i == 0 else "")
+            ax.quiver(
+                X_coarse,
+                Y_coarse,
+                score_x,
+                score_y,
+                alpha=0.4,
+                scale=50,
+                width=0.003,
+                color="green",
+                label="Score field" if i == 0 else "",
+            )
 
         # Plot samples
-        ax.scatter(samples_at_t[:, 0], samples_at_t[:, 1],
-                  alpha=0.7, s=12, c='red', label='Samples' if i == 0 else "", zorder=-1)
+        ax.scatter(
+            samples_at_t[:, 0],
+            samples_at_t[:, 1],
+            alpha=0.7,
+            s=12,
+            c="red",
+            label="Samples" if i == 0 else "",
+            zorder=-1,
+        )
 
         ax.set_xlim(-sample_range, sample_range)
         ax.set_ylim(-sample_range, sample_range)
-        ax.set_aspect('equal')
-        ax.axis('off')  # Remove axes and grid
-        ax.set_title(f't = {t:.2f}, step {k}', fontsize=8)
+        ax.set_aspect("equal")
+        ax.axis("off")  # Remove axes and grid
+
+        # Compute alpha if SDE is provided
+        alpha_t, _ = sde.alpha_beta(t)
+        ax.set_title(
+            f"t = {t:.2f}, step {k}, α = {alpha_t:.3f}".replace("0.", "."), fontsize=8
+        )
 
         if i == 0:  # Add legend to first subplot
             ax.legend()
@@ -212,9 +240,11 @@ def display_2d_trajectories_at_times(particles, timer, n_steps, perct, pdf, titl
         os.makedirs(plots_dir, exist_ok=True)
 
         # Create safe filename from title
-        safe_filename = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        safe_filename = safe_filename.replace(' ', '_')
+        safe_filename = "".join(
+            c for c in title if c.isalnum() or c in (" ", "-", "_")
+        ).rstrip()
+        safe_filename = safe_filename.replace(" ", "_")
         filepath = os.path.join(plots_dir, f"{safe_filename}_2d_evolution.png")
 
-        plt.savefig(filepath, dpi=300, bbox_inches='tight')
+        plt.savefig(filepath, dpi=300, bbox_inches="tight")
         print(f"Plot saved to: {filepath}")
