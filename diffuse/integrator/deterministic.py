@@ -38,7 +38,9 @@ class EulerIntegrator(ChurnedIntegrator):
 
         t_next = self.timer(step + 1)
         dt = t_next - t_churned
-        beta_churned = self.sde.alpha_beta(t_churned)[1]
+        noise_level_churned = self.sde.noise_level(t_churned)
+        alpha_churned = 1 - noise_level_churned
+        beta_churned = self.sde.beta(t_churned)
         drift = -0.5 * beta_churned * (position_churned + score(position_churned, t_churned))
         dx = drift * dt
         _, rng_key_next = jax.random.split(rng_key)
@@ -78,7 +80,9 @@ class HeunIntegrator(ChurnedIntegrator):
 
         t_next = self.timer(step + 1)
         dt = t_next - t_churned
-        beta_churned = self.sde.alpha_beta(t_churned)[1]
+        noise_level_churned = self.sde.noise_level(t_churned)
+        alpha_churned = 1 - noise_level_churned
+        beta_churned = self.sde.beta(t_churned)
         drift_churned = -0.5 * beta_churned * (position_churned + score(position_churned, t_churned))
         position_next_churned = position_churned + drift_churned * dt
 
@@ -125,11 +129,12 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
         t_next = self.timer(step + 1)
         t_mid = (t_churned + t_next) / 2
 
-        alpha_churned, alpha_next, alpha_mid = (
-            self.sde.alpha_beta(t_churned)[0],
-            self.sde.alpha_beta(t_next)[0],
-            self.sde.alpha_beta(t_mid)[0],
-        )
+        noise_level_churned = self.sde.noise_level(t_churned)
+        noise_level_next = self.sde.noise_level(t_next)
+        noise_level_mid = self.sde.noise_level(t_mid)
+        alpha_churned = 1 - noise_level_churned
+        alpha_next = 1 - noise_level_next
+        alpha_mid = 1 - noise_level_mid
 
         sigma_churned, sigma_next, sigma_mid = (
             jnp.sqrt(1 - alpha_churned),
@@ -213,8 +218,10 @@ class DDIMIntegrator(ChurnedIntegrator):
 
         t_next = self.timer(step + 1)
 
-        alpha_churned = self.sde.alpha_beta(t_churned)[0]
-        alpha_next = self.sde.alpha_beta(t_next)[0]
+        noise_level_churned = self.sde.noise_level(t_churned)
+        noise_level_next = self.sde.noise_level(t_next)
+        alpha_churned = 1 - noise_level_churned
+        alpha_next = 1 - noise_level_next
 
         eps = noise_pred(position_churned, t_churned)
 

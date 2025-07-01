@@ -102,47 +102,6 @@ def validate_distributions(position, timer, n_steps, perct, cdf, key=None, metho
         assert p_value > 0.01, error_msg
 
 
-def print_detailed_schedule_info(sde, timer, n_steps, schedule_name, timer_name, verbose=False):
-    """Print detailed schedule information with optional verbose output"""
-    print(f"\nSchedule Information:")
-    print(f"Timer: {timer_name}, Schedule: {schedule_name}")
-    print("-" * 80)
-
-    # Key time points to examine
-    key_steps = [0, n_steps // 4, n_steps // 2, 3 * n_steps // 4, n_steps]
-
-    if verbose:
-        # Detailed table format
-        print(f"{'Step':<6} {'Time':<12} {'Beta':<12} {'Alpha':<12} {'1-Alpha':<12}")
-        print("-" * 80)
-
-        for step in key_steps:
-            time = timer(step)
-            alpha, beta = sde.alpha_beta(time)
-            print(f"{step:<6} {time:<12.6f} {beta:<12.6f} {alpha:<12.6f} {1 - alpha:<12.6f}")
-    else:
-        # Compact format (original)
-        print(f"Timer times:")
-        print(f"  Initial time (step 0): {timer(0):.6f}")
-        print(f"  Middle time (step {n_steps // 2}): {timer(n_steps // 2):.6f}")
-        print(f"  Final time (step {n_steps}): {timer(n_steps):.6f}")
-
-        print(f"\nSDE noise levels ({schedule_name}):")
-        print(f"  Initial noise (t={timer(0):.6f}): β={sde.beta(timer(0)):.6f}")
-        print(f"  Middle noise (t={timer(n_steps // 2):.6f}): β={sde.beta(timer(n_steps // 2)):.6f}")
-        print(f"  Final noise (t={timer(n_steps):.6f}): β={sde.beta(timer(n_steps)):.6f}")
-
-        print(f"\nSDE alpha values ({schedule_name}):")
-        alpha_0, _ = sde.alpha_beta(timer(0))
-        alpha_mid, _ = sde.alpha_beta(timer(n_steps // 2))
-        alpha_final, _ = sde.alpha_beta(timer(n_steps))
-
-        print(f"  Initial alpha (t={timer(0):.6f}): α={alpha_0:.6f}")
-        print(f"  Middle alpha (t={timer(n_steps // 2):.6f}): α={alpha_mid:.6f}")
-        print(f"  Final alpha (t={timer(n_steps):.6f}): α={alpha_final:.6f}")
-
-    print("-" * 80)
-
 
 @pytest.mark.parametrize("schedule_name", ["LinearSchedule", "CosineSchedule"])
 @pytest.mark.parametrize("integrator_class,integrator_params", CONFIG["integrators"])
@@ -173,8 +132,6 @@ def test_backward_sde_conditional_mixture(
     sde = create_sde(schedule_name, t_final)
     timer = create_timer(timer_name, n_steps, t_final)
 
-    # Print schedule information (compact format)
-    print_detailed_schedule_info(sde, timer, n_steps, schedule_name, timer_name)
 
     # Generate observation
     x_star = sampler_mixtr(key_samples, mix_state, 1)[0]
@@ -279,9 +236,6 @@ def test_backward_CondDenoisers(
     # Create SDE and timer
     sde = create_sde(schedule_name, t_final)
     timer = create_timer(timer_name, n_steps, t_final)
-
-    # Print schedule information (compact format)
-    print_detailed_schedule_info(sde, timer, n_steps, schedule_name, timer_name)
 
     # Generate observation
     x_star = sampler_mixtr(key_samples, mix_state, 1)[0]

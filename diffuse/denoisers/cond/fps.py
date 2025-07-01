@@ -31,7 +31,8 @@ class FPSDenoiser(CondDenoiser):
             y_t = self.y_noiser(rng_key, t, measurement_state).position
 
             # Compute guidance term
-            alpha_t, _ = self.sde.alpha_beta(t)
+            noise_level = self.sde.noise_level(t)
+            alpha_t = 1 - noise_level
             y_pred = self.forward_model.apply(x, measurement_state)
             residual = y_t - y_pred
             guidance_term = self.forward_model.restore(residual, measurement_state) / (self.forward_model.std * alpha_t)
@@ -49,7 +50,8 @@ class FPSDenoiser(CondDenoiser):
         Generate y^{(t)} = \sqrt{\bar{\alpha}_t} y + \sqrt{1-\bar{\alpha}_t} A_\xi \epsilon
         """
         y_0 = measurement_state.y
-        alpha, _ = self.sde.alpha_beta(t)
+        noise_level = self.sde.noise_level(t)
+        alpha = 1 - noise_level
 
         # Noise y_t as the mean to keep deterministic sampling methods deterministic
         # rndm = jax.random.normal(key, y_0.shape)
@@ -84,7 +86,8 @@ class FPSDenoiser(CondDenoiser):
         rng_key, rng_key_resample = jax.random.split(rng_key)
 
         t = self.integrator.timer(state_next.integrator_state.step)
-        alpha_t, _ = self.sde.alpha_beta(t)
+        noise_level = self.sde.noise_level(t)
+        alpha_t = 1 - noise_level
 
         y_t = self.y_noiser(rng_key, t, measurement_state).position
         f_x_t = jax.vmap(self.forward_model.apply, in_axes=(0, None))(x_t, measurement_state)

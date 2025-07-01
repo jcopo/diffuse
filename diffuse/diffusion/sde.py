@@ -110,7 +110,7 @@ class CosineSchedule(Schedule):
 
 class DiffusionModel(ABC):
     @abstractmethod
-    def alpha_beta(self, t: float) -> Tuple[float, float]:
+    def noise_level(self, t: float) -> float:
         pass
 
     def score(self, state: SDEState, state_0: SDEState) -> Array:
@@ -119,17 +119,19 @@ class DiffusionModel(ABC):
         """
         x, t = state.position, state.t
         x0, t0 = state_0.position, state_0.t
-        alpha_t, _ = self.alpha_beta(t)
+        noise_level = self.noise_level(t)
+        alpha_t = 1 - noise_level
 
-        return -(x - jnp.sqrt(alpha_t) * x0) / (1 - alpha_t)
+        return -(x - jnp.sqrt(alpha_t) * x0) / noise_level
 
     def tweedie(self, state: SDEState, score_fn: Callable) -> SDEState:
         """
         Tweedie's formula to compute E[x_t | x_0]
         """
         x, t = state.position, state.t
-        alpha_t, _ = self.alpha_beta(t)
-        return SDEState((x + (1 - alpha_t) * score_fn(x, t)) / jnp.sqrt(alpha_t), 0.0)
+        noise_level = self.noise_level(t)
+        alpha_t = 1 - noise_level
+        return SDEState((x + noise_level * score_fn(x, t)) / jnp.sqrt(alpha_t), 0.0)
 
     def path(
         self, key: PRNGKeyArray, state: SDEState, ts: Array, return_noise: bool = False
@@ -138,25 +140,26 @@ class DiffusionModel(ABC):
         Samples x_t | x_0 ~ N(sqrt(alpha_t) * x_0, (1 - alpha_t) * I)
         """
         x = state.position
-        alpha_t, _ = self.alpha_beta(ts)
+        noise_level = self.noise_level(ts)
+        alpha_t = 1 - noise_level
 
         noise = jax.random.normal(key, x.shape)
-        res = jnp.sqrt(alpha_t) * x + jnp.sqrt(1 - alpha_t) * noise
+        res = jnp.sqrt(alpha_t) * x + jnp.sqrt(noise_level) * noise
         return (SDEState(res, ts), noise) if return_noise else SDEState(res, ts)
 
     def score_to_noise(self, score_fn: Callable) -> Callable:
         def noise_fn(x: Array, t: Array) -> Array:
-            alpha_t, _ = self.alpha_beta(t)
+            noise_level = self.noise_level(t)
             score = score_fn(x, t)
-            return -jnp.sqrt(1 - alpha_t) * score
+            return -jnp.sqrt(noise_level) * score
 
         return noise_fn
 
     def noise_to_score(self, noise_fn: Callable) -> Callable:
         def score_fn(x: Array, t: Array) -> Array:
-            alpha_t, _ = self.alpha_beta(t)
+            noise_level = self.noise_level(t)
             noise = noise_fn(x, t)
-            return -noise / (jnp.sqrt(1 - alpha_t) + 1e-6)
+            return -noise / (jnp.sqrt(noise_level) + 1e-6)
 
         return score_fn
 
@@ -170,18 +173,18 @@ class SDE(DiffusionModel):
     beta: Schedule
     tf: float
 
-    def alpha_beta(self, t: float) -> Tuple[float, float]:
-        """Compute noise schedule parameters for diffusion process.
+    def noise_level(self, t: float) -> float:
+        """Compute noise level for diffusion process.
 
         For a diffusion process dX(t) = -0.5 β(t)X(t)dt + √β(t)dW(t):
-        - α(t) = exp(-∫β(s)ds)
-        - β(t) is the noise schedule that controls the diffusion rate
+        - α(t) = exp(-∫β(s)ds) is the signal preservation ratio
+        - noise_level = 1 - α(t) is the noise variance
 
         Solution: X(t) = √α(t) * X₀ + √(1-α(t)) * ε, where ε ~ N(0,I)
 
         Returns:
-            Tuple of (α(t), β(t)) with α(t) clipped to [0.001, 0.9999] for numerical stability
+            Noise level (1 - α(t)) clipped for numerical stability
         """
         alpha = jnp.exp(-self.beta.integrate(t, 0.0))
-        beta = self.beta(t)
-        return jnp.clip(alpha, 0.001, 0.9999), beta
+        alpha = jnp.clip(alpha, 0.001, 0.9999)
+        return 1 - alpha
