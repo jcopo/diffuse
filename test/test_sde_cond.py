@@ -224,7 +224,7 @@ def test_backward_CondDenoisers(test_setup, plot_if_enabled, integrator_class, i
 
     # Compute theoretical posterior and score functions
     posterior_state = compute_posterior(mix_state, y, A, sigma_y)
-    pdf, cdf, score = create_score_functions(mix_state, sde)
+    pdf, cdf, score = create_score_functions(posterior_state, sde)
 
     # Setup denoising process with timer and integrator parameters
     integrator = integrator_class(sde=sde, timer=timer, **integrator_params)

@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
+import os
 
 from examples.gaussian_mixtures.mixture import pdf_mixtr
 
@@ -105,12 +106,26 @@ def plot_2d_mixture_and_samples(mixture_state, final_samples, title):
     plt.legend()
     plt.axis('equal')
     plt.grid(True, alpha=0.3)
-    plt.show()
+
+    # Save plot if title is provided
+    # if title:
+    #     # Create plots directory if it doesn't exist
+    #     plots_dir = "plots"
+    #     os.makedirs(plots_dir, exist_ok=True)
+
+    #     # Create safe filename from title
+    #     safe_filename = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
+    #     safe_filename = safe_filename.replace(' ', '_')
+    #     filepath = os.path.join(plots_dir, f"{safe_filename}_2d_final.png")
+
+    #     plt.savefig(filepath, dpi=300, bbox_inches='tight')
+    #     print(f"Plot saved to: {filepath}")
+
 
 
 def display_2d_trajectories_at_times(particles, timer, n_steps, perct, pdf, title=None, score=None):
     """
-    Display 2D particle evolution at different time points.
+    Display 2D particle evolution at different time points in a single horizontal line.
     Shows samples as scatter plots overlaid on theoretical PDF contours and score field.
 
     Args:
@@ -123,17 +138,14 @@ def display_2d_trajectories_at_times(particles, timer, n_steps, perct, pdf, titl
         score: Optional score function that takes (x, t) and returns gradient
     """
     n_plots = len(perct)
-    cols = min(3, n_plots)  # Max 3 columns
-    rows = (n_plots + cols - 1) // cols
 
-    fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows))
+    # Single row layout
+    fig, axes = plt.subplots(1, n_plots, figsize=(4 * n_plots, 4))
     if title:
-        fig.suptitle(title, fontsize=16)
+        fig.suptitle(title, y=0.98, fontsize=12)
 
-    # Ensure axes is always 2D array
+    # Ensure axes is always an array
     if n_plots == 1:
-        axes = [[axes]]
-    elif rows == 1:
         axes = [axes]
 
     # Determine overall plot range from all time points
@@ -141,9 +153,7 @@ def display_2d_trajectories_at_times(particles, timer, n_steps, perct, pdf, titl
     sample_range = jnp.max(jnp.abs(all_samples)) * 1.1
 
     for i, x in enumerate(perct):
-        row = i // cols
-        col = i % cols
-        ax = axes[row][col] if rows > 1 else axes[col]
+        ax = axes[i]
 
         k = int(x * n_steps)
         t = timer(0) - timer(k+1)
@@ -182,23 +192,29 @@ def display_2d_trajectories_at_times(particles, timer, n_steps, perct, pdf, titl
 
         # Plot samples
         ax.scatter(samples_at_t[:, 0], samples_at_t[:, 1],
-                  alpha=0.5, s=7, c='red', label='Samples' if i == 0 else "", zorder=-1)
+                  alpha=0.7, s=12, c='red', label='Samples' if i == 0 else "", zorder=-1)
 
         ax.set_xlim(-sample_range, sample_range)
         ax.set_ylim(-sample_range, sample_range)
         ax.set_aspect('equal')
-        ax.grid(True, alpha=0.3)
-        ax.set_title(f't = {t:.2f} (step {k})')
+        ax.axis('off')  # Remove axes and grid
+        ax.set_title(f't = {t:.2f}, step {k}', fontsize=8)
 
         if i == 0:  # Add legend to first subplot
             ax.legend()
 
-    # Hide unused subplots
-    for i in range(n_plots, rows * cols):
-        row = i // cols
-        col = i % cols
-        ax = axes[row][col] if rows > 1 else axes[col]
-        ax.set_visible(False)
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
 
-    plt.tight_layout()
-    plt.show()
+    # Save plot if title is provided
+    if title:
+        # Create plots directory if it doesn't exist
+        plots_dir = "plots"
+        os.makedirs(plots_dir, exist_ok=True)
+
+        # Create safe filename from title
+        safe_filename = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        safe_filename = safe_filename.replace(' ', '_')
+        filepath = os.path.join(plots_dir, f"{safe_filename}_2d_evolution.png")
+
+        plt.savefig(filepath, dpi=300, bbox_inches='tight')
+        print(f"Plot saved to: {filepath}")
