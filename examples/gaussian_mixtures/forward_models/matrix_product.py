@@ -26,7 +26,8 @@ class MatrixProduct:
         Returns:
             Array: Result of measuring the output of the forward model.
         """
-        return self.A @ x + jax.random.normal(key, shape=x.shape) * self.std
+        _y = self.A @ x
+        return _y + jax.random.normal(key, shape=_y.shape) * self.std
 
     def apply(self, x: Array, *args) -> Array:
         """

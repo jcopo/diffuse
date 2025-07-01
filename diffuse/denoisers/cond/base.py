@@ -29,6 +29,7 @@ class CondDenoiser(BaseDenoiser):
     sde: SDE
     score: Callable[[Array, float], Array]
     forward_model: ForwardModel
+    x0_shape: Tuple[int, ...]
     resample: Optional[bool] = False
     ess_low: Optional[float] = 0.2
     ess_high: Optional[float] = 0.5
@@ -61,7 +62,7 @@ class CondDenoiser(BaseDenoiser):
     ):
         rng_key, rng_key_start = jax.random.split(rng_key)
         rndm_start = jax.random.normal(
-            rng_key_start, (n_particles, *measurement_state.y.shape)
+            rng_key_start, (n_particles, *self.x0_shape)
         )
 
         keys = jax.random.split(rng_key, n_particles)

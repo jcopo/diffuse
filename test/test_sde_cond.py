@@ -1,10 +1,8 @@
 from collections import defaultdict
 from functools import partial
-from test.test_sde_mixture import display_trajectories_at_times
 
 import jax
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
 import numpy as np
 import ott
 import pytest
@@ -13,79 +11,23 @@ import scipy as sp
 from diffuse.base_forward_model import MeasurementState
 from diffuse.denoisers.cond import CondDenoiser, DPSDenoiser, FPSDenoiser, TMPDenoiser
 from diffuse.denoisers.denoiser import Denoiser
-from diffuse.diffusion.sde import SDE, CosineSchedule, LinearSchedule
-from diffuse.integrator.deterministic import (
-    DDIMIntegrator,
-    DPMpp2sIntegrator,
-    EulerIntegrator,
-    HeunIntegrator,
-)
-from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
-from diffuse.timer.base import DDIMTimer, HeunTimer, VpTimer
 from examples.gaussian_mixtures.cond_mixture import (
     compute_posterior,
     compute_xt_given_y,
-    init_gaussian_mixture,
 )
-from examples.gaussian_mixtures.forward_models.matrix_product import MatrixProduct
 from examples.gaussian_mixtures.mixture import (
     cdf_mixtr,
-    display_trajectories,
     pdf_mixtr,
     sampler_mixtr,
 )
+from examples.gaussian_mixtures.plotting import (
+    display_trajectories,
+    display_trajectories_at_times,
+    plot_2d_mixture_and_samples,
+    display_2d_trajectories_at_times,
+)
+from examples.gaussian_mixtures.test_config import CONFIG, create_basic_setup, create_sde, create_timer
 
-# Global configurations
-CONFIG = {
-    "schedules": {
-        "LinearSchedule": {
-            "params": {"b_min": 0.02, "b_max": 5.0, "t0": 0.0, "T": 1.0},
-            "class": LinearSchedule
-        },
-        "CosineSchedule": {
-            "params": {"b_min": 0.1, "b_max": 20.0, "t0": 0.0, "T": 1.0},
-            "class": CosineSchedule
-        }
-    },
-    "integrators": [
-        (EulerMaruyamaIntegrator, {}),
-        (DDIMIntegrator, {}),
-        (DDIMIntegrator, {"stochastic_churn_rate": 0., "churn_min": 0., "churn_max": 0., "noise_inflation_factor": 1.0001}),
-        (HeunIntegrator, {
-            "stochastic_churn_rate": 1.0,
-            "churn_min": 0.5,
-            "churn_max": 2.0,
-            "noise_inflation_factor": 1.0001
-        }),
-        (DPMpp2sIntegrator, {
-            "stochastic_churn_rate": 1.0,
-            "churn_min": 0.5,
-            "churn_max": 2.0,
-            "noise_inflation_factor": 1.0001
-        }),
-        (EulerIntegrator, {
-            "stochastic_churn_rate": 0.0
-        })
-    ],
-    "timers": [
-        ("vp", lambda n_steps, t_final: VpTimer(n_steps=n_steps, eps=0.001, tf=t_final)),
-        ("heun", lambda n_steps, t_final: HeunTimer(n_steps=n_steps, rho=7.0, sigma_min=0.002, sigma_max=1.0)),
-    ],
-    "space": {
-        "t_init": 0.0,
-        "t_final": 1.0,
-        "n_samples": 3000,
-        "n_steps": 300,
-        "d": 1,  # dimensionality
-        "sigma_y": .1  # observation noise
-    },
-    "percentiles": [0.0, 0.05, 0.1, 0.3, 0.6, 0.7, 0.73, 0.75, 0.8, 0.9],
-    "cond_denoisers": [
-        DPSDenoiser,
-        TMPDenoiser,
-        FPSDenoiser
-    ]
-}
 
 # Simple dict to store results
 wasserstein_results = defaultdict(list)
@@ -98,7 +40,7 @@ def collect_wasserstein():
     # At the end of all tests, print summary
     if wasserstein_results:
         print("\nWasserstein Distance Summary:")
-        print("-" * 80)  # Increased width for longer keys
+        print("-" * 80)
         print(f"{'Configuration':<50} {'Distances':<10}")
         print("-" * 80)
         for config, distances in wasserstein_results.items():
@@ -107,34 +49,7 @@ def collect_wasserstein():
 @pytest.fixture
 def test_setup():
     """Single fixture that provides all necessary test configuration and objects"""
-    key = jax.random.PRNGKey(42)
-    space_config = CONFIG["space"]
-
-    # Initialize the Gaussian mixture prior
-    mix_state = init_gaussian_mixture(key, space_config["d"])
-
-    def create_sde(schedule_name):
-        schedule_config = CONFIG["schedules"][schedule_name]
-        params = schedule_config["params"].copy()
-        params["T"] = space_config["t_final"]
-        beta = schedule_config["class"](**params)
-        return SDE(beta=beta, tf=space_config["t_final"])
-
-    # Create observation setup
-    key_meas, key_obs = jax.random.split(key)
-    A = jax.random.normal(key_obs, (1, space_config["d"]))
-    forward_model = MatrixProduct(A=A, std=space_config["sigma_y"])
-
-    return {
-        "key": key,
-        "key_meas": key_meas,
-        "mix_state": mix_state,
-        "forward_model": forward_model,
-        "A": A,
-        "create_sde": create_sde,
-        "perct": CONFIG["percentiles"],
-        **space_config
-    }
+    return create_basic_setup()
 
 def create_score_functions(posterior_state, sde):
     """Helper to create pdf, cdf and score functions for the posterior"""
@@ -183,7 +98,7 @@ def validate_distributions(position, timer, n_steps, perct, cdf, key=None, metho
 def test_backward_sde_conditional_mixture(test_setup, plot_if_enabled, integrator_class, integrator_params, schedule_name, timer_name, timer_fn):
     # Unpack setup
     key = test_setup["key"]
-    key_meas = test_setup["key_meas"]
+    key_samples, key_meas, key_gen = jax.random.split(key, 3)
     mix_state = test_setup["mix_state"]
     forward_model = test_setup["forward_model"]
     A = test_setup["A"]
@@ -194,16 +109,13 @@ def test_backward_sde_conditional_mixture(test_setup, plot_if_enabled, integrato
     sigma_y = test_setup["sigma_y"]
     perct = test_setup["perct"]
 
-    # Create SDE
-    sde = test_setup["create_sde"](schedule_name)
-
-    # Create timer
-    timer = timer_fn(n_steps, t_final)
+    # Create SDE and timer
+    sde = create_sde(schedule_name, t_final)
+    timer = create_timer(timer_name, n_steps, t_final)
 
     # Generate observation
-    key_samples = jax.random.split(key_meas)[0]
     x_star = sampler_mixtr(key_samples, mix_state, 1)[0]
-    y = forward_model.measure(key_meas, None, x_star)
+    y = forward_model.measure(key_meas, x_star)
 
     # Compute theoretical posterior and score functions
     posterior_state = compute_posterior(mix_state, y, A, sigma_y)
@@ -219,26 +131,40 @@ def test_backward_sde_conditional_mixture(test_setup, plot_if_enabled, integrato
     )
 
     # Generate samples
-    key_gen = jax.random.split(key_samples)[0]
     state, hist_position = denoise.generate(key_gen, n_steps, n_samples)
-    hist_position = hist_position.squeeze().T
+    hist_position = hist_position.squeeze()
 
     # Visualization
     space = jnp.linspace(-10, 10, 100)
     plot_title = f"{integrator_class.__name__} (Timer: {timer_name}, Schedule: {schedule_name})"
 
-    plot_if_enabled(lambda: display_trajectories(hist_position, 100, title=plot_title))
-    plot_if_enabled(
-        lambda: display_trajectories_at_times(
-            hist_position,
-            timer,
-            n_steps,
-            space,
-            perct,
-            lambda x, t: pdf(x, t_final - t),
-            title=plot_title
+    if test_setup["d"] == 1:
+        plot_if_enabled(lambda: display_trajectories(hist_position, 100, title=plot_title))
+        plot_if_enabled(
+            lambda: display_trajectories_at_times(
+                hist_position,
+                timer,
+                n_steps,
+                space,
+                perct,
+                lambda x, t: pdf(x, t_final - t),
+                title=plot_title
+            )
         )
-    )
+    elif test_setup["d"] == 2:
+        plot_if_enabled(lambda: plot_2d_mixture_and_samples(
+            posterior_state, hist_position, plot_title
+        ))
+        plot_if_enabled(
+            lambda: display_2d_trajectories_at_times(
+                hist_position,
+                timer,
+                n_steps,
+                perct,
+                lambda x, t: pdf(x, t_final - t),
+                title=plot_title
+            )
+        )
 
     # Compute Wasserstein distance
     wasserstein_distance, _ = ott.tools.sliced.sliced_wasserstein(
@@ -277,7 +203,7 @@ def test_backward_sde_conditional_mixture(test_setup, plot_if_enabled, integrato
 def test_backward_CondDenoisers(test_setup, plot_if_enabled, integrator_class, integrator_params, schedule_name, timer_name, timer_fn, denoiser_class):
     # Unpack setup
     key = test_setup["key"]
-    key_meas = test_setup["key_meas"]
+    key_samples, key_meas, key_gen = jax.random.split(key, 3)
     mix_state = test_setup["mix_state"]
     forward_model = test_setup["forward_model"]
     A = test_setup["A"]
@@ -288,14 +214,11 @@ def test_backward_CondDenoisers(test_setup, plot_if_enabled, integrator_class, i
     sigma_y = test_setup["sigma_y"]
     perct = test_setup["perct"]
 
-    # Create SDE
-    sde = test_setup["create_sde"](schedule_name)
-
-    # Create timer
-    timer = timer_fn(n_steps, t_final)
+    # Create SDE and timer
+    sde = create_sde(schedule_name, t_final)
+    timer = create_timer(timer_name, n_steps, t_final)
 
     # Generate observation
-    key_samples = jax.random.split(key_meas)[0]
     x_star = sampler_mixtr(key_samples, mix_state, 1)[0]
     y = forward_model.measure(key_meas, x_star)
 
@@ -309,7 +232,8 @@ def test_backward_CondDenoisers(test_setup, plot_if_enabled, integrator_class, i
         integrator=integrator,
         sde=sde,
         score=score,
-        forward_model=forward_model
+        forward_model=forward_model,
+        x0_shape=x_star.shape
     )
 
     # Create measurement state with mask
@@ -317,26 +241,41 @@ def test_backward_CondDenoisers(test_setup, plot_if_enabled, integrator_class, i
     measurement_state = MeasurementState(y=y, mask_history=mask)
 
     # Generate samples
-    key_gen = jax.random.split(key_samples)[0]
     state, hist_position = denoise.generate(key_gen, measurement_state, n_steps, n_samples)
-    hist_position = hist_position.squeeze().T
+    hist_position = hist_position.squeeze()
 
     # Visualization
     space = jnp.linspace(-10, 10, 100)
     plot_title = f"{denoiser_class.__name__} (Integrator: {integrator_class.__name__}, Timer: {timer_name}, Schedule: {schedule_name})"
 
-    plot_if_enabled(lambda: display_trajectories(hist_position, 100, title=plot_title))
-    plot_if_enabled(
-        lambda: display_trajectories_at_times(
-            hist_position,
-            timer,
-            n_steps,
-            space,
-            perct,
-            lambda x, t: pdf(x, t_final - t),
-            title=plot_title
+    if test_setup["d"] == 1:
+        plot_if_enabled(lambda: display_trajectories(hist_position, 100, title=plot_title))
+        plot_if_enabled(
+            lambda: display_trajectories_at_times(
+                hist_position,
+                timer,
+                n_steps,
+                space,
+                perct,
+                lambda x, t: pdf(x, t_final - t),
+                title=plot_title
+            )
         )
-    )
+    elif test_setup["d"] == 2:
+        plot_if_enabled(lambda: plot_2d_mixture_and_samples(
+            posterior_state, hist_position, plot_title
+        ))
+        print(hist_position.shape)
+        plot_if_enabled(
+            lambda: display_2d_trajectories_at_times(
+                hist_position,
+                timer,
+                n_steps,
+                perct,
+                lambda x, t: pdf(x, t_final - t),
+                title=plot_title
+            )
+        )
 
     # Compute Wasserstein distance
     wasserstein_distance, _ = ott.tools.sliced.sliced_wasserstein(

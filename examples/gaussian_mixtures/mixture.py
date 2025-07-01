@@ -89,15 +89,6 @@ def cdf_t(x: Array, t: Array, init_mix_state: MixState, sde: SDE) -> Array:
     return cdf_mixtr(MixState(means, covs, weights), x)
 
 
-def init_mixture(key, d=1):
-    n_mixt = 3
-    means = jax.random.uniform(key, (n_mixt, d), minval=-3, maxval=3)
-    chol = jax.random.normal(key + 1, (n_mixt, d, d))
-    covs = 0.1 * (chol @ chol.transpose(0, 2, 1))
-    mix_weights = jax.random.uniform(key + 2, (n_mixt,))
-    mix_weights /= jnp.sum(mix_weights)
-
-    return MixState(means, covs, mix_weights)
 
 
 def sampler_mixtr(key, state: MixState, N):
@@ -132,44 +123,3 @@ def transform_mixture_params(state, sde, t):
     return means, covs, weights
 
 
-def display_histogram(samples, ax):
-    flat_samples = samples.flatten()
-    nb = flat_samples.shape[0]
-    xmax = jnp.max(jnp.abs(samples))
-
-    # Freedman-Diaconis rule
-    # bin width = 2 * IQR * n^(-1/3)
-    percentiles = jnp.array([75, 25])  # Convert to JAX array
-    q75, q25 = jnp.percentile(flat_samples, percentiles)
-    iqr = q75 - q25
-    bin_width = 2 * iqr * (nb ** (-1/3))
-    # nbins = jnp.ceil((2 * xmax) / bin_width).astype(int)
-
-    h0, b = jnp.histogram(flat_samples, bins=nbins, range=[-xmax, xmax])
-    h0 = h0 / nb * nbins / (2 * xmax)
-    ax.bar(
-        jnp.linspace(-xmax, xmax, nbins),
-        h0,
-        width=2 * xmax / (nbins - 1),
-        align="center",
-        color="red",
-    )
-
-
-def display_trajectories(Y, m, title=None):
-    """
-    Color shading to show where particles ends up
-    m: number of trajectories to plot
-    """
-    P, N = Y.shape
-    idxs = jnp.round(jnp.linspace(0, P - 1, m)).astype(jnp.int32)
-    sorted_idx = jnp.argsort(Y[:, -1])
-    I = sorted_idx[idxs]
-    for i, idx in enumerate(I):
-        color_marker = i / (m - 1)  # trcks where particle ends up
-
-        plt.plot(
-            Y[idx, :], c=[color_marker, 0, 1 - color_marker], alpha=0.3, linewidth=0.5
-        )
-    if title:
-        plt.title(title)

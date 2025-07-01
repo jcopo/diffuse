@@ -38,8 +38,6 @@ class DPSDenoiser(CondDenoiser):
             # Compute residual and guidance
             (val, denoised), guidance = jax.value_and_grad(norm_tweedie, has_aux=True)(x)
 
-            # Plot outside the differentiated function
-            jax.experimental.io_callback(sigle_plot, None, denoised, t)
 
             # Compute guidance scale
             zeta = 3. / (jnp.sqrt(val) + 1e-3)
