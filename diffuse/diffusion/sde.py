@@ -55,14 +55,7 @@ class LinearSchedule:
 
     def integrate(self, t, s):
         b_min, b_max, t0, T = self.b_min, self.b_max, self.t0, self.T
-        return (
-            0.5
-            * (t - s)
-            * (
-                (b_max - b_min) / (T - t0) * (t + s)
-                + 2 * (b_min * T - b_max * t0) / (T - t0)
-            )
-        )
+        return 0.5 * (t - s) * ((b_max - b_min) / (T - t0) * (t + s) + 2 * (b_min * T - b_max * t0) / (T - t0))
 
 
 @dataclass
@@ -131,11 +124,10 @@ class DiffusionModel(ABC):
         """
         x, t = state.position, state.t
         alpha_t, _ = self.alpha_beta(t)
-        return SDEState(
-            (x + (1 - alpha_t) * score_fn(x, t)) / jnp.sqrt(alpha_t), 0.
-        )
+        return SDEState((x + (1 - alpha_t) * score_fn(x, t)) / jnp.sqrt(alpha_t), 0.0)
 
-    def path(self, key: PRNGKeyArray, state: SDEState, ts: Array, return_noise: bool = False
+    def path(
+        self, key: PRNGKeyArray, state: SDEState, ts: Array, return_noise: bool = False
     ) -> Union[SDEState, tuple[SDEState, Array]]:
         """
         Samples x_t | x_0 ~ N(sqrt(alpha_t) * x_0, (1 - alpha_t) * I)
@@ -185,6 +177,6 @@ class SDE(DiffusionModel):
         Returns:
             Tuple of (α(t), β(t)) with α(t) clipped to [0.001, 0.9999] for numerical stability
         """
-        alpha = jnp.exp(-self.beta.integrate(t, 0.))
+        alpha = jnp.exp(-self.beta.integrate(t, 0.0))
         beta = self.beta(t)
         return jnp.clip(alpha, 0.001, 0.9999), beta

@@ -16,17 +16,13 @@ class Losses:
     sde: SDE
     timer: Timer
 
-    def make_loss(
-        self, loss_fn: Callable, *args, **kwargs
-    ) -> Callable[[PyTreeDef, PRNGKeyArray, Array], float]:
+    def make_loss(self, loss_fn: Callable, *args, **kwargs) -> Callable[[PyTreeDef, PRNGKeyArray, Array], float]:
         def loss(
             nn_params: PyTreeDef,
             rng_key: PRNGKeyArray,
             x0_samples: Array,
         ):
-            return loss_fn(
-                nn_params, rng_key, x0_samples, self.sde, self.network, *args, **kwargs
-            )
+            return loss_fn(nn_params, rng_key, x0_samples, self.sde, self.network, *args, **kwargs)
 
         return loss
 
@@ -73,9 +69,7 @@ def score_match_loss(
     score_eval = jax.vmap(sde.score)(state, state_0)
 
     # reduce squared diff over all axis except batch
-    sq_diff = einops.reduce(
-        (nn_eval - score_eval) ** 2, "t ... -> t ", "mean"
-    )  # (n_ts)
+    sq_diff = einops.reduce((nn_eval - score_eval) ** 2, "t ... -> t ", "mean")  # (n_ts)
 
     return jnp.mean(lmbda(ts) * sq_diff, axis=0)
 

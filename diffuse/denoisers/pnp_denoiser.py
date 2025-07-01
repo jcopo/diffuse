@@ -25,15 +25,11 @@ class PnPDenoiser:
     forward_model: ForwardModel
     _resample: bool = False
 
-    def init(
-        self, position: Array, rng_key: PRNGKeyArray, dt: float
-    ) -> PnPDenoiserState:
+    def init(self, position: Array, rng_key: PRNGKeyArray, dt: float) -> PnPDenoiserState:
         """Initialize denoiser state"""
         pass
 
-    def step(
-        self, state: PnPDenoiserState, score: Callable[[Array, float], Array]
-    ) -> PnPDenoiserState:
+    def step(self, state: PnPDenoiserState, score: Callable[[Array, float], Array]) -> PnPDenoiserState:
         """Single step update"""
         pass
 
@@ -69,14 +65,10 @@ class PnPDenoiser:
         """Compute pooled posterior log probability density"""
         pass
 
-    def y_noiser(
-        self, mask: Array, key: PRNGKeyArray, state: SDEState, ts: float
-    ) -> SDEState:
+    def y_noiser(self, mask: Array, key: PRNGKeyArray, state: SDEState, ts: float) -> SDEState:
         """Add noise to measurements"""
         pass
 
-    def _resampling(
-        self, position: Array, log_weights: Array, rng_key: PRNGKeyArray
-    ) -> Tuple[Array, Array]:
+    def _resampling(self, position: Array, log_weights: Array, rng_key: PRNGKeyArray) -> Tuple[Array, Array]:
         """Resample particles based on weights"""
         pass

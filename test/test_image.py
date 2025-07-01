@@ -31,9 +31,7 @@ def test_measure_and_restore(random_image, square_mask, plot_if_enabled):
     restored = square_mask.restore(xi, random_image, measured)
 
     # almost equal
-    assert jnp.allclose(random_image, restored), plot_if_enabled(
-        lambda: plot_compare(random_image, restored)
-    )
+    assert jnp.allclose(random_image, restored), plot_if_enabled(lambda: plot_compare(random_image, restored))
 
 
 def test_restore_with_zero_measured(random_image, square_mask, plot_if_enabled):
@@ -46,9 +44,9 @@ def test_restore_with_zero_measured(random_image, square_mask, plot_if_enabled):
     measured_restored = square_mask.measure(xi, restored)
     measured = square_mask.measure(xi, random_img)
 
-    assert jnp.allclose(
-        measured_restored, measured, rtol=1e-1, atol=1e-1
-    ), plot_if_enabled(lambda: plot_compare(measured_restored, measured))
+    assert jnp.allclose(measured_restored, measured, rtol=1e-1, atol=1e-1), plot_if_enabled(
+        lambda: plot_compare(measured_restored, measured)
+    )
 
 
 def test_measure_restore(random_image, square_mask, plot_if_enabled):
@@ -62,9 +60,9 @@ def test_measure_restore(random_image, square_mask, plot_if_enabled):
     measured = square_mask.measure(xi, y)
     measured_restored = square_mask.measure(xi, restored)
 
-    assert jnp.allclose(
-        measured, measured_restored, rtol=1e-1, atol=1e-1
-    ), plot_if_enabled(lambda: plot_compare(measured, measured_restored))
+    assert jnp.allclose(measured, measured_restored, rtol=1e-1, atol=1e-1), plot_if_enabled(
+        lambda: plot_compare(measured, measured_restored)
+    )
 
 
 def test_mask_shape(square_mask):

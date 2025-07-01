@@ -11,11 +11,13 @@ from diffuse.denoisers.cond import CondDenoiser, CondDenoiserState
 from diffuse.base_forward_model import ForwardModel, MeasurementState
 from diffuse.utils.mapping import pmapper
 
+
 class BEDState(NamedTuple):
     denoiser_state: CondDenoiserState
     cntrst_denoiser_state: CondDenoiserState
     design: Array
     opt_state: optax.OptState
+
 
 def _reverse_time(state, sde):
     t = state.t
@@ -30,16 +32,12 @@ class ExperimentOptimizer:
     optimizer: GradientTransformation
     base_shape: Tuple[int, ...]
 
-    def init(
-        self, rng_key: PRNGKeyArray, n_samples: int, n_samples_cntrst: int, dt: float
-    ) -> BEDState:
+    def init(self, rng_key: PRNGKeyArray, n_samples: int, n_samples_cntrst: int, dt: float) -> BEDState:
         design = self.mask.init_design(rng_key)
         opt_state = self.optimizer.init(design)
 
         key_init, key_t, key_c = jax.random.split(rng_key, 3)
-        thetas, cntrst_thetas = _init_start_time(
-            key_t, n_samples, n_samples_cntrst, self.base_shape
-        )
+        thetas, cntrst_thetas = _init_start_time(key_t, n_samples, n_samples_cntrst, self.base_shape)
         denoiser_state = self.denoiser.init(thetas, key_init, dt)
         cntrst_denoiser_state = self.denoiser.init(cntrst_thetas, key_c, dt)
 
@@ -67,17 +65,13 @@ class ExperimentOptimizer:
 
         # step theta
         score_likelihood = self.denoiser.posterior_logpdf(rng_key, y, mask_history)
-        denoiser_state = self.denoiser.batch_step(
-            rng_key, denoiser_state, score_likelihood, measurement_state
-        )
+        denoiser_state = self.denoiser.batch_step(rng_key, denoiser_state, score_likelihood, measurement_state)
 
         thetas = denoiser_state.integrator_state.position
         cntrst_thetas = cntrst_denoiser_state.integrator_state.position
 
         # apply tweedie to thetas and cntrst_thetas
-        cntrst_rev = _reverse_time(
-            cntrst_denoiser_state.integrator_state, self.denoiser.sde
-        )
+        cntrst_rev = _reverse_time(cntrst_denoiser_state.integrator_state, self.denoiser.sde)
         denoiser_rev = _reverse_time(denoiser_state.integrator_state, self.denoiser.sde)
         # vmapped_tweedie = _vmapper(
         #     self.denoiser.sde.tweedie, cntrst_denoiser_state.integrator_state
@@ -130,9 +124,7 @@ class ExperimentOptimizer:
         design, opt_state = design_tuple
 
         # step cntrst_theta
-        score_likelihood = self.denoiser.pooled_posterior_logpdf(
-            key_t, y_cntrst, y, design, mask_history
-        )
+        score_likelihood = self.denoiser.pooled_posterior_logpdf(key_t, y_cntrst, y, design, mask_history)
 
         cntrst_denoiser_state = self.denoiser.batch_step_pooled(
             rng_key, cntrst_denoiser_state, score_likelihood, measurement_state
@@ -178,9 +170,7 @@ def restart_state(state, rng_key, denoiser):
     base_shape = state.denoiser_state.integrator_state.position.shape[1:]
     dt = state.denoiser_state.integrator_state.dt
     rng_key, rng_key_t, rng_key_c = jax.random.split(rng_key, 3)
-    thetas, cntrst_thetas = _init_start_time(
-        rng_key, n_thetas, n_cntrst_thetas, base_shape
-    )
+    thetas, cntrst_thetas = _init_start_time(rng_key, n_thetas, n_cntrst_thetas, base_shape)
     denoiser_state = denoiser.init(thetas, rng_key_t, dt)
 
     cntrst_denoiser_state = denoiser.init(cntrst_thetas, rng_key_c, dt[0])
@@ -222,9 +212,7 @@ def calculate_and_apply_gradient(
     return new_design, new_opt_state, ys, val_eig
 
 
-def information_gain(
-    theta: Array, cntrst_theta: Array, design: Array, mask: ForwardModel
-):
+def information_gain(theta: Array, cntrst_theta: Array, design: Array, mask: ForwardModel):
     r"""
     Information gain estimator
     Estimator \sum_i log p(y_i | theta_i, design) - \sum_j w_{ij} log p(y_i | theta_j, design)
@@ -232,9 +220,7 @@ def information_gain(
     # sample y from p(y, theta_)
     y_ref = mask.measure(design, theta)
     logprob_ref = mask.logprob_y(theta, y_ref, design)
-    logprob_target = jax.vmap(mask.logprob_y, in_axes=(None, 0, None))(
-        cntrst_theta, y_ref, design
-    )
+    logprob_target = jax.vmap(mask.logprob_y, in_axes=(None, 0, None))(cntrst_theta, y_ref, design)
     # logprob_target = jax.scipy.special.logsumexp(logprob_target, )
     logprob_means = jnp.mean(logprob_target, axis=0, keepdims=True)
     log_weights = jax.lax.stop_gradient(logprob_target - logprob_means)
@@ -247,9 +233,7 @@ def information_gain(
     return (logprob_ref - weighted_logprobs).mean(), y_ref
 
 
-def _fix_time(
-    denoiser_state: CondDenoiserState, cntrst_denoiser_state: CondDenoiserState
-):
+def _fix_time(denoiser_state: CondDenoiserState, cntrst_denoiser_state: CondDenoiserState):
     # Create new integrator states with fixed time
     new_denoiser_integrator = denoiser_state.integrator_state._replace(
         t=denoiser_state.integrator_state.t[0], dt=denoiser_state.integrator_state.dt[0]
@@ -272,9 +256,7 @@ class ExperimentRandom:
     mask: ForwardModel
     base_shape: Tuple[int, ...]
 
-    def init(
-        self, rng_key: PRNGKeyArray, n_samples: int, n_samples_cntrst: int, dt: float
-    ):
+    def init(self, rng_key: PRNGKeyArray, n_samples: int, n_samples_cntrst: int, dt: float):
         design = self.mask.init_design(rng_key)
         denoiser_state = self.denoiser.init(design, rng_key, dt)
         return BEDState(
@@ -294,9 +276,7 @@ class ExperimentRandom:
     ):
         n_particles = jax.device_count() * 5
         design = self.mask.init_design(rng_key)
-        cond_denoiser_state, _ = self.denoiser.generate(
-            rng_key, measurement_state, n_steps, n_particles
-        )
+        cond_denoiser_state, _ = self.denoiser.generate(rng_key, measurement_state, n_steps, n_particles)
 
         return BEDState(
             denoiser_state=cond_denoiser_state,

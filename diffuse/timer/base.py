@@ -71,9 +71,7 @@ class HeunTimer(Timer):
         """
         sigma_max_rho = self.sigma_max ** (1 / self.rho)
         sigma_min_rho = self.sigma_min ** (1 / self.rho)
-        return (
-            sigma_max_rho + step / self.n_steps * (sigma_min_rho - sigma_max_rho)
-        ) ** self.rho
+        return (sigma_max_rho + step / self.n_steps * (sigma_min_rho - sigma_max_rho)) ** self.rho
 
 
 @dataclass
@@ -116,11 +114,11 @@ class DDIMTimer(Timer):
         Returns:
             float: Time value at current step
         """
-        j = jnp.floor(
-            self.j0
-            + (self.n_time_training - 1 - self.j0) * step / (self.n_steps - 1)
-            + 0.5
-        ).astype(int).item()
+        j = (
+            jnp.floor(self.j0 + (self.n_time_training - 1 - self.j0) * step / (self.n_steps - 1) + 0.5)
+            .astype(int)
+            .item()
+        )
         return self.u_list[j]
 
     def _alpha(self, j: int) -> float:

@@ -38,7 +38,7 @@ class TMPDenoiser(CondDenoiser):
                 restored_v = self.forward_model.restore(v, measurement_state)
                 _, tangents = jax.jvp(tweedie_fn, (x,), (restored_v,))
                 measured_tangents = self.forward_model.apply(tangents, measurement_state)
-                return scale * measured_tangents + self.forward_model.std ** 2 * v
+                return scale * measured_tangents + self.forward_model.std**2 * v
 
             denoised = tweedie_fn(x)
             b = y_meas - self.forward_model.apply(denoised, measurement_state)

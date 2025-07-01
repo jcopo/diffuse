@@ -92,21 +92,25 @@ def evaluate_metrics(grande_truite, theta_infered, weights_infered):
     return psnr_score, ssim_score
 
 
-def plot_and_log_iteration(ground_truth, optimal_state, measurement_state, hist, n_meas,
-                          logger_metrics_fn=None, plotter_theta=None, plotter_contrastive=None):
+def plot_and_log_iteration(
+    ground_truth,
+    optimal_state,
+    measurement_state,
+    hist,
+    n_meas,
+    logger_metrics_fn=None,
+    plotter_theta=None,
+    plotter_contrastive=None,
+):
     """Handle plotting and logging for each iteration of the experiment."""
     # Calculate metrics
     psnr_score, ssim_score = evaluate_metrics(
-        ground_truth,
-        optimal_state.denoiser_state.integrator_state.position,
-        optimal_state.denoiser_state.weights
+        ground_truth, optimal_state.denoiser_state.integrator_state.position, optimal_state.denoiser_state.weights
     )
 
     # Log metrics
     if logger_metrics_fn:
-        jax.experimental.io_callback(
-            logger_metrics_fn, None, psnr_score, ssim_score, n_meas
-        )
+        jax.experimental.io_callback(logger_metrics_fn, None, psnr_score, ssim_score, n_meas)
 
     # Plot theta samples
     if plotter_theta:
@@ -134,8 +138,15 @@ def plot_and_log_iteration(ground_truth, optimal_state, measurement_state, hist,
             n_meas,
         )
 
-def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
-         plotter_theta=None, plotter_contrastive=None, logger_metrics=None):
+
+def main(
+    num_measurements: int,
+    key: PRNGKeyArray,
+    plot: bool = False,
+    plotter_theta=None,
+    plotter_contrastive=None,
+    logger_metrics=None,
+):
     # Initialize experiment forward model
     sde, mask, ground_truth, dt, n_t, nn_score = initialize_experiment(key)
     n_samples = 151
@@ -155,24 +166,18 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
 
     # ExperimentOptimizer
     optimizer = optax.chain(optax.adam(learning_rate=0.1), optax.scale(-1))
-    experiment_optimizer = ExperimentOptimizer(
-        denoiser, mask, optimizer, ground_truth.shape
-    )
+    experiment_optimizer = ExperimentOptimizer(denoiser, mask, optimizer, ground_truth.shape)
 
     exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst, dt)
 
     for n_meas in range(num_measurements):
         key, _ = jax.random.split(key)
         print(f"design start: {exp_state.design}")
-        optimal_state, hist = experiment_optimizer.get_design(
-            exp_state, key, measurement_state, n_steps=n_opt_steps
-        )
+        optimal_state, hist = experiment_optimizer.get_design(exp_state, key, measurement_state, n_steps=n_opt_steps)
         print(f"design optimal: {optimal_state.design}")
         # make new measurement
         new_measurement = mask.measure(optimal_state.design, ground_truth)
-        measurement_state = mask.update_measurement(
-            measurement_state, new_measurement, optimal_state.design
-        )
+        measurement_state = mask.update_measurement(measurement_state, new_measurement, optimal_state.design)
 
         sigle_plot(measurement_state.mask_history)
         sigle_plot(measurement_state.y)
@@ -186,7 +191,7 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
                 n_meas,
                 logger_metrics,
                 plotter_theta,
-                plotter_contrastive
+                plotter_contrastive,
             )
 
         exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst, dt)
@@ -230,11 +235,11 @@ if __name__ == "__main__":
         plot=plot,
         plotter_theta=plotter_theta,
         plotter_contrastive=plotter_contrastive,
-        logger_metrics=logger_metrics_fn
+        logger_metrics=logger_metrics_fn,
     )
 
     # Calculate final metrics
-    final_samples = optimal_state.denoiser_state.integrator_state.position[-1, :optimal_state.weights.shape[0]]
+    final_samples = optimal_state.denoiser_state.integrator_state.position[-1, : optimal_state.weights.shape[0]]
     psnr_score, ssim_score = evaluate_metrics(ground_truth, final_samples, optimal_state.weights)
     print(f"PSNR: {psnr_score} SSIM: {ssim_score}")
 

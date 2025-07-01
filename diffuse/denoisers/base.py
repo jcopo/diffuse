@@ -17,15 +17,11 @@ class BaseDenoiser(ABC):
         pass
 
     @abstractmethod
-    def step(
-        self, state: DenoiserState, score: Callable[[Array, float], Array]
-    ) -> DenoiserState:
+    def step(self, state: DenoiserState, score: Callable[[Array, float], Array]) -> DenoiserState:
         """Perform single denoising step"""
         pass
 
     @abstractmethod
-    def generate(
-        self, rng_key: PRNGKeyArray, measurement_state, n_steps: int, n_particles: int
-    ):
+    def generate(self, rng_key: PRNGKeyArray, measurement_state, n_steps: int, n_particles: int):
         """Generate samples"""
         pass

@@ -22,15 +22,11 @@ def init_simple_mixture(key, d=1, n_components=3):
 
     # Small random covariances
     if d == 1:
-        covs = 0.1 * jax.random.uniform(
-            keys[1], (n_components, 1, 1), minval=0.5, maxval=1.5
-        )
+        covs = 0.1 * jax.random.uniform(keys[1], (n_components, 1, 1), minval=0.5, maxval=1.5)
     else:
         # For multivariate case, use identity matrices with small random scaling
         identity = jnp.eye(d)
-        scales = 0.1 * jax.random.uniform(
-            keys[1], (n_components, 1, 1), minval=0.5, maxval=1.5
-        )
+        scales = 0.1 * jax.random.uniform(keys[1], (n_components, 1, 1), minval=0.5, maxval=1.5)
         covs = scales * identity[None, :, :]
 
     # Normalized random weights

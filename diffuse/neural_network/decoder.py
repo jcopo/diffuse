@@ -61,9 +61,7 @@ class Decoder(nn.Module):
             param_dtype=self.param_dtype,
         )
 
-        self.mid = nn.Sequential(
-            [conv_z_in, res_block_mid_in, mid_attn, res_block_mid_out]
-        )
+        self.mid = nn.Sequential([conv_z_in, res_block_mid_in, mid_attn, res_block_mid_out])
 
         blocks_up = []
         for i_level in reversed(range(num_resolutions)):

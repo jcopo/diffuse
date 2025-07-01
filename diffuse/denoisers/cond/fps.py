@@ -27,7 +27,6 @@ class FPSDenoiser(CondDenoiser):
 
         # Define modified score function that includes measurement term
         def modified_score(x: Array, t: float) -> Array:
-
             # noise y
             y_t = self.y_noiser(rng_key, t, measurement_state).position
 
@@ -43,12 +42,9 @@ class FPSDenoiser(CondDenoiser):
         integrator_state_next = self.integrator(state.integrator_state, modified_score)
         state_next = CondDenoiserState(integrator_state_next, state.log_weights)
 
-
         return state_next
 
-    def y_noiser(
-        self, key: PRNGKeyArray, t: float, measurement_state: MeasurementState
-    ) -> SDEState:
+    def y_noiser(self, key: PRNGKeyArray, t: float, measurement_state: MeasurementState) -> SDEState:
         r"""
         Generate y^{(t)} = \sqrt{\bar{\alpha}_t} y + \sqrt{1-\bar{\alpha}_t} A_\xi \epsilon
         """
@@ -56,8 +52,8 @@ class FPSDenoiser(CondDenoiser):
         alpha, _ = self.sde.alpha_beta(t)
 
         # Noise y_t as the mean to keep deterministic sampling methods deterministic
-        #rndm = jax.random.normal(key, y_0.shape)
-        #res = jnp.sqrt(alpha) * y_0 #+ jnp.sqrt(1 - alpha) * self.forward_model.apply(rndm, measurement_state)
+        # rndm = jax.random.normal(key, y_0.shape)
+        # res = jnp.sqrt(alpha) * y_0 #+ jnp.sqrt(1 - alpha) * self.forward_model.apply(rndm, measurement_state)
         res = jnp.sqrt(alpha) * y_0
 
         return SDEState(res, t)
@@ -95,14 +91,10 @@ class FPSDenoiser(CondDenoiser):
         residual = y_t - f_x_t
 
         # compute log weights
-        log_weights = log_weights - 0.5 * (residual)**2 / (self.forward_model.std * alpha_t)
+        log_weights = log_weights - 0.5 * (residual) ** 2 / (self.forward_model.std * alpha_t)
         log_weights = normalize_log_weights(log_weights)
         position, log_weights = resample_particles(
-            integrator_state.position,
-            log_weights,
-            rng_key_resample,
-            self.ess_low,
-            self.ess_high
+            integrator_state.position, log_weights, rng_key_resample, self.ess_low, self.ess_high
         )
 
         integrator_state_next = state_next.integrator_state._replace(position=position)

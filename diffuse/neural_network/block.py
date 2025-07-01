@@ -8,9 +8,7 @@ from einops import rearrange
 from jax.typing import DTypeLike
 
 
-def get_sinusoidal_embedding(
-    t: Array, embedding_dim: int = 64, max_period: int = 10_000
-) -> Array:
+def get_sinusoidal_embedding(t: Array, embedding_dim: int = 64, max_period: int = 10_000) -> Array:
     half = embedding_dim // 2
     fs = jnp.exp(-jnp.log(max_period) * jnp.arange(half) / (half - 1))
     embs = jnp.einsum("b,c->bc", t, fs)
@@ -64,9 +62,7 @@ class ResnetBlock(TimestepBlock):
     param_dtype: DTypeLike = jnp.bfloat16
 
     def setup(self) -> None:
-        actual_out_channels = (
-            self.in_channels if self.out_channels is None else self.out_channels
-        )
+        actual_out_channels = self.in_channels if self.out_channels is None else self.out_channels
 
         self.norm1 = nn.GroupNorm(
             num_groups=32,
@@ -125,9 +121,7 @@ class ResnetBlock(TimestepBlock):
         h = self.dropout(h)
         h = self.conv2(h)
 
-        actual_out_channels = (
-            self.in_channels if self.out_channels is None else self.out_channels
-        )
+        actual_out_channels = self.in_channels if self.out_channels is None else self.out_channels
         if self.in_channels != actual_out_channels:
             x = self.nin_shortcut(x)
 
@@ -217,9 +211,7 @@ class PixelShuffle(nn.Module):
 
     @nn.compact
     def __call__(self, x: Array) -> Array:
-        return rearrange(
-            x, "b h w (h2 w2 c) -> b (h h2) (w w2) c", h2=self.scale, w2=self.scale
-        )
+        return rearrange(x, "b h w (h2 w2 c) -> b (h h2) (w w2) c", h2=self.scale, w2=self.scale)
 
 
 class Upsample(nn.Module):

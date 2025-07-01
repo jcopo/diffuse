@@ -3,7 +3,8 @@ from jaxtyping import PyTree
 from functools import partial
 from typing import TypeVar
 
-T = TypeVar('T', bound=PyTree)
+T = TypeVar("T", bound=PyTree)
+
 
 def make_in_axes_except(x: PyTree, except_path: str) -> PyTree:
     """
@@ -25,6 +26,7 @@ def make_in_axes_except(x: PyTree, except_path: str) -> PyTree:
         in_axes = make_in_axes_except(state, "step")
         # Returns: State(position=0, step=None)
     """
+
     def _set_axes(path, _):
         if except_path in str(path):
             return None
@@ -42,9 +44,7 @@ def pmap_reshaping(x: PyTree) -> PyTree:
 
 
 def pmap_unshaping(x: PyTree):
-    return jax.tree_util.tree_map(
-        lambda x: x.reshape((-1, *x.shape[2:])) if len(x.shape) > 0 else x, x
-    )
+    return jax.tree_util.tree_map(lambda x: x.reshape((-1, *x.shape[2:])) if len(x.shape) > 0 else x, x)
 
 
 def pmapper(fn, x: T, batch_size: int = None, **kwargs) -> T:

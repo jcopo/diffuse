@@ -53,9 +53,7 @@ class Integrator:
         """
         return IntegratorState(position, rng_key)
 
-    def __call__(
-        self, integrator_state: IntegratorState, score: Callable
-    ) -> IntegratorState:
+    def __call__(self, integrator_state: IntegratorState, score: Callable) -> IntegratorState:
         """Perform one integration step.
 
         Args:
@@ -82,10 +80,10 @@ class ChurnedIntegrator(Integrator):
         noise_inflation_factor: Factor to scale injected noise (default: 1.0001)
     """
 
-    stochastic_churn_rate: float = 0.
-    churn_min: float = 0.
-    churn_max: float = 0.
-    noise_inflation_factor: float = 1.
+    stochastic_churn_rate: float = 0.0
+    churn_min: float = 0.0
+    churn_max: float = 0.0
+    noise_inflation_factor: float = 1.0
 
     def _churn_fn(self, integrator_state: IntegratorState) -> Tuple[Array, float]:
         """Apply stochastic churning to the current state.
@@ -186,9 +184,7 @@ def apply_stochastic_churn(
     position, rng_key, step = integrator_state
     t = timer(step)
 
-    t_churned = next_churn_noise_level(
-        t, stochastic_churn_rate, churn_min, churn_max, timer
-    )
+    t_churned = next_churn_noise_level(t, stochastic_churn_rate, churn_min, churn_max, timer)
     alpha, alpha_churned = (
         sde.alpha_beta(t)[0],
         sde.alpha_beta(t_churned)[0],
@@ -196,9 +192,7 @@ def apply_stochastic_churn(
 
     new_position = (
         jnp.sqrt(alpha_churned / alpha) * position
-        + jax.random.normal(rng_key, position.shape)
-        * jnp.sqrt(1 - alpha_churned / alpha)
-        * noise_inflation_factor
+        + jax.random.normal(rng_key, position.shape) * jnp.sqrt(1 - alpha_churned / alpha) * noise_inflation_factor
     )
 
     return new_position, t_churned

@@ -89,8 +89,6 @@ def cdf_t(x: Array, t: Array, init_mix_state: MixState, sde: SDE) -> Array:
     return cdf_mixtr(MixState(means, covs, weights), x)
 
 
-
-
 def sampler_mixtr(key, state: MixState, N):
     """
     Sampler from the mixture
@@ -107,7 +105,7 @@ def sampler_mixtr(key, state: MixState, N):
     return mu[idx] + noise_scaled
 
 
-#xmax = 4
+# xmax = 4
 nbins = 120
 
 
@@ -121,5 +119,3 @@ def transform_mixture_params(state, sde, t):
     means = alpha * means
     covs = alpha**2 * covs + beta * jnp.eye(covs.shape[-1])
     return means, covs, weights
-
-

@@ -34,9 +34,7 @@ class CondDenoiser(BaseDenoiser):
     ess_low: Optional[float] = 0.2
     ess_high: Optional[float] = 0.5
 
-    def init(
-        self, position: Array, rng_key: PRNGKeyArray, n_particles: int
-    ) -> CondDenoiserState:
+    def init(self, position: Array, rng_key: PRNGKeyArray, n_particles: int) -> CondDenoiserState:
         """
         Initialize the conditional denoiser state.
 
@@ -48,7 +46,7 @@ class CondDenoiser(BaseDenoiser):
         Returns:
             CondDenoiserState: Initialized state with integrator state and log weights.
         """
-        log_weights = - jnp.log(n_particles)
+        log_weights = -jnp.log(n_particles)
         integrator_state = self.integrator.init(position, rng_key)
 
         return CondDenoiserState(integrator_state, log_weights)
@@ -61,15 +59,13 @@ class CondDenoiser(BaseDenoiser):
         n_particles: int,
     ):
         rng_key, rng_key_start = jax.random.split(rng_key)
-        rndm_start = jax.random.normal(
-            rng_key_start, (n_particles, *self.x0_shape)
-        )
+        rndm_start = jax.random.normal(rng_key_start, (n_particles, *self.x0_shape))
 
         keys = jax.random.split(rng_key, n_particles)
         state = jax.vmap(self.init, in_axes=(0, 0, None))(rndm_start, keys, n_particles)
 
         def body_fun(state: CondDenoiserState, key: PRNGKeyArray):
-            #state_next = self.batch_step(key, state, posterior, measurement_state)
+            # state_next = self.batch_step(key, state, posterior, measurement_state)
             keys = jax.random.split(key, state.integrator_state.position.shape[0])
             state_next = jax.vmap(self.step, in_axes=(0, 0, None))(keys, state, measurement_state)
             if self.resample:

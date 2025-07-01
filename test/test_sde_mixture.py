@@ -22,13 +22,16 @@ from examples.gaussian_mixtures.plotting import (
 from examples.gaussian_mixtures.test_config import CONFIG, create_basic_setup, create_sde, create_timer
 from diffuse.diffusion.sde import SDEState
 from diffuse.denoisers.denoiser import Denoiser
+
 # float64 accuracy
 jax.config.update("jax_enable_x64", True)
+
 
 @pytest.fixture
 def test_setup():
     """Single fixture that provides all necessary test configuration and objects"""
     return create_basic_setup()
+
 
 @pytest.mark.parametrize("schedule_name", ["LinearSchedule", "CosineSchedule"])
 def test_forward_sde_mixture(test_setup, plot_if_enabled, schedule_name):
@@ -54,17 +57,13 @@ def test_forward_sde_mixture(test_setup, plot_if_enabled, schedule_name):
     state_mixt = SDEState(position=samples_mixt, t=t0)
 
     # Run forward process
-    noised_samples = jax.vmap(
-        jax.vmap(sde.path, in_axes=(0, None, 0)), in_axes=(0, 0, None)
-    )(keys, state_mixt, ts)
+    noised_samples = jax.vmap(jax.vmap(sde.path, in_axes=(0, None, 0)), in_axes=(0, 0, None))(keys, state_mixt, ts)
 
     # Setup visualization
     pdf = partial(rho_t, init_mix_state=mix_state, sde=sde)
 
     if test_setup["d"] == 1:
-        plot_if_enabled(
-            lambda: display_trajectories(noised_samples.position.squeeze(), 100)
-        )
+        plot_if_enabled(lambda: display_trajectories(noised_samples.position.squeeze(), 100))
         plot_if_enabled(
             lambda: display_trajectories_at_times(
                 noised_samples.position.squeeze(),
@@ -80,7 +79,7 @@ def test_forward_sde_mixture(test_setup, plot_if_enabled, schedule_name):
             lambda: plot_2d_mixture_and_samples(
                 mix_state,
                 noised_samples.position[-1],  # Final timestep samples
-                f"Forward SDE - {schedule_name}"
+                f"Forward SDE - {schedule_name}",
             )
         )
         # Create score function for forward process
@@ -94,26 +93,19 @@ def test_forward_sde_mixture(test_setup, plot_if_enabled, schedule_name):
                 perct,
                 pdf,
                 f"Forward Evolution - {schedule_name}",
-                score=score_fn
+                score=score_fn,
             )
         )
 
     # Validate distributions
-    validate_distributions(
-        noised_samples.position[1:, :],
-        timer,
-        n_steps,
-        perct,
-        mix_state,
-        sde
-    )
+    validate_distributions(noised_samples.position[1:, :], timer, n_steps, perct, mix_state, sde)
+
 
 @pytest.mark.parametrize("integrator_class,integrator_params", CONFIG["integrators"])
 @pytest.mark.parametrize("timer_name,timer_fn", CONFIG["timers"])
 @pytest.mark.parametrize("schedule_name", ["LinearSchedule", "CosineSchedule"])
 def test_backward_sde_mixture(
-    test_setup, plot_if_enabled,
-    integrator_class, integrator_params, timer_name, timer_fn, schedule_name
+    test_setup, plot_if_enabled, integrator_class, integrator_params, timer_name, timer_fn, schedule_name
 ):
     n_samples = test_setup["n_samples"]
     n_steps = test_setup["n_steps"]
@@ -134,9 +126,7 @@ def test_backward_sde_mixture(
 
     # Setup denoising process with timer and churn parameters
     integrator = integrator_class(sde=sde, timer=timer, **integrator_params)
-    denoise = Denoiser(
-        integrator=integrator, sde=sde, score=score, x0_shape=(x0_shape,)
-    )
+    denoise = Denoiser(integrator=integrator, sde=sde, score=score, x0_shape=(x0_shape,))
 
     # Generate samples
     key_samples, _ = jax.random.split(key)
@@ -150,13 +140,7 @@ def test_backward_sde_mixture(
         plot_if_enabled(lambda: display_trajectories(hist_position, 100, title=plot_title))
         plot_if_enabled(
             lambda: display_trajectories_at_times(
-                hist_position,
-                timer,
-                n_steps,
-                space,
-                perct,
-                lambda x, t: pdf(x, t_final - t),
-                title=plot_title
+                hist_position, timer, n_steps, space, perct, lambda x, t: pdf(x, t_final - t), title=plot_title
             )
         )
         # Validate distributions
@@ -170,17 +154,11 @@ def test_backward_sde_mixture(
             key=key,
             method=integrator_class,
             t_final=t_final,
-            forward=False
+            forward=False,
         )
     elif test_setup["d"] == 2:
         # Get final generated samples
-        plot_if_enabled(
-            lambda: plot_2d_mixture_and_samples(
-                mix_state,
-                hist_position,
-                plot_title
-            )
-        )
+        plot_if_enabled(lambda: plot_2d_mixture_and_samples(mix_state, hist_position, plot_title))
         plot_if_enabled(
             lambda: display_2d_trajectories_at_times(
                 hist_position,  # Already in shape (n_particles, n_steps, d)
@@ -189,13 +167,14 @@ def test_backward_sde_mixture(
                 perct,
                 lambda x, t: pdf(x, t_final - t),
                 f"Backward Evolution - {plot_title}",
-                score=lambda x, t: score(x, t_final - t)  # Use opposite time for score
+                score=lambda x, t: score(x, t_final - t),  # Use opposite time for score
             )
         )
 
 
-
-def validate_distributions(position, timer, n_steps, perct, mix_state, sde, key=None, method=None, t_final=1.0, forward=True):
+def validate_distributions(
+    position, timer, n_steps, perct, mix_state, sde, key=None, method=None, t_final=1.0, forward=True
+):
     """Helper function to validate sample distributions against theoretical ones.
 
     Args:
@@ -211,7 +190,7 @@ def validate_distributions(position, timer, n_steps, perct, mix_state, sde, key=
     """
     for i, x in enumerate(perct):
         k = int(x * n_steps) + (1 if key is None else 0)  # +1 only for forward process
-        t = t_final - timer(k+1)
+        t = t_final - timer(k + 1)
 
         if key is not None:  # backward process case
             samples = position[:, k].squeeze()
@@ -231,4 +210,3 @@ def validate_distributions(position, timer, n_steps, perct, mix_state, sde, key=
             error_msg = f"Sample distribution does not match theoretical (method: {method.__name__}, p-value: {p_value}, t: {t}, k: {k})"
 
         assert p_value > 0.01, error_msg
-

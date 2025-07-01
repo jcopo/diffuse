@@ -98,17 +98,13 @@ def run_forward_evolution_animation(sde, init_mix_state, num_frames=100, interva
         )
 
         # Plot updated samples
-        scatter = ax.scatter(
-            samples[:, 0], samples[:, 1], zorder=1, marker="o", s=10, c="k"
-        )
+        scatter = ax.scatter(samples[:, 0], samples[:, 1], zorder=1, marker="o", s=10, c="k")
         ax.set_xlim(-4, 4)
         ax.set_ylim(-4, 4)
         ax.axis("off")
 
         # Update time text
-        time_text = ax.text(
-            0.02, 0.98, f"Time: {t:.2f}", transform=ax.transAxes, va="top", fontsize=12
-        )
+        time_text = ax.text(0.02, 0.98, f"Time: {t:.2f}", transform=ax.transAxes, va="top", fontsize=12)
 
         return scores, scatter, contour, time_text
 
@@ -150,9 +146,7 @@ def run_backward_evolution_animation(sde, init_mix_state, num_frames=100, interv
 
     def update(frame):
         t = frame / num_frames * T
-        pdf_grid = jax.vmap(
-            jax.vmap(lambda x, t: pdf(x, T - t), in_axes=(0, None)), in_axes=(0, None)
-        )(xy, t)
+        pdf_grid = jax.vmap(jax.vmap(lambda x, t: pdf(x, T - t), in_axes=(0, None)), in_axes=(0, None))(xy, t)
 
         ax.clear()
         ax.set_title("Backward Process")
@@ -171,9 +165,7 @@ def run_backward_evolution_animation(sde, init_mix_state, num_frames=100, interv
         )
 
         # Plot updated samples
-        scatter = ax.scatter(
-            samples[:, 0], samples[:, 1], zorder=1, marker="o", s=10, c="k"
-        )
+        scatter = ax.scatter(samples[:, 0], samples[:, 1], zorder=1, marker="o", s=10, c="k")
         ax.set_xlim(-4, 4)
         ax.set_ylim(-4, 4)
         ax.axis("off")
@@ -182,7 +174,7 @@ def run_backward_evolution_animation(sde, init_mix_state, num_frames=100, interv
         time_text = ax.text(
             0.02,
             0.98,
-            f"Time: {T-t:.2f}",
+            f"Time: {T - t:.2f}",
             transform=ax.transAxes,
             va="top",
             fontsize=12,

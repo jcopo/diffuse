@@ -76,9 +76,7 @@ def create_score_functions(posterior_state, sde):
     return pdf, cdf, score
 
 
-def validate_distributions(
-    position, timer, n_steps, perct, cdf, key=None, method=None, forward=True
-):
+def validate_distributions(position, timer, n_steps, perct, cdf, key=None, method=None, forward=True):
     """Helper function to validate sample distributions against theoretical ones."""
     for i, x in enumerate(perct):
         k = int(x * n_steps)
@@ -104,9 +102,7 @@ def validate_distributions(
         assert p_value > 0.01, error_msg
 
 
-def print_detailed_schedule_info(
-    sde, timer, n_steps, schedule_name, timer_name, verbose=False
-):
+def print_detailed_schedule_info(sde, timer, n_steps, schedule_name, timer_name, verbose=False):
     """Print detailed schedule information with optional verbose output"""
     print(f"\nSchedule Information:")
     print(f"Timer: {timer_name}, Schedule: {schedule_name}")
@@ -123,9 +119,7 @@ def print_detailed_schedule_info(
         for step in key_steps:
             time = timer(step)
             alpha, beta = sde.alpha_beta(time)
-            print(
-                f"{step:<6} {time:<12.6f} {beta:<12.6f} {alpha:<12.6f} {1 - alpha:<12.6f}"
-            )
+            print(f"{step:<6} {time:<12.6f} {beta:<12.6f} {alpha:<12.6f} {1 - alpha:<12.6f}")
     else:
         # Compact format (original)
         print(f"Timer times:")
@@ -135,12 +129,8 @@ def print_detailed_schedule_info(
 
         print(f"\nSDE noise levels ({schedule_name}):")
         print(f"  Initial noise (t={timer(0):.6f}): β={sde.beta(timer(0)):.6f}")
-        print(
-            f"  Middle noise (t={timer(n_steps // 2):.6f}): β={sde.beta(timer(n_steps // 2)):.6f}"
-        )
-        print(
-            f"  Final noise (t={timer(n_steps):.6f}): β={sde.beta(timer(n_steps)):.6f}"
-        )
+        print(f"  Middle noise (t={timer(n_steps // 2):.6f}): β={sde.beta(timer(n_steps // 2)):.6f}")
+        print(f"  Final noise (t={timer(n_steps):.6f}): β={sde.beta(timer(n_steps)):.6f}")
 
         print(f"\nSDE alpha values ({schedule_name}):")
         alpha_0, _ = sde.alpha_beta(timer(0))
@@ -196,9 +186,7 @@ def test_backward_sde_conditional_mixture(
 
     # Setup denoising process with timer
     integrator = integrator_class(sde=sde, timer=timer, **integrator_params)
-    denoise = Denoiser(
-        integrator=integrator, sde=sde, score=score, x0_shape=x_star.shape
-    )
+    denoise = Denoiser(integrator=integrator, sde=sde, score=score, x0_shape=x_star.shape)
 
     # Generate samples
     state, hist_position = denoise.generate(key_gen, n_steps, n_samples)
@@ -206,14 +194,10 @@ def test_backward_sde_conditional_mixture(
 
     # Visualization
     space = jnp.linspace(-10, 10, 100)
-    plot_title = (
-        f"{integrator_class.__name__} (Timer: {timer_name}, Schedule: {schedule_name})"
-    )
+    plot_title = f"{integrator_class.__name__} (Timer: {timer_name}, Schedule: {schedule_name})"
 
     if test_setup["d"] == 1:
-        plot_if_enabled(
-            lambda: display_trajectories(hist_position, 100, title=plot_title)
-        )
+        plot_if_enabled(lambda: display_trajectories(hist_position, 100, title=plot_title))
         plot_if_enabled(
             lambda: display_trajectories_at_times(
                 hist_position,
@@ -226,11 +210,7 @@ def test_backward_sde_conditional_mixture(
             )
         )
     elif test_setup["d"] == 2:
-        plot_if_enabled(
-            lambda: plot_2d_mixture_and_samples(
-                posterior_state, hist_position, plot_title
-            )
-        )
+        plot_if_enabled(lambda: plot_2d_mixture_and_samples(posterior_state, hist_position, plot_title))
         plot_if_enabled(
             lambda: display_2d_trajectories_at_times(
                 hist_position,
@@ -326,9 +306,7 @@ def test_backward_CondDenoisers(
     measurement_state = MeasurementState(y=y, mask_history=mask)
 
     # Generate samples
-    state, hist_position = denoise.generate(
-        key_gen, measurement_state, n_steps, n_samples
-    )
+    state, hist_position = denoise.generate(key_gen, measurement_state, n_steps, n_samples)
     hist_position = hist_position.squeeze()
 
     # Visualization
@@ -336,9 +314,7 @@ def test_backward_CondDenoisers(
     plot_title = f"{denoiser_class.__name__} (Integrator: {integrator_class.__name__}, Timer: {timer_name}, Schedule: {schedule_name})"
 
     if test_setup["d"] == 1:
-        plot_if_enabled(
-            lambda: display_trajectories(hist_position, 100, title=plot_title)
-        )
+        plot_if_enabled(lambda: display_trajectories(hist_position, 100, title=plot_title))
         plot_if_enabled(
             lambda: display_trajectories_at_times(
                 hist_position,
@@ -351,11 +327,7 @@ def test_backward_CondDenoisers(
             )
         )
     elif test_setup["d"] == 2:
-        plot_if_enabled(
-            lambda: plot_2d_mixture_and_samples(
-                posterior_state, hist_position, plot_title
-            )
-        )
+        plot_if_enabled(lambda: plot_2d_mixture_and_samples(posterior_state, hist_position, plot_title))
         print(hist_position.shape)
         plot_if_enabled(
             lambda: display_2d_trajectories_at_times(

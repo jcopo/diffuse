@@ -9,6 +9,7 @@ class MeasurementState(NamedTuple):
     y: Array
     mask_history: Array
 
+
 @dataclass
 class MatrixProduct:
     A: Array

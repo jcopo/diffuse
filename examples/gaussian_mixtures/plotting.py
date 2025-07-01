@@ -42,16 +42,12 @@ def display_trajectories(Y, m, title=None):
 
     for i, idx in enumerate(I):
         color_marker = i / (m - 1)
-        plt.plot(
-            Y[idx, :], c=[color_marker, 0, 1 - color_marker], alpha=0.3, linewidth=0.5
-        )
+        plt.plot(Y[idx, :], c=[color_marker, 0, 1 - color_marker], alpha=0.3, linewidth=0.5)
     if title:
         plt.title(title)
 
 
-def display_trajectories_at_times(
-    particles, timer, n_steps, space, perct, pdf, title=None
-):
+def display_trajectories_at_times(particles, timer, n_steps, space, perct, pdf, title=None):
     """Display histograms vs theoretical PDFs at different time points."""
     n_plots = len(perct)
     fig, axs = plt.subplots(n_plots, 1, figsize=(10 * n_plots, n_plots))
@@ -79,9 +75,7 @@ def plot_2d_mixture_and_samples(mixture_state, final_samples, title):
 
     # plot whole trajectory for 100 particles randomly selected with different colors
     # colors depends on the last position of the particle
-    idxs = jax.random.choice(
-        jax.random.PRNGKey(0), final_samples.shape[0], (10,), replace=False
-    )
+    idxs = jax.random.choice(jax.random.PRNGKey(0), final_samples.shape[0], (10,), replace=False)
     sorted_idxs = jnp.argsort(final_samples[-1, idxs, 0])
     for i in sorted_idxs:
         color_marker = i / (sorted_idxs.shape[0] - 1)
@@ -128,9 +122,7 @@ def plot_2d_mixture_and_samples(mixture_state, final_samples, title):
     #     print(f"Plot saved to: {filepath}")
 
 
-def display_2d_trajectories_at_times(
-    particles, timer, n_steps, perct, pdf, title=None, score=None, sde=None
-):
+def display_2d_trajectories_at_times(particles, timer, n_steps, perct, pdf, title=None, score=None, sde=None):
     """
     Display 2D particle evolution at different time points in a single horizontal line.
     Shows samples as scatter plots overlaid on theoretical PDF contours and score field.
@@ -224,9 +216,7 @@ def display_2d_trajectories_at_times(
 
         # Compute alpha if SDE is provided
         alpha_t, _ = sde.alpha_beta(t)
-        ax.set_title(
-            f"t = {t:.2f}, step {k}, α = {alpha_t:.3f}".replace("0.", "."), fontsize=8
-        )
+        ax.set_title(f"t = {t:.2f}, step {k}, α = {alpha_t:.3f}".replace("0.", "."), fontsize=8)
 
         if i == 0:  # Add legend to first subplot
             ax.legend()
@@ -240,9 +230,7 @@ def display_2d_trajectories_at_times(
         os.makedirs(plots_dir, exist_ok=True)
 
         # Create safe filename from title
-        safe_filename = "".join(
-            c for c in title if c.isalnum() or c in (" ", "-", "_")
-        ).rstrip()
+        safe_filename = "".join(c for c in title if c.isalnum() or c in (" ", "-", "_")).rstrip()
         safe_filename = safe_filename.replace(" ", "_")
         filepath = os.path.join(plots_dir, f"{safe_filename}_2d_evolution.png")
 

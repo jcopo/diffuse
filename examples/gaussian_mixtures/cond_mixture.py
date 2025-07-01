@@ -40,7 +40,7 @@ class NoiseMask:
 #     return y, A, x_star
 
 
-def compute_xt_given_y(mix_state_posterior: MixState, sde:SDE, t: float):
+def compute_xt_given_y(mix_state_posterior: MixState, sde: SDE, t: float):
     means, covs, weights = mix_state_posterior
     alpha_t = jnp.exp(-sde.beta.integrate(t, 0.0))
     means_xt = jnp.sqrt(alpha_t) * means

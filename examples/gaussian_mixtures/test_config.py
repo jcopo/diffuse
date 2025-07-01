@@ -65,9 +65,7 @@ CONFIG = {
         ),
         (
             "heun",
-            lambda n_steps, t_final: HeunTimer(
-                n_steps=n_steps, rho=7.0, sigma_min=0.002, sigma_max=1.0
-            ),
+            lambda n_steps, t_final: HeunTimer(n_steps=n_steps, rho=7.0, sigma_min=0.002, sigma_max=1.0),
         ),
     ],
     "cond_denoisers": [DPSDenoiser, TMPDenoiser, FPSDenoiser],
@@ -152,9 +150,7 @@ def create_basic_setup(key=None, **overrides):
     params["y_target"] = y_target
 
     # Create space grid
-    space = jnp.linspace(
-        params["space_min"], params["space_max"], params["space_points"]
-    )
+    space = jnp.linspace(params["space_min"], params["space_max"], params["space_points"])
 
     # Create time grid
     ts = jnp.linspace(params["t_init"], params["t_final"], params["n_steps"])

@@ -7,17 +7,19 @@ from jaxtyping import Array, PRNGKeyArray
 from diffuse.base_forward_model import MeasurementState
 from diffuse.utils.plotting import sigle_plot
 
+
 @dataclass
 class MaskState:
     y: Array
     mask_history: Array
     xi: Array
 
+
 @dataclass
 class SquareMask:
     size: int
     img_shape: tuple
-    std: float = 1.
+    std: float = 1.0
 
     def make(self, xi: Array) -> Array:
         """Create a differentiable square mask."""
@@ -34,9 +36,7 @@ class SquareMask:
         mask_half_size = self.size // 2
         softness = 0.1  # Adjust this value to control the softness of the edges
 
-        mask = jax.nn.sigmoid(
-            (-jnp.maximum(y_dist, x_dist) + mask_half_size) / softness
-        )
+        mask = jax.nn.sigmoid((-jnp.maximum(y_dist, x_dist) + mask_half_size) / softness)
         # return jnp.where(mask > 0.5, 1.0, 0.0)[..., None]
         return mask[..., None]
 
@@ -61,9 +61,7 @@ class SquareMask:
         mask_history = jnp.zeros_like(self.make(xi))
         return MaskState(y=y, mask_history=mask_history, xi=xi)
 
-    def update_measurement(
-        self, mask_state: MaskState, new_measurement: Array, design: Array
-    ) -> MaskState:
+    def update_measurement(self, mask_state: MaskState, new_measurement: Array, design: Array) -> MaskState:
         new_mask = self.make(design)
         # Compute the new part of the mask (i.e. the part not already measured)
         new_part_mask = new_mask * (1 - mask_state.mask_history)
@@ -90,7 +88,6 @@ class SquareMask:
     #     #jax.experimental.io_callback(sigle_plot, None, y)
     #     # jax.experimental.io_callback(sigle_plot, None, meas_x)
     #     return self.restore_from_mask(design, jnp.zeros_like(theta), (y - meas_x)) / self.sigma
-
 
     # def logprob_y_t(self, theta: Array, y: Array, mask: Array, alpha_t: float) -> Array:
     #     A_theta = self.measure_from_mask(mask, theta)

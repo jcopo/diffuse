@@ -24,9 +24,7 @@ def process_csv_files(root_dir):
     combined_df = pd.concat(dfs, ignore_index=True)
 
     # Group by Method and calculate mean and std for each metric
-    summary = combined_df.groupby("Method").agg(
-        {"PSNR": ["median", "std"], "SSIM": ["median", "std"]}
-    )
+    summary = combined_df.groupby("Method").agg({"PSNR": ["median", "std"], "SSIM": ["median", "std"]})
 
     return summary
 
@@ -57,9 +55,7 @@ def plot_measurement_curves(root_dir):
         combined_df = pd.concat(results[method], ignore_index=True)
 
         # Calculate statistics on combined data
-        stats = combined_df.groupby("Measurement").agg(
-            {"PSNR": ["median", "std"], "SSIM": ["median", "std"]}
-        )
+        stats = combined_df.groupby("Measurement").agg({"PSNR": ["median", "std"], "SSIM": ["median", "std"]})
 
         # Store final stats
         results[method] = stats

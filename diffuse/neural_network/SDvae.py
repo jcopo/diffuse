@@ -55,9 +55,7 @@ class DiagonalGaussian(nn.Module):
         if self.sample:
             std = jnp.exp(0.5 * logvar)
             kl = 0.5 * jnp.sum(mean**2 + jnp.exp(logvar) - logvar - 1, axis=[1, 2, 3])
-            return kl, mean + std * jax.random.normal(
-                key=self.make_rng("reg"), shape=mean.shape, dtype=z.dtype
-            )
+            return kl, mean + std * jax.random.normal(key=self.make_rng("reg"), shape=mean.shape, dtype=z.dtype)
         else:
             return mean
 

@@ -36,7 +36,8 @@ class Denoiser(BaseDenoiser):
 
         return DenoiserState(integrator_state_next)
 
-    def generate(self,
+    def generate(
+        self,
         rng_key: PRNGKeyArray,
         n_steps: int,
         n_particles: int,

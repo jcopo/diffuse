@@ -29,9 +29,7 @@ class EulerMaruyamaIntegrator(Integrator):
     convergence for general SDEs.
     """
 
-    def __call__(
-        self, integrator_state: IntegratorState, score: Callable
-    ) -> IntegratorState:
+    def __call__(self, integrator_state: IntegratorState, score: Callable) -> IntegratorState:
         """Perform one Euler-Maruyama integration step.
 
         Args:

@@ -89,22 +89,14 @@ class UNet(nn.Module):
                 ]
                 ch = int(mult * self.params.ch)
                 if ds in self.params.attention_resolutions:
-                    layers.append(
-                        AttnBlock(in_channels=ch, param_dtype=self.params.param_dtype)
-                    )
+                    layers.append(AttnBlock(in_channels=ch, param_dtype=self.params.param_dtype))
 
                 blocks_down.append(TimestepEmbedSequential(layers))
                 input_block_channels.append(ch)
 
             if level != len(self.params.ch_mult) - 1:
                 blocks_down.append(
-                    TimestepEmbedSequential(
-                        [
-                            Downsample(
-                                in_channels=ch, param_dtype=self.params.param_dtype
-                            )
-                        ]
-                    )
+                    TimestepEmbedSequential([Downsample(in_channels=ch, param_dtype=self.params.param_dtype)])
                 )
                 input_block_channels.append(ch)
                 ds *= 2
@@ -152,9 +144,7 @@ class UNet(nn.Module):
 
                 ch = int(mult * self.params.ch)
                 if ds in self.params.attention_resolutions:
-                    layers.append(
-                        AttnBlock(in_channels=ch, param_dtype=self.params.param_dtype)
-                    )
+                    layers.append(AttnBlock(in_channels=ch, param_dtype=self.params.param_dtype))
 
                 if level and i == self.params.num_res_blocks:
                     layers.append(
@@ -170,9 +160,7 @@ class UNet(nn.Module):
                 blocks_up.append(TimestepEmbedSequential(layers))
         self.blocks_up = blocks_up
 
-        norm_out = nn.GroupNorm(
-            num_groups=32, epsilon=1e-6, param_dtype=self.params.param_dtype
-        )
+        norm_out = nn.GroupNorm(num_groups=32, epsilon=1e-6, param_dtype=self.params.param_dtype)
 
         activation_out = self.params.activation
 

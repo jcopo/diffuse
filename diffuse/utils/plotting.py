@@ -25,9 +25,7 @@ def plot_comparison(ground_truth, state_random, state, y_random, y, logging_path
     )
 
     # Create grid spec for layout with reduced vertical spacing
-    gs = fig.add_gridspec(
-        4, n, hspace=0.0001
-    )  # Added hspace parameter to reduce vertical spacing
+    gs = fig.add_gridspec(4, n, hspace=0.0001)  # Added hspace parameter to reduce vertical spacing
 
     # Add the larger subplot for the first 4 squares
     ax_large = fig.add_subplot(gs[:2, :2])
@@ -62,27 +60,21 @@ def plot_comparison(ground_truth, state_random, state, y_random, y, logging_path
     plt.close()
 
 
-def plotter_random(
-    ground_truth, joint_y, design, thetas, weights, n_meas, logging_path, size
-):
+def plotter_random(ground_truth, joint_y, design, thetas, weights, n_meas, logging_path, size):
     n = 20
     best_idx = jnp.argsort(weights)[-n:][::-1]
     worst_idx = jnp.argsort(weights)[:n]
 
     # Create a figure with subplots
     fig = plt.figure(figsize=(40, 10))  # Reduced height from 12 to 10
-    fig.suptitle(
-        "High weight (top) and low weight (bottom) Samples", fontsize=18, y=0.67, x=0.6
-    )
+    fig.suptitle("High weight (top) and low weight (bottom) Samples", fontsize=18, y=0.67, x=0.6)
     # fig.text(0.2, 1., f'Measurement {n_meas}', va='center', rotation='vertical', fontsize=14)
 
     # reduce spacing between title and subplots
     plt.subplots_adjust(top=0.85)
 
     # Create grid spec for layout with reduced vertical spacing
-    gs = fig.add_gridspec(
-        4, n, hspace=0.0001
-    )  # Added hspace parameter to reduce vertical spacing
+    gs = fig.add_gridspec(4, n, hspace=0.0001)  # Added hspace parameter to reduce vertical spacing
 
     # Add the larger subplot for the first 4 squares
     ax_large = fig.add_subplot(gs[:2, :2])
@@ -138,18 +130,20 @@ def plotter_random(
     plt.close()
 
 
-def sigle_plot(array, t=0.):
+def sigle_plot(array, t=0.0):
     plt.imshow(array, cmap="gray")
     plt.axis("off")
     plt.colorbar()
     plt.title(f"t={t:.2f}")
     plt.show()
 
+
 def sigle_plot_fourier(array):
     plt.imshow(jnp.log10(jnp.abs(array[..., 0] + 1j * array[..., 1])), cmap="gray")
     plt.axis("off")
     plt.colorbar()
     plt.show()
+
 
 def sigle_plot_mask(design, mask):
     plt.imshow(mask.make(design), cmap="gray")
@@ -202,9 +196,7 @@ def plot_top_samples(thetas, cntrst_thetas, weights, weights_c, past_y, y_c):
     worst_idx_c = jnp.argsort(weights_c)[:n]
     # Create a figure with subplots
     fig, axs = plt.subplots(4, n, figsize=(40, 12))
-    fig.suptitle(
-        "Theta (top) and Contrastive Theta (bottom) Samples", fontsize=18, y=0.67, x=0.6
-    )
+    fig.suptitle("Theta (top) and Contrastive Theta (bottom) Samples", fontsize=18, y=0.67, x=0.6)
 
     for idx in range(n):
         axs[0, idx].imshow(thetas[best_idx[idx]], cmap="gray")
@@ -241,27 +233,21 @@ def plot_lines(array, fl=0.0):
     plt.show()
 
 
-def log_samples(
-    opt_hist, ground_truth, joint_y, thetas, weights, n_meas, logging_path, size
-):
+def log_samples(opt_hist, ground_truth, joint_y, thetas, weights, n_meas, logging_path, size):
     n = 20
     best_idx = jnp.argsort(weights)[-n:][::-1]
     worst_idx = jnp.argsort(weights)[:n]
 
     # Create a figure with subplots
     fig = plt.figure(figsize=(40, 10))  # Reduced height from 12 to 10
-    fig.suptitle(
-        "High weight (top) and low weight (bottom) Samples", fontsize=18, y=0.67, x=0.6
-    )
+    fig.suptitle("High weight (top) and low weight (bottom) Samples", fontsize=18, y=0.67, x=0.6)
     # fig.text(0.2, 1., f'Measurement {n_meas}', va='center', rotation='vertical', fontsize=14)
 
     # reduce spacing between title and subplots
     plt.subplots_adjust(top=0.85)
 
     # Create grid spec for layout with reduced vertical spacing
-    gs = fig.add_gridspec(
-        4, n, hspace=0.0001
-    )  # Added hspace parameter to reduce vertical spacing
+    gs = fig.add_gridspec(4, n, hspace=0.0001)  # Added hspace parameter to reduce vertical spacing
 
     # Add the larger subplot for the first 4 squares
     ax_large = fig.add_subplot(gs[:2, :2])
@@ -379,18 +365,15 @@ def plot_top_10_samples(res):
     plt.tight_layout()
     plt.show()
 
-def show_samples_plot(
-    opt_hist, ground_truth, joint_y, thetas, weights, n_meas, size=7
-):
+
+def show_samples_plot(opt_hist, ground_truth, joint_y, thetas, weights, n_meas, size=7):
     n = 20
     best_idx = jnp.argsort(weights)[-n:][::-1]
     worst_idx = jnp.argsort(weights)[:n]
 
     # Create a figure with subplots
     fig = plt.figure(figsize=(40, 10))
-    fig.suptitle(
-        "High weight (top) and low weight (bottom) Samples", fontsize=18, y=0.67, x=0.6
-    )
+    fig.suptitle("High weight (top) and low weight (bottom) Samples", fontsize=18, y=0.67, x=0.6)
 
     # Create grid spec for layout with reduced vertical spacing
     gs = fig.add_gridspec(4, n, hspace=0.0001)
@@ -442,6 +425,6 @@ def show_samples_plot(
         ax1.axis("off")
         ax2.axis("off")
 
-    #plt.tight_layout(rect=[0, 0, 1, 0.96])
+    # plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
     plt.close()

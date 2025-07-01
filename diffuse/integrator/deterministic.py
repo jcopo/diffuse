@@ -21,9 +21,7 @@ class EulerIntegrator(ChurnedIntegrator):
     where β(t) is the noise schedule and s(x,t) is the score function.
     """
 
-    def __call__(
-        self, integrator_state: IntegratorState, score: Callable
-    ) -> IntegratorState:
+    def __call__(self, integrator_state: IntegratorState, score: Callable) -> IntegratorState:
         """Perform one Euler integration step in reverse time.
 
         Args:
@@ -41,11 +39,7 @@ class EulerIntegrator(ChurnedIntegrator):
         t_next = self.timer(step + 1)
         dt = t_next - t_churned
         beta_churned = self.sde.alpha_beta(t_churned)[1]
-        drift = (
-            -0.5
-            * beta_churned
-            * (position_churned + score(position_churned, t_churned))
-        )
+        drift = -0.5 * beta_churned * (position_churned + score(position_churned, t_churned))
         dx = drift * dt
         _, rng_key_next = jax.random.split(rng_key)
 
@@ -66,9 +60,7 @@ class HeunIntegrator(ChurnedIntegrator):
     k₂ = drift(x_n + k₁*dt, t_{n+1})
     """
 
-    def __call__(
-        self, integrator_state: IntegratorState, score: Callable
-    ) -> IntegratorState:
+    def __call__(self, integrator_state: IntegratorState, score: Callable) -> IntegratorState:
         """Perform one Heun integration step in reverse time.
 
         Args:
@@ -87,18 +79,10 @@ class HeunIntegrator(ChurnedIntegrator):
         t_next = self.timer(step + 1)
         dt = t_next - t_churned
         beta_churned = self.sde.alpha_beta(t_churned)[1]
-        drift_churned = (
-            -0.5
-            * beta_churned
-            * (position_churned + score(position_churned, t_churned))
-        )
+        drift_churned = -0.5 * beta_churned * (position_churned + score(position_churned, t_churned))
         position_next_churned = position_churned + drift_churned * dt
 
-        drift_next = (
-            -0.5
-            * self.sde.beta(t_next)
-            * (position_next_churned + score(position_next_churned, t_next))
-        )
+        drift_next = -0.5 * self.sde.beta(t_next) * (position_next_churned + score(position_next_churned, t_next))
         position_next_heun = position_churned + (drift_churned + drift_next) * dt / 2
 
         next_state = jax.lax.cond(
@@ -122,9 +106,7 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
     better handle the diffusion process dynamics.
     """
 
-    def __call__(
-        self, integrator_state: IntegratorState, score: Callable
-    ) -> IntegratorState:
+    def __call__(self, integrator_state: IntegratorState, score: Callable) -> IntegratorState:
         """Perform one DPM-Solver++ (2S) integration step in reverse time.
 
         Args:
@@ -164,22 +146,14 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
         h = jnp.clip(log_scale_next - log_scale_churned, 1e-6)
         r = jnp.clip((log_scale_mid - log_scale_churned) / h, 1e-6)
 
-        pred_x0_churned = self.sde.tweedie(
-            SDEState(position_churned, t_churned), score
-        ).position
+        pred_x0_churned = self.sde.tweedie(SDEState(position_churned, t_churned), score).position
 
-        u = (
-            sigma_mid / sigma_churned * position_churned
-            - jnp.sqrt(alpha_mid) * jnp.expm1(-h * r) * pred_x0_churned
-        )
+        u = sigma_mid / sigma_churned * position_churned - jnp.sqrt(alpha_mid) * jnp.expm1(-h * r) * pred_x0_churned
 
         pred_x0_mid = self.sde.tweedie(SDEState(u, t_mid), score).position
         D = (1 - 1 / (2 * r)) * pred_x0_churned + (1 / (2 * r)) * pred_x0_mid
 
-        next_position = (
-            sigma_next / sigma_churned * position_churned
-            - jnp.sqrt(alpha_next) * jnp.expm1(-h) * D
-        )
+        next_position = sigma_next / sigma_churned * position_churned - jnp.sqrt(alpha_next) * jnp.expm1(-h) * D
 
         _, rng_key_next = jax.random.split(rng_key)
         next_state = IntegratorState(next_position, rng_key_next, step + 1)
@@ -213,9 +187,7 @@ class DDIMIntegrator(ChurnedIntegrator):
 
     """
 
-    def __call__(
-        self, integrator_state: IntegratorState, score: Callable
-    ) -> IntegratorState:
+    def __call__(self, integrator_state: IntegratorState, score: Callable) -> IntegratorState:
         """Perform one DDIM step in reverse time.
 
         Args:
@@ -246,9 +218,7 @@ class DDIMIntegrator(ChurnedIntegrator):
 
         eps = noise_pred(position_churned, t_churned)
 
-        pred_x0 = (position_churned - jnp.sqrt(1 - alpha_churned) * eps) / jnp.sqrt(
-            alpha_churned
-        )
+        pred_x0 = (position_churned - jnp.sqrt(1 - alpha_churned) * eps) / jnp.sqrt(alpha_churned)
 
         position_next = jnp.sqrt(alpha_next) * pred_x0 + jnp.sqrt(1 - alpha_next) * eps
 

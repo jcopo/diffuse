@@ -28,14 +28,10 @@ class PixelShuffle(nn.Module):
     scale: int
 
     def __call__(self, x: ArrayLike) -> ArrayLike:
-        return rearrange(
-            x, "b h w (h2 w2 c) -> b (h h2) (w w2) c", h2=self.scale, w2=self.scale
-        )
+        return rearrange(x, "b h w (h2 w2 c) -> b (h h2) (w w2) c", h2=self.scale, w2=self.scale)
 
 
-def sinusoidal_embedding(
-    t: Union[ArrayLike, float], out_dim: int = 64, max_period: int = 10_000
-) -> ArrayLike:
+def sinusoidal_embedding(t: Union[ArrayLike, float], out_dim: int = 64, max_period: int = 10_000) -> ArrayLike:
     """The so-called sinusoidal positional embedding.
 
     Parameters
@@ -67,9 +63,7 @@ def sinusoidal_embedding(
     embs = t * fs
     embs = jnp.concatenate([jnp.sin(embs), jnp.cos(embs)], axis=-1)
     if out_dim % 2 == 1:
-        raise NotImplementedError(
-            f"out_dim is implemented for even number only, while {out_dim} is given."
-        )
+        raise NotImplementedError(f"out_dim is implemented for even number only, while {out_dim} is given.")
     return embs
 
 
@@ -98,9 +92,7 @@ class Downsample(nn.Module):
     def __call__(self, x):
         B, H, W, C = x.shape
         dim = self.dim if self.dim is not None else C
-        x = nn.Conv(
-            dim, kernel_size=(4, 4), strides=(2, 2), padding=1, dtype=self.dtype
-        )(x)
+        x = nn.Conv(dim, kernel_size=(4, 4), strides=(2, 2), padding=1, dtype=self.dtype)(x)
         assert x.shape == (B, H // 2, W // 2, dim)
         return x
 
@@ -199,27 +191,19 @@ class ResnetBlock(nn.Module):
         B, _, _, C = x.shape
         assert time_emb.shape[0] == B and len(time_emb.shape) == 2
 
-        h = WeightStandardizedConv(
-            features=self.dim, kernel_size=(3, 3), padding=1, name="conv_0"
-        )(x)
+        h = WeightStandardizedConv(features=self.dim, kernel_size=(3, 3), padding=1, name="conv_0")(x)
         h = nn.GroupNorm(num_groups=self.groups, dtype=self.dtype, name="norm_0")(h)
 
         # add in timestep embedding
-        time_emb = nn.Dense(
-            features=2 * self.dim, dtype=self.dtype, name="time_mlp.dense_0"
-        )(nn.swish(time_emb))
+        time_emb = nn.Dense(features=2 * self.dim, dtype=self.dtype, name="time_mlp.dense_0")(nn.swish(time_emb))
         time_emb = time_emb[:, jnp.newaxis, jnp.newaxis, :]  # [B, H, W, C]
         scale, shift = jnp.split(time_emb, 2, axis=-1)
         h = h * (1 + scale) + shift
 
         h = nn.swish(h)
 
-        h = WeightStandardizedConv(
-            features=self.dim, kernel_size=(3, 3), padding=1, name="conv_1"
-        )(h)
-        h = nn.swish(
-            nn.GroupNorm(num_groups=self.groups, dtype=self.dtype, name="norm_1")(h)
-        )
+        h = WeightStandardizedConv(features=self.dim, kernel_size=(3, 3), padding=1, name="conv_1")(h)
+        h = nn.swish(nn.GroupNorm(num_groups=self.groups, dtype=self.dtype, name="norm_1")(h))
 
         if C != self.dim:
             x = nn.Conv(
@@ -270,9 +254,7 @@ class Attention(nn.Module):
         out = rearrange(out, "b h (x y) d -> b x y (h d)", x=H)
         assert out.shape == (B, H, W, dim)
 
-        out = nn.Conv(
-            features=C, kernel_size=(1, 1), dtype=self.dtype, name="to_out.conv_0"
-        )(out)
+        out = nn.Conv(features=C, kernel_size=(1, 1), dtype=self.dtype, name="to_out.conv_0")(out)
         return out
 
 
@@ -312,12 +294,8 @@ class LinearAttention(nn.Module):
         out = rearrange(out, "b h e (x y) -> b x y (h e)", x=H)
         assert out.shape == (B, H, W, dim)
 
-        out = nn.Conv(
-            features=C, kernel_size=(1, 1), dtype=self.dtype, name="to_out.conv_0"
-        )(out)
-        out = nn.LayerNorm(
-            epsilon=1e-5, use_bias=False, dtype=self.dtype, name="to_out.norm_0"
-        )(out)
+        out = nn.Conv(features=C, kernel_size=(1, 1), dtype=self.dtype, name="to_out.conv_0")(out)
+        out = nn.LayerNorm(epsilon=1e-5, use_bias=False, dtype=self.dtype, name="to_out.norm_0")(out)
         return out
 
 
@@ -378,30 +356,20 @@ class UNet(nn.Module):
         hs.append(h)
         # use sinusoidal embeddings to encode timesteps
         if time.ndim < 1:
-            time_emb = jnp.broadcast_to(
-                sinusoidal_embedding(time / self.dt, out_dim=self.dim), (B, self.dim)
-            )
+            time_emb = jnp.broadcast_to(sinusoidal_embedding(time / self.dt, out_dim=self.dim), (B, self.dim))
         else:
-            time_emb = jax.vmap(lambda z: sinusoidal_embedding(z, out_dim=self.dim))(
-                time / self.dt
-            )
+            time_emb = jax.vmap(lambda z: sinusoidal_embedding(z, out_dim=self.dim))(time / self.dt)
         time_emb = nn.Dense(features=self.dim * 4, dtype=self.dtype)(time_emb)
-        time_emb = nn.Dense(features=self.dim * 4, dtype=self.dtype)(
-            nn.gelu(time_emb)
-        )  # [B, 4*dim]
+        time_emb = nn.Dense(features=self.dim * 4, dtype=self.dtype)(nn.gelu(time_emb))  # [B, 4*dim]
 
         # downsampling
         num_resolutions = len(self.dim_mults)
         for ind in range(num_resolutions):
             dim_in = h.shape[-1]
-            h = ResnetBlock(
-                dim=dim_in, groups=self.resnet_block_groups, dtype=self.dtype
-            )(h, time_emb)
+            h = ResnetBlock(dim=dim_in, groups=self.resnet_block_groups, dtype=self.dtype)(h, time_emb)
             hs.append(h)
 
-            h = ResnetBlock(
-                dim=dim_in, groups=self.resnet_block_groups, dtype=self.dtype
-            )(h, time_emb)
+            h = ResnetBlock(dim=dim_in, groups=self.resnet_block_groups, dtype=self.dtype)(h, time_emb)
             h = AttnBlock(dtype=self.dtype, name=f"down_{ind}.attnblock_0")(h)
             hs.append(h)
 
@@ -429,9 +397,7 @@ class UNet(nn.Module):
             dtype=self.dtype,
             name="mid.resblock_0",
         )(h, time_emb)
-        h = AttnBlock(
-            use_linear_attention=False, dtype=self.dtype, name="mid.attenblock_0"
-        )(h)
+        h = AttnBlock(use_linear_attention=False, dtype=self.dtype, name="mid.attenblock_0")(h)
         h = ResnetBlock(
             dim=mid_dim,
             groups=self.resnet_block_groups,
@@ -496,9 +462,7 @@ class UNet(nn.Module):
         default_out_dim = C * (1 if not self.learnt_variance else 2)
         out_dim = default_out_dim if self.out_dim is None else self.out_dim
 
-        out = nn.Conv(
-            out_dim, kernel_size=(1, 1), dtype=self.dtype, name="final.conv_0"
-        )(out)
+        out = nn.Conv(out_dim, kernel_size=(1, 1), dtype=self.dtype, name="final.conv_0")(out)
 
         if B == 1:
             return out[0]
