@@ -1,6 +1,8 @@
 import pytest
 import matplotlib.pyplot as plt
 
+from .config import get_conditional_test_config
+
 
 def pytest_addoption(parser):
     parser.addoption(
@@ -32,3 +34,21 @@ def plot_if_enabled(request):
             plt.close("all")
 
     return _plot_if_enabled
+
+
+@pytest.fixture
+def test_config(request):
+    """
+    Main test configuration fixture.
+
+    Usage:
+        @pytest.mark.parametrize("test_config", [
+            {"schedule_name": "LinearSchedule", "timer_name": "vp"},
+            {"schedule_name": "CosineSchedule", "timer_name": "heun"},
+        ], indirect=True)
+        def test_something(test_config):
+            # test_config contains everything needed for the test
+    """
+    # Get parameters from indirect parametrization
+    params = getattr(request, "param", {})
+    return get_conditional_test_config(**params)

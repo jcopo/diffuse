@@ -100,7 +100,7 @@ def sampler_mixtr(key, state: MixState, N):
     noise = jax.random.normal(key2, shape=(N, d))
 
     chol = jnp.linalg.cholesky(sigma)
-    noise_scaled = jnp.einsum("nij, ni->nj", chol[idx], noise)
+    noise_scaled = jnp.einsum("nij, nj->ni", chol[idx], noise)
 
     return mu[idx] + noise_scaled
 

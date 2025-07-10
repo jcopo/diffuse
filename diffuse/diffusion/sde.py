@@ -113,6 +113,16 @@ class DiffusionModel(ABC):
     def noise_level(self, t: float) -> float:
         pass
 
+    def snr(self, t: float) -> float:
+        """
+        Compute Signal-to-Noise Ratio (SNR) at timestep t.
+
+        SNR(t) = α²(t) / (1 - α²(t)) = α²(t) / noise_level(t)
+        """
+        noise_level = self.noise_level(t)
+        alpha_squared = 1 - noise_level
+        return alpha_squared / (noise_level + 1e-8)
+
     def score(self, state: SDEState, state_0: SDEState) -> Array:
         """
         Closed-form expression for the score function ∇ₓ log p(xₜ | xₜ₀) of the Gaussian transition kernel
@@ -188,3 +198,18 @@ class SDE(DiffusionModel):
         alpha = jnp.exp(-self.beta.integrate(t, 0.0))
         alpha = jnp.clip(alpha, 0.001, 0.9999)
         return 1 - alpha
+
+
+def check_snr(model: DiffusionModel, t: float, tolerance: float = 1e-3) -> bool:
+    """
+    Check if SNR at timestep t is effectively zero.
+
+    Args:
+        model: DiffusionModel instance
+        t: Timestep to check
+        tolerance: Tolerance for considering SNR as zero
+
+    Returns:
+        True if SNR is effectively zero
+    """
+    return model.snr(t) < tolerance
