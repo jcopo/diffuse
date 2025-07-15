@@ -25,9 +25,9 @@ from .config import get_parametrized_configs, get_conditional_configs, get_test_
 from .test_utils import (
     create_plots,
     validate_distributions,
-    compute_and_store_wasserstein,
-    assert_wasserstein_threshold,
-    print_wasserstein_summary,
+    compute_and_store_mmd,
+    assert_mmd_threshold,
+    print_mmd_summary,
     plot_debug,
 )
 
@@ -36,14 +36,15 @@ jax.config.update("jax_enable_x64", True)
 
 
 @pytest.fixture(autouse=True)
-def collect_wasserstein():
-    """Automatically collect and print Wasserstein distances from all tests.
+def collect_mmd():
+    """Automatically collect and print MMD distances from all tests.
 
-    Wasserstein distance W_p(μ,ν) = (inf_{γ∈Γ(μ,ν)} ∫|x-y|^p dγ(x,y))^(1/p)
-    measures the minimum cost to transport one distribution to another.
+    Maximum Mean Discrepancy (MMD) measures the difference between two
+    probability distributions by comparing their mean embeddings in a
+    reproducing kernel Hilbert space (RKHS).
     """
     yield
-    print_wasserstein_summary()
+    print_mmd_summary()
 
 
 @pytest.fixture
@@ -167,7 +168,7 @@ def test_backward_sde_conditional_mixture(conditional_config, plot_if_enabled):
 
     Validates conditional sampling p(x|y) = p(y|x)p(x)/p(y) by using the exact
     conditional score ∇log p(x|y) = ∇log p(x) + ∇log p(y|x). Compares generated
-    samples against analytical posterior distribution for Gaussian mixtures.
+    samples against analytical posterior distribution using MMD.
     """
     # Generate random keys
     key_gen, key_samples = jax.random.split(conditional_config.key)
@@ -193,17 +194,15 @@ def test_backward_sde_conditional_mixture(conditional_config, plot_if_enabled):
         state.integrator_state.position, samples_from_posterior, conditional_config, debug_title, plot_if_enabled
     )
 
-    # Compute and validate Wasserstein distance
+    # Compute and validate MMD distance
     result_key_parts = [
         conditional_config.integrator_class.__name__,
         conditional_config.schedule_name,
         conditional_config.timer_name,
     ]
-    wasserstein_distance = compute_and_store_wasserstein(
-        conditional_config, state, samples_from_posterior, result_key_parts
-    )
+    mmd_distance = compute_and_store_mmd(conditional_config, state, samples_from_posterior, result_key_parts)
 
-    assert_wasserstein_threshold(wasserstein_distance, 0.1)
+    assert_mmd_threshold(mmd_distance, 0.05)
 
 
 @pytest.mark.parametrize("cond_denoiser_config", get_conditional_configs(), indirect=True)
@@ -213,7 +212,7 @@ def test_backward_conditional_denoisers(cond_denoiser_config, plot_if_enabled):
     Validates guided diffusion using approximate conditional score:
     ∇log p(x_t|y) ≈ ∇log p(x_t) + λ∇_{x_t}log p(y|x_t)
     where the likelihood gradient guides sampling toward measurements y.
-    Tests DPS (Diffusion Posterior Sampling) and related methods.
+    Tests DPS (Diffusion Posterior Sampling) using MMD for evaluation.
     """
     # Generate random keys
     key_meas, key_gen, key_samples = jax.random.split(cond_denoiser_config.key, 3)
@@ -241,18 +240,18 @@ def test_backward_conditional_denoisers(cond_denoiser_config, plot_if_enabled):
         state.integrator_state.position, samples_from_posterior, cond_denoiser_config, debug_title, plot_if_enabled
     )
 
-    # Compute and validate Wasserstein distance
+    # Compute and validate MMD distance
     result_key_parts = [
         cond_denoiser_config.denoiser_class.__name__,
         cond_denoiser_config.integrator_class.__name__,
         cond_denoiser_config.schedule_name,
         cond_denoiser_config.timer_name,
     ]
-    wasserstein_distance = compute_and_store_wasserstein(
+    mmd_distance = compute_and_store_mmd(
         cond_denoiser_config, state, samples_from_posterior, result_key_parts, print_result=True
     )
 
-    assert_wasserstein_threshold(wasserstein_distance, 0.1)
+    assert_mmd_threshold(mmd_distance, 0.05)
 
 
 # === Distribution Validation Tests ===
