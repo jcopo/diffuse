@@ -30,6 +30,7 @@ from examples.gaussian_mixtures.initialization import (
     init_simple_mixture,
     init_grid_mixture,
     init_bimodal_setup,
+    init_circular_setup,
 )
 
 
@@ -51,7 +52,7 @@ class TestConfig:
 
     # Adaptive percentile parameters
     adaptive_percentiles: bool = True
-    percentile_strategy: str = 'uniform_noise'
+    percentile_strategy: str = "uniform_noise"
     n_percentile_points: int = 11
 
     # Component specifications
@@ -99,7 +100,7 @@ INTEGRATOR_CONFIGS = [
 
 TIMER_CONFIGS = {
     "vp": lambda n_steps, t_final: VpTimer(n_steps=n_steps, eps=0.001, tf=t_final),
-    #"heun": lambda n_steps, t_final: HeunTimer(n_steps=n_steps, rho=7.0, sigma_min=0.002, sigma_max=1.0), # HeunTimer should be used only with sampling methods that are defined on noise levels
+    # "heun": lambda n_steps, t_final: HeunTimer(n_steps=n_steps, rho=7.0, sigma_min=0.002, sigma_max=1.0), # HeunTimer should be used only with sampling methods that are defined on noise levels
 }
 
 DENOISER_CLASSES = [DPSDenoiser, TMPDenoiser, FPSDenoiser]
@@ -148,7 +149,7 @@ def uniform_noise_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
 
     # Sample uniformly in sqrt(noise_level) space
     sqrt_noise_levels = jnp.linspace(jnp.sqrt(noise_start), jnp.sqrt(noise_end), n_points)
-    target_noise_levels = sqrt_noise_levels ** 2
+    target_noise_levels = sqrt_noise_levels**2
 
     # Convert noise levels back to time percentiles
     percentiles = []
@@ -300,7 +301,7 @@ def hybrid_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
     return combined
 
 
-def compute_adaptive_percentiles(sde: SDE, n_points: int = 11, strategy: str = 'logarithmic') -> List[float]:
+def compute_adaptive_percentiles(sde: SDE, n_points: int = 11, strategy: str = "logarithmic") -> List[float]:
     """
     Compute adaptive percentiles based on noise schedule.
 
@@ -317,15 +318,15 @@ def compute_adaptive_percentiles(sde: SDE, n_points: int = 11, strategy: str = '
     Returns:
         List of percentiles (0.0 to 1.0) corresponding to meaningful noise levels
     """
-    if strategy == 'uniform_noise':
+    if strategy == "uniform_noise":
         return uniform_noise_percentiles(sde, n_points)
-    elif strategy == 'derivative':
+    elif strategy == "derivative":
         return derivative_based_percentiles(sde, n_points)
-    elif strategy == 'logarithmic':
+    elif strategy == "logarithmic":
         return logarithmic_percentiles(sde, n_points)
-    elif strategy == 'hybrid':
+    elif strategy == "hybrid":
         return hybrid_percentiles(sde, n_points)
-    elif strategy == 'fixed':
+    elif strategy == "fixed":
         # Use traditional fixed percentiles
         if n_points <= len(PERCENTILES):
             indices = jnp.linspace(0, len(PERCENTILES) - 1, n_points).astype(int)
@@ -397,9 +398,7 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
     # Compute adaptive percentiles based on noise schedule
     if config.adaptive_percentiles:
         config.perct = compute_adaptive_percentiles(
-            config.sde,
-            n_points=config.n_percentile_points,
-            strategy=config.percentile_strategy
+            config.sde, n_points=config.n_percentile_points, strategy=config.percentile_strategy
         )
     else:
         config.perct = PERCENTILES
@@ -412,6 +411,7 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
         from examples.gaussian_mixtures.mixture import pdf_mixtr, cdf_mixtr, sampler_mixtr
 
         # Create mixture and forward model
+        # config.mix_state, config.A, config.y_target, sigma_y = init_circular_setup(config.key, config.d)
         config.mix_state, config.A, config.y_target, sigma_y = init_bimodal_setup(config.key, config.d)
         config.forward_model = MatrixProduct(A=config.A, std=sigma_y)
 

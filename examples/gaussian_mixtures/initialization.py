@@ -156,3 +156,50 @@ def init_bimodal_setup(key, d=2):
     sigma_y = 1.0
 
     return mix_state, A, y_target, sigma_y
+
+
+def init_circular_setup(key, d=2, n_components=6, radius=1.0):
+    """
+    Create mixture and observation setup with components arranged in a circle.
+
+    Args:
+        key: JAX random key
+        d: Dimensionality (must be 2)
+        n_components: Number of components arranged in circle
+        radius: Radius of the circle
+
+    Returns:
+        Tuple of (mix_state, A, y_target, sigma_y)
+    """
+    if d != 2:
+        raise ValueError("Circular setup currently only supports d=2")
+
+    keys = jax.random.split(key, 2)
+
+    # Create circular arrangement with very small radius for overlapping components
+    angles = jnp.linspace(0, 2 * jnp.pi, n_components, endpoint=False)
+    means = jnp.stack([radius * jnp.cos(angles), radius * jnp.sin(angles)], axis=1)
+
+    # Very large covariances to create significant overlap and saddle/camel back shape
+    cov_scale = 1.2
+    covs = cov_scale * jnp.repeat(jnp.eye(d)[None, :, :], n_components, axis=0)
+
+    # Equal weights with small random perturbation
+    base_weight = 1.0 / n_components
+    perturbation = 0.1 * jax.random.uniform(keys[1], (n_components,), minval=-1, maxval=1)
+    weights = base_weight + perturbation * base_weight
+    weights = weights / jnp.sum(weights)  # Renormalize
+
+    mix_state = MixState(means, covs, weights)
+
+    # Design observation matrix to create interesting posterior
+    # Use a weaker constraint to avoid skinny posterior
+    A = jnp.array([[0.3, 0.7]])  # Measure weighted combination of x and y
+
+    # Target observation creates a diagonal line constraint
+    y_target = jnp.array([0.0])
+
+    # Higher noise to make posterior covariance less skinny
+    sigma_y = 2.0
+
+    return mix_state, A, y_target, sigma_y

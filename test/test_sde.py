@@ -94,7 +94,9 @@ def cond_denoiser_config(request):
     Configures denoisers that incorporate measurement y via guidance:
     x_{t-1} = μ_θ(x_t,t) + σ_t ε + λ∇log p(y|x_t) where λ controls conditioning strength.
     """
-    return get_test_config(conditional=True, adaptive_percentiles=True, percentile_strategy="logarithmic", **request.param)
+    return get_test_config(
+        conditional=True, adaptive_percentiles=True, percentile_strategy="logarithmic", **request.param
+    )
 
 
 # === Basic SDE Tests ===
@@ -129,7 +131,6 @@ def test_forward_sde_mixture(forward_config, plot_if_enabled):
     create_plots(forward_config, noised_positions, plot_title, plot_if_enabled)
 
 
-
 @pytest.mark.parametrize("backward_config", get_parametrized_configs(), indirect=True)
 def test_backward_sde_mixture(backward_config, plot_if_enabled):
     """Test backward SDE process with different integrators and schedules.
@@ -158,9 +159,7 @@ def test_backward_sde_mixture(backward_config, plot_if_enabled):
     create_plots(backward_config, hist_position, plot_title, plot_if_enabled)
 
     # Generate reference samples from posterior
-    samples_from_posterior = sampler_mixtr(
-        key_samples, backward_config.mix_state, backward_config.n_samples
-    )
+    samples_from_posterior = sampler_mixtr(key_samples, backward_config.mix_state, backward_config.n_samples)
 
     # Compute and validate MMD distance
     result_key_parts = [
@@ -239,7 +238,9 @@ def test_backward_conditional_denoisers(cond_denoiser_config, plot_if_enabled):
     create_plots(cond_denoiser_config, hist_position, plot_title, plot_if_enabled)
 
     # Compute posterior for the actual measurement y
-    samples_from_posterior = sampler_mixtr(key_samples, cond_denoiser_config.posterior_state, cond_denoiser_config.n_samples)
+    samples_from_posterior = sampler_mixtr(
+        key_samples, cond_denoiser_config.posterior_state, cond_denoiser_config.n_samples
+    )
 
     # Compute and validate MMD distance
     result_key_parts = [

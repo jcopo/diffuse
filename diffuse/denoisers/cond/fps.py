@@ -13,6 +13,7 @@ from diffuse.denoisers.utils import resample_particles, normalize_log_weights
 @dataclass
 class FPSDenoiser(CondDenoiser):
     """Filtering Posterior Sampling Denoiser implementing continuous-time SDE version."""
+
     def __post_init__(self):
         self.resample = True
         self.ess_low = 0.1
