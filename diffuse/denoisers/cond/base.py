@@ -33,6 +33,7 @@ class CondDenoiser(BaseDenoiser):
     resample: Optional[bool] = False
     ess_low: Optional[float] = 0.2
     ess_high: Optional[float] = 0.5
+    keep_history: bool = False
 
     def init(self, position: Array, rng_key: PRNGKeyArray, n_particles: int) -> CondDenoiserState:
         """
@@ -70,7 +71,7 @@ class CondDenoiser(BaseDenoiser):
             state_next = jax.vmap(self.step, in_axes=(0, 0, None))(keys, state, measurement_state)
             if self.resample:
                 state_next = self.resampler(state_next, measurement_state, key)
-            return state_next, state_next.integrator_state.position
+            return state_next, state_next.integrator_state.position if self.keep_history else None
 
         keys = jax.random.split(rng_key, n_steps)
         return jax.lax.scan(body_fun, state, keys)

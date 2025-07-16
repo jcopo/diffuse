@@ -19,6 +19,7 @@ class Denoiser(BaseDenoiser):
     sde: SDE
     score: Callable[[Array, float], Array]  # x -> t -> score(x, t)
     x0_shape: Tuple[int, ...]
+    keep_history: bool = False
 
     def init(self, position: Array, rng_key: PRNGKeyArray) -> DenoiserState:
         integrator_state = self.integrator.init(position, rng_key)
@@ -55,6 +56,6 @@ class Denoiser(BaseDenoiser):
 
         def body_fun(state, _):
             state_next = jax.vmap(self.step)(state)
-            return state_next, state_next.integrator_state.position
+            return state_next, state_next.integrator_state.position if self.keep_history else None
 
         return jax.lax.scan(body_fun, state, jnp.arange(n_steps))

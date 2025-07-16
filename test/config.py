@@ -449,6 +449,7 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
             score=unconditional_score,
             forward_model=config.forward_model,
             x0_shape=x_sample.shape,
+            keep_history=True,
         )
 
         config.denoiser = Denoiser(
@@ -456,6 +457,7 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
             sde=config.sde,
             score=conditional_score,
             x0_shape=x_sample.shape,
+            keep_history=True,
         )
 
         # Store conditional-specific functions
