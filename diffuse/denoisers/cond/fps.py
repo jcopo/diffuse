@@ -13,6 +13,9 @@ from diffuse.denoisers.utils import resample_particles, normalize_log_weights
 @dataclass
 class FPSDenoiser(CondDenoiser):
     """Filtering Posterior Sampling Denoiser implementing continuous-time SDE version."""
+    def __post_init__(self):
+        self.resample = True
+        self.ess_low = 0.1
 
     def step(
         self,
@@ -27,12 +30,12 @@ class FPSDenoiser(CondDenoiser):
 
         # Define modified score function that includes measurement term
         def modified_score(x: Array, t: float) -> Array:
+            # import pdb; pdb.set_trace()
             # noise y
             y_t = self.y_noiser(rng_key, t, measurement_state).position
 
             # Compute guidance term
-            noise_level = self.sde.noise_level(t)
-            alpha_t = 1 - noise_level
+            alpha_t = self.sde.noise_level(t)
             y_pred = self.forward_model.apply(x, measurement_state)
             residual = y_t - y_pred
             guidance_term = self.forward_model.restore(residual, measurement_state) / (self.forward_model.std * alpha_t)
@@ -81,20 +84,18 @@ class FPSDenoiser(CondDenoiser):
             CondDenoiserState: Updated state after resampling.
         """
         integrator_state, log_weights = state_next.integrator_state, state_next.log_weights
-        y_0, mask = measurement_state.y, measurement_state.mask_history
         x_t = state_next.integrator_state.position
         rng_key, rng_key_resample = jax.random.split(rng_key)
 
         t = self.integrator.timer(state_next.integrator_state.step)
-        noise_level = self.sde.noise_level(t)
-        alpha_t = 1 - noise_level
+        alpha_t = self.sde.noise_level(t)
 
-        y_t = self.y_noiser(rng_key, t, measurement_state).position
+        y_t = jax.vmap(self.y_noiser, in_axes=(None, 0, None))(rng_key, t, measurement_state).position
         f_x_t = jax.vmap(self.forward_model.apply, in_axes=(0, None))(x_t, measurement_state)
-        residual = y_t - f_x_t
+        residual = jnp.linalg.norm(y_t - f_x_t, axis=-1)
 
         # compute log weights
-        log_weights = log_weights - 0.5 * (residual) ** 2 / (self.forward_model.std * alpha_t)
+        log_weights = log_weights - 0.5 * residual**2 / (self.forward_model.std * alpha_t)
         log_weights = normalize_log_weights(log_weights)
         position, log_weights = resample_particles(
             integrator_state.position, log_weights, rng_key_resample, self.ess_low, self.ess_high

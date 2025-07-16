@@ -99,7 +99,7 @@ INTEGRATOR_CONFIGS = [
 
 TIMER_CONFIGS = {
     "vp": lambda n_steps, t_final: VpTimer(n_steps=n_steps, eps=0.001, tf=t_final),
-    "heun": lambda n_steps, t_final: HeunTimer(n_steps=n_steps, rho=7.0, sigma_min=0.002, sigma_max=1.0),
+    #"heun": lambda n_steps, t_final: HeunTimer(n_steps=n_steps, rho=7.0, sigma_min=0.002, sigma_max=1.0), # HeunTimer should be used only with sampling methods that are defined on noise levels
 }
 
 DENOISER_CLASSES = [DPSDenoiser, TMPDenoiser, FPSDenoiser]
