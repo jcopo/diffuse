@@ -49,6 +49,11 @@ class TestConfig:
     space_max: float = 5
     space_points: int = 300
 
+    # Adaptive percentile parameters
+    adaptive_percentiles: bool = True
+    percentile_strategy: str = 'uniform_noise'
+    n_percentile_points: int = 11
+
     # Component specifications
     schedule_name: str = "LinearSchedule"
     timer_name: str = "vp"
@@ -87,6 +92,7 @@ SCHEDULE_CONFIGS = {
 INTEGRATOR_CONFIGS = [
     (EulerMaruyamaIntegrator, {}),
     (DDIMIntegrator, {}),
+    (DPMpp2sIntegrator, {}),
     (HeunIntegrator, {"stochastic_churn_rate": 1.0, "churn_min": 0.5, "churn_max": 2.0}),
     (EulerIntegrator, {"stochastic_churn_rate": 0.0}),
 ]
@@ -99,6 +105,235 @@ TIMER_CONFIGS = {
 DENOISER_CLASSES = [DPSDenoiser, TMPDenoiser, FPSDenoiser]
 
 PERCENTILES = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+
+
+# Adaptive percentile functions
+def compute_noise_level_derivative(sde: SDE, t: float, dt: float = 1e-4) -> float:
+    """
+    Compute the derivative of noise level with respect to time.
+
+    Args:
+        sde: SDE object with noise schedule
+        t: Time point
+        dt: Small time step for numerical differentiation
+
+    Returns:
+        Derivative of noise level at time t
+    """
+    if t <= dt:
+        return (sde.noise_level(t + dt) - sde.noise_level(t)) / dt
+    elif t >= sde.tf - dt:
+        return (sde.noise_level(t) - sde.noise_level(t - dt)) / dt
+    else:
+        return (sde.noise_level(t + dt) - sde.noise_level(t - dt)) / (2 * dt)
+
+
+def uniform_noise_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
+    """
+    Generate percentiles that are uniform in noise level space.
+
+    This samples uniformly in sqrt(1 - α_t) space, providing more points
+    during high noise phases of the diffusion process.
+
+    Args:
+        sde: SDE object with noise schedule
+        n_points: Number of time points to generate
+
+    Returns:
+        List of percentiles (0.0 to 1.0)
+    """
+    # Get noise levels at start and end
+    noise_start = sde.noise_level(0.0)
+    noise_end = sde.noise_level(sde.tf)
+
+    # Sample uniformly in sqrt(noise_level) space
+    sqrt_noise_levels = jnp.linspace(jnp.sqrt(noise_start), jnp.sqrt(noise_end), n_points)
+    target_noise_levels = sqrt_noise_levels ** 2
+
+    # Convert noise levels back to time percentiles
+    percentiles = []
+    for target_noise in target_noise_levels:
+        # Binary search to find time corresponding to target noise level
+        t_min, t_max = 0.0, sde.tf
+        for _ in range(50):  # Binary search iterations
+            t_mid = (t_min + t_max) / 2
+            noise_mid = sde.noise_level(t_mid)
+            if noise_mid < target_noise:
+                t_min = t_mid
+            else:
+                t_max = t_mid
+
+        # Convert time to percentile
+        percentile = (t_min + t_max) / 2 / sde.tf
+        percentiles.append(float(percentile))
+
+    return percentiles
+
+
+def derivative_based_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
+    """
+    Generate percentiles that are denser where noise level changes rapidly.
+
+    This approach samples more points where d(noise_level)/dt is large,
+    focusing on the most dynamic phases of the diffusion process.
+
+    Args:
+        sde: SDE object with noise schedule
+        n_points: Number of time points to generate
+
+    Returns:
+        List of percentiles (0.0 to 1.0)
+    """
+    # Sample candidate time points
+    n_candidates = 1000
+    candidate_times = jnp.linspace(0.0, sde.tf, n_candidates)
+
+    # Compute derivatives at candidate points
+    derivatives = []
+    for t in candidate_times:
+        deriv = abs(compute_noise_level_derivative(sde, float(t)))
+        derivatives.append(deriv)
+
+    derivatives = jnp.array(derivatives)
+
+    # Normalize derivatives to create a probability distribution
+    derivatives_norm = derivatives / jnp.sum(derivatives)
+
+    # Create cumulative distribution
+    cumulative = jnp.cumsum(derivatives_norm)
+
+    # Sample uniformly from cumulative distribution
+    uniform_samples = jnp.linspace(0.0, 1.0, n_points)
+
+    # Find corresponding time points
+    percentiles = []
+    for u in uniform_samples:
+        # Find the index where cumulative >= u
+        idx = jnp.searchsorted(cumulative, u)
+        idx = jnp.clip(idx, 0, len(candidate_times) - 1)
+
+        # Convert time to percentile
+        percentile = float(candidate_times[idx] / sde.tf)
+        percentiles.append(percentile)
+
+    return percentiles
+
+
+def logarithmic_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
+    """
+    Generate percentiles that are logarithmically spaced in noise level.
+
+    This provides more detail in low noise regions (early diffusion stages)
+    and less detail in high noise regions (late diffusion stages).
+
+    Args:
+        sde: SDE object with noise schedule
+        n_points: Number of time points to generate
+
+    Returns:
+        List of percentiles (0.0 to 1.0)
+    """
+    # Get noise levels at start and end
+    noise_start = sde.noise_level(0.0)
+    noise_end = sde.noise_level(sde.tf)
+
+    # Add small epsilon to avoid log(0)
+    epsilon = 1e-8
+    noise_start = max(noise_start, epsilon)
+    noise_end = max(noise_end, epsilon)
+
+    # Sample logarithmically in noise space
+    log_noise_levels = jnp.linspace(jnp.log(noise_start), jnp.log(noise_end), n_points)
+    target_noise_levels = jnp.exp(log_noise_levels)
+
+    # Convert noise levels back to time percentiles
+    percentiles = []
+    for target_noise in target_noise_levels:
+        # Binary search to find time corresponding to target noise level
+        t_min, t_max = 0.0, sde.tf
+        for _ in range(50):  # Binary search iterations
+            t_mid = (t_min + t_max) / 2
+            noise_mid = sde.noise_level(t_mid)
+            if noise_mid < target_noise:
+                t_min = t_mid
+            else:
+                t_max = t_mid
+
+        # Convert time to percentile
+        percentile = (t_min + t_max) / 2 / sde.tf
+        percentiles.append(float(percentile))
+
+    return percentiles
+
+
+def hybrid_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
+    """
+    Generate percentiles using a hybrid approach.
+
+    Combines uniform noise sampling with derivative-based sampling
+    to provide good coverage across all noise levels.
+
+    Args:
+        sde: SDE object with noise schedule
+        n_points: Number of time points to generate
+
+    Returns:
+        List of percentiles (0.0 to 1.0)
+    """
+    # Split points between uniform noise and derivative-based
+    n_uniform = n_points // 2
+    n_derivative = n_points - n_uniform
+
+    # Get percentiles from both methods
+    uniform_perct = uniform_noise_percentiles(sde, n_uniform)
+    derivative_perct = derivative_based_percentiles(sde, n_derivative)
+
+    # Combine and sort
+    combined = uniform_perct + derivative_perct
+    combined = sorted(list(set(combined)))  # Remove duplicates and sort
+
+    # If we have too many points, subsample
+    if len(combined) > n_points:
+        indices = jnp.linspace(0, len(combined) - 1, n_points).astype(int)
+        combined = [combined[i] for i in indices]
+
+    return combined
+
+
+def compute_adaptive_percentiles(sde: SDE, n_points: int = 11, strategy: str = 'logarithmic') -> List[float]:
+    """
+    Compute adaptive percentiles based on noise schedule.
+
+    Args:
+        sde: SDE object with noise schedule
+        n_points: Number of time points to generate
+        strategy: Strategy for adaptive sampling:
+            - 'uniform_noise': Uniform in sqrt(noise_level) space
+            - 'derivative': Dense where noise level changes rapidly
+            - 'logarithmic': Logarithmic spacing in noise level
+            - 'hybrid': Combination of uniform and derivative
+            - 'fixed': Use traditional fixed percentiles
+
+    Returns:
+        List of percentiles (0.0 to 1.0) corresponding to meaningful noise levels
+    """
+    if strategy == 'uniform_noise':
+        return uniform_noise_percentiles(sde, n_points)
+    elif strategy == 'derivative':
+        return derivative_based_percentiles(sde, n_points)
+    elif strategy == 'logarithmic':
+        return logarithmic_percentiles(sde, n_points)
+    elif strategy == 'hybrid':
+        return hybrid_percentiles(sde, n_points)
+    elif strategy == 'fixed':
+        # Use traditional fixed percentiles
+        if n_points <= len(PERCENTILES):
+            indices = jnp.linspace(0, len(PERCENTILES) - 1, n_points).astype(int)
+            return [PERCENTILES[i] for i in indices]
+        else:
+            return jnp.linspace(0.0, 1.0, n_points).tolist()
+    else:
+        raise ValueError(f"Unknown strategy: {strategy}")
 
 
 def _create_sde(schedule_name: str, t_final: float = 1.0) -> SDE:
@@ -158,7 +393,16 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
     config.timer = _create_timer(config.timer_name, config.n_steps, config.t_final)
     config.space = jnp.linspace(config.space_min, config.space_max, config.space_points)
     config.ts = jnp.linspace(config.t_init, config.t_final, config.n_steps)
-    config.perct = PERCENTILES
+
+    # Compute adaptive percentiles based on noise schedule
+    if config.adaptive_percentiles:
+        config.perct = compute_adaptive_percentiles(
+            config.sde,
+            n_points=config.n_percentile_points,
+            strategy=config.percentile_strategy
+        )
+    else:
+        config.perct = PERCENTILES
 
     if conditional:
         # Conditional setup

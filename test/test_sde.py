@@ -74,7 +74,7 @@ def backward_config(request):
     Configures reverse-time SDE integration using score function s_θ(x,t) ≈ ∇log p_t(x)
     to solve dx = [f(x,t) - g²(t)s_θ(x,t)]dt + g(t)dW̃ backwards from noise to data.
     """
-    return get_test_config(conditional=False, **request.param)
+    return get_test_config(conditional=False, adaptive_percentiles=True, **request.param)
 
 
 @pytest.fixture
@@ -84,7 +84,7 @@ def conditional_config(request):
     Sets up conditional sampling p(x|y) using Bayes' rule and conditional score:
     ∇log p(x|y) = ∇log p(x) + ∇log p(y|x) where p(y|x) is the likelihood.
     """
-    return get_test_config(conditional=True, **request.param)
+    return get_test_config(conditional=True, adaptive_percentiles=True, **request.param)
 
 
 @pytest.fixture
@@ -94,7 +94,7 @@ def cond_denoiser_config(request):
     Configures denoisers that incorporate measurement y via guidance:
     x_{t-1} = μ_θ(x_t,t) + σ_t ε + λ∇log p(y|x_t) where λ controls conditioning strength.
     """
-    return get_test_config(conditional=True, **request.param)
+    return get_test_config(conditional=True, adaptive_percentiles=True, percentile_strategy="logarithmic", **request.param)
 
 
 # === Basic SDE Tests ===
@@ -127,6 +127,7 @@ def test_forward_sde_mixture(forward_config, plot_if_enabled):
     # Create plots using unified plotting function
     plot_title = f"Forward SDE - {forward_config.schedule_name}"
     create_plots(forward_config, noised_positions, plot_title, plot_if_enabled)
+
 
 
 @pytest.mark.parametrize("backward_config", get_parametrized_configs(), indirect=True)

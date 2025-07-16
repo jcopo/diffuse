@@ -46,8 +46,10 @@ class VpTimer(Timer):
 class HeunTimer(Timer):
     """Heun Timer implementing power-law scaling of noise levels.
 
-    This timer is often used in diffusion models to schedule noise levels
-    following a power-law relationship.
+    This timer discretizes noise space rather than time space, using a power-law
+    relationship to schedule noise levels. It is designed to be used with sampling
+    methods that are defined on noise levels (like EDM - Elucidating the Design
+    Space of Diffusion-Based Generative Models) rather than time-based approaches.
 
     Args:
         n_steps (int): Number of discrete time steps
