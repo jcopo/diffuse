@@ -98,7 +98,7 @@ TIMER_CONFIGS = {
 
 DENOISER_CLASSES = [DPSDenoiser, TMPDenoiser, FPSDenoiser]
 
-PERCENTILES = [0.0, 0.05, 0.1, 0.3, 0.6, 0.7, 0.73, 0.75, 0.8, 0.9]
+PERCENTILES = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 
 
 def _create_sde(schedule_name: str, t_final: float = 1.0) -> SDE:
@@ -250,88 +250,69 @@ def get_conditional_test_config(**kwargs) -> TestConfig:
 
 def get_parametrized_configs() -> List[pytest.param]:
     """
-    Get simplified list of pytest.param objects for parametrization.
-    Reduced to essential combinations for faster testing.
+    Generate all combinations of parameters for comprehensive testing.
+
+    This creates all possible combinations of:
+    - Schedules: LinearSchedule, CosineSchedule
+    - Timers: vp, heun
+    - Integrators: EulerMaruyama, DDIM, Heun, Euler
+
+    Total combinations: 2 × 2 × 4 = 16 test cases
     """
     configs = []
 
-    # Essential combinations - reduced from full matrix for speed
-    essential_configs = [
-        # Basic LinearSchedule tests
-        {
-            "schedule_name": "LinearSchedule",
-            "timer_name": "vp",
-            "integrator_class": EulerIntegrator,
-            "integrator_params": {"stochastic_churn_rate": 0.0},
-        },
-        {
-            "schedule_name": "LinearSchedule",
-            "timer_name": "vp",
-            "integrator_class": DDIMIntegrator,
-            "integrator_params": {},
-        },
-        # CosineSchedule with different timer
-        {
-            "schedule_name": "CosineSchedule",
-            "timer_name": "heun",
-            "integrator_class": HeunIntegrator,
-            "integrator_params": {"stochastic_churn_rate": 1.0, "churn_min": 0.5, "churn_max": 2.0},
-        },
-        # Stochastic integrator
-        {
-            "schedule_name": "LinearSchedule",
-            "timer_name": "vp",
-            "integrator_class": EulerMaruyamaIntegrator,
-            "integrator_params": {},
-        },
-    ]
+    schedules = list(SCHEDULE_CONFIGS.keys())
+    timers = list(TIMER_CONFIGS.keys())
+    integrators = INTEGRATOR_CONFIGS
 
-    for config_dict in essential_configs:
-        test_id = (
-            f"{config_dict['integrator_class'].__name__}_{config_dict['timer_name']}_{config_dict['schedule_name']}"
-        )
-        configs.append(pytest.param(config_dict, id=test_id))
+    for schedule in schedules:
+        for timer in timers:
+            for integrator_class, integrator_params in integrators:
+                config_dict = {
+                    "schedule_name": schedule,
+                    "timer_name": timer,
+                    "integrator_class": integrator_class,
+                    "integrator_params": integrator_params,
+                }
+
+                test_id = f"{integrator_class.__name__}_{timer}_{schedule}"
+                configs.append(pytest.param(config_dict, id=test_id))
 
     return configs
 
 
 def get_conditional_configs() -> List[pytest.param]:
     """
-    Get simplified configurations for conditional denoiser tests.
-    Reduced to essential combinations for faster testing.
+    Generate all combinations for conditional denoiser testing.
+
+    This creates all possible combinations of:
+    - Schedules: LinearSchedule, CosineSchedule
+    - Timers: vp, heun
+    - Integrators: EulerMaruyama, DDIM, Heun, Euler
+    - Denoisers: DPSDenoiser, TMPDenoiser, FPSDenoiser
+
+    Total combinations: 2 × 2 × 4 × 3 = 48 test cases
     """
     configs = []
 
-    # Essential conditional combinations - one per denoiser type
-    essential_configs = [
-        # DPS with LinearSchedule
-        {
-            "schedule_name": "LinearSchedule",
-            "timer_name": "vp",
-            "integrator_class": EulerIntegrator,
-            "integrator_params": {"stochastic_churn_rate": 0.0},
-            "denoiser_class": DPSDenoiser,
-        },
-        # TMP with CosineSchedule
-        {
-            "schedule_name": "CosineSchedule",
-            "timer_name": "heun",
-            "integrator_class": HeunIntegrator,
-            "integrator_params": {"stochastic_churn_rate": 1.0, "churn_min": 0.5, "churn_max": 2.0},
-            "denoiser_class": TMPDenoiser,
-        },
-        # FPS with different integrator
-        {
-            "schedule_name": "LinearSchedule",
-            "timer_name": "vp",
-            "integrator_class": DDIMIntegrator,
-            "integrator_params": {},
-            "denoiser_class": FPSDenoiser,
-        },
-    ]
+    schedules = list(SCHEDULE_CONFIGS.keys())
+    timers = list(TIMER_CONFIGS.keys())
+    integrators = INTEGRATOR_CONFIGS
+    denoisers = DENOISER_CLASSES
 
-    for config_dict in essential_configs:
-        test_id = f"{config_dict['denoiser_class'].__name__}_{config_dict['integrator_class'].__name__}_{config_dict['timer_name']}_{config_dict['schedule_name']}"
-        configs.append(pytest.param(config_dict, id=test_id))
+    for schedule in schedules:
+        for timer in timers:
+            for integrator_class, integrator_params in integrators:
+                for denoiser_class in denoisers:
+                    config_dict = {
+                        "schedule_name": schedule,
+                        "timer_name": timer,
+                        "integrator_class": integrator_class,
+                        "integrator_params": integrator_params,
+                        "denoiser_class": denoiser_class,
+                    }
+
+                    test_id = f"{denoiser_class.__name__}_{integrator_class.__name__}_{timer}_{schedule}"
+                    configs.append(pytest.param(config_dict, id=test_id))
 
     return configs

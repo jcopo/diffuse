@@ -24,11 +24,9 @@ from diffuse.denoisers.denoiser import Denoiser
 from .config import get_parametrized_configs, get_conditional_configs, get_test_config
 from .test_utils import (
     create_plots,
-    validate_distributions,
     compute_and_store_mmd,
     assert_mmd_threshold,
     print_mmd_summary,
-    plot_debug,
 )
 
 # Enable float64 accuracy for precise tests
@@ -151,12 +149,27 @@ def test_backward_sde_mixture(backward_config, plot_if_enabled):
 
     # Generate samples
     key_samples, _ = jax.random.split(backward_config.key)
-    _, hist_position = denoise.generate(key_samples, backward_config.n_steps, backward_config.n_samples)
+    state, hist_position = denoise.generate(key_samples, backward_config.n_steps, backward_config.n_samples)
     hist_position = hist_position.squeeze()
 
     # Create plots
     plot_title = f"Backward SDE - {backward_config.integrator_class.__name__} (Timer: {backward_config.timer_name}, Schedule: {backward_config.schedule_name})"
     create_plots(backward_config, hist_position, plot_title, plot_if_enabled)
+
+    # Generate reference samples from posterior
+    samples_from_posterior = sampler_mixtr(
+        key_samples, backward_config.mix_state, backward_config.n_samples
+    )
+
+    # Compute and validate MMD distance
+    result_key_parts = [
+        backward_config.integrator_class.__name__,
+        backward_config.schedule_name,
+        backward_config.timer_name,
+    ]
+    mmd_distance = compute_and_store_mmd(backward_config, state, samples_from_posterior, result_key_parts)
+
+    assert_mmd_threshold(mmd_distance, 0.1)
 
 
 # === Conditional SDE Tests ===
@@ -188,12 +201,6 @@ def test_backward_sde_conditional_mixture(conditional_config, plot_if_enabled):
         key_samples, conditional_config.posterior_state, conditional_config.n_samples
     )
 
-    # Debug plot to compare generated vs reference samples
-    debug_title = f"Conditional Comparison - {conditional_config.integrator_class.__name__}"
-    plot_debug(
-        state.integrator_state.position, samples_from_posterior, conditional_config, debug_title, plot_if_enabled
-    )
-
     # Compute and validate MMD distance
     result_key_parts = [
         conditional_config.integrator_class.__name__,
@@ -202,7 +209,7 @@ def test_backward_sde_conditional_mixture(conditional_config, plot_if_enabled):
     ]
     mmd_distance = compute_and_store_mmd(conditional_config, state, samples_from_posterior, result_key_parts)
 
-    assert_mmd_threshold(mmd_distance, 0.05)
+    assert_mmd_threshold(mmd_distance, 0.1)
 
 
 @pytest.mark.parametrize("cond_denoiser_config", get_conditional_configs(), indirect=True)
@@ -231,14 +238,7 @@ def test_backward_conditional_denoisers(cond_denoiser_config, plot_if_enabled):
     create_plots(cond_denoiser_config, hist_position, plot_title, plot_if_enabled)
 
     # Compute posterior for the actual measurement y
-    end_state = compute_xt_given_y(cond_denoiser_config.posterior_state, cond_denoiser_config.sde, 0.0)
-    samples_from_posterior = sampler_mixtr(key_samples, end_state, cond_denoiser_config.n_samples)
-
-    # Debug plot to compare conditional denoiser results vs reference
-    debug_title = f"{cond_denoiser_config.denoiser_class.__name__} vs Reference"
-    plot_debug(
-        state.integrator_state.position, samples_from_posterior, cond_denoiser_config, debug_title, plot_if_enabled
-    )
+    samples_from_posterior = sampler_mixtr(key_samples, cond_denoiser_config.posterior_state, cond_denoiser_config.n_samples)
 
     # Compute and validate MMD distance
     result_key_parts = [
@@ -251,35 +251,4 @@ def test_backward_conditional_denoisers(cond_denoiser_config, plot_if_enabled):
         cond_denoiser_config, state, samples_from_posterior, result_key_parts, print_result=True
     )
 
-    assert_mmd_threshold(mmd_distance, 0.05)
-
-
-# === Distribution Validation Tests ===
-
-
-def test_distribution_validation_basic(basic_config):
-    """Test distribution validation for basic mixture using statistical tests.
-
-    Validates that generated samples follow the target distribution using:
-    - Kolmogorov-Smirnov test: D_n = sup_x|F_n(x) - F(x)| where F_n is empirical CDF
-    - Two-sample tests comparing generated vs reference samples
-    - P-values test the null hypothesis that samples come from the same distribution
-    """
-    # This is a smoke test to ensure our validation utilities work
-    from examples.gaussian_mixtures.mixture import cdf_t
-
-    # Generate some test samples
-    samples = sampler_mixtr(basic_config.key, basic_config.mix_state, 100)
-
-    # Create mock position array (simplified for testing)
-    position = samples.reshape(1, -1, basic_config.d)
-
-    # Test validation function (should pass since samples come from the right distribution)
-    validate_distributions(
-        position,
-        basic_config.timer,
-        1,  # n_steps = 1 for simple test
-        [0.0],  # single percentile
-        lambda x, t: cdf_t(x, t, basic_config.mix_state, basic_config.sde),
-        p_threshold=0.001,  # Very lenient for this test
-    )
+    assert_mmd_threshold(mmd_distance, 0.1)

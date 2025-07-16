@@ -68,56 +68,6 @@ def create_plots(test_config, hist_position, plot_title, plot_if_enabled):
         )
 
 
-def validate_distributions(
-    position,
-    timer,
-    n_steps: int,
-    perct: List[float],
-    cdf_func: Callable,
-    key: Optional[jax.random.PRNGKey] = None,
-    method: Optional[Any] = None,
-    t_final: float = 1.0,
-    forward: bool = True,
-    p_threshold: float = 0.01,
-):
-    """Validate sample distributions against theoretical ones using KS test.
-
-    Args:
-        position: Array of positions to validate
-        timer: Timer object that converts steps to time
-        n_steps: Number of steps
-        perct: Percentiles to check
-        cdf_func: Cumulative distribution function to test against
-        key: Optional PRNG key for sampling (used in backward validation)
-        method: Optional method name for error messages
-        t_final: Final time (defaults to 1.0 for forward process)
-        forward: Whether this is forward or backward process
-        p_threshold: P-value threshold for test acceptance
-    """
-    for i, x in enumerate(perct):
-        k = int(x * n_steps) + (1 if key is None else 0)  # +1 only for forward process
-        t = t_final - timer(k + 1)
-
-        if key is not None:  # backward process case
-            samples = position[:, k].squeeze()
-            sample_indices = jax.random.choice(key, samples.shape[0], shape=(300,))
-            samples = samples[sample_indices]
-        else:  # forward process case
-            samples = np.array(position[:, k].squeeze())
-
-        time = t if forward else t_final - t
-        _, p_value = sp.stats.kstest(
-            samples,
-            lambda x: cdf_func(x, time),
-        )
-
-        error_msg = f"Sample distribution does not match theoretical (p-value: {p_value}, t: {t}, k: {k})"
-        if method:
-            error_msg = f"Sample distribution does not match theoretical (method: {method.__name__}, p-value: {p_value}, t: {t}, k: {k})"
-
-        assert p_value > p_threshold, error_msg
-
-
 def rbf_kernel(x, y, gamma):
     """
     Compute RBF (Gaussian) kernel between two sets of samples.
@@ -298,41 +248,6 @@ def compute_and_store_mmd(
     return float(mmd_distance)
 
 
-def validate_conditional_distributions(
-    position,
-    timer,
-    n_steps: int,
-    perct: List[float],
-    cdf,
-    key: jax.random.PRNGKey,
-    method: Optional[Any] = None,
-    t_final: float = 1.0,
-):
-    """Validate conditional distributions - wrapper for backward validation."""
-    for i, x in enumerate(perct):
-        k = int(x * n_steps)
-        t = timer(0) - timer(k + 1)
-        samples = position[:, k].squeeze()
-        sample_indices = jax.random.choice(key, samples.shape[0], shape=(300,))
-        samples = samples[sample_indices]
-
-        # Use subset of samples for faster testing
-        if len(samples) > 200:
-            sample_indices = jax.random.choice(key, samples.shape[0], shape=(200,))
-            samples = samples[sample_indices]
-
-        ks_statistic, p_value = sp.stats.kstest(
-            np.array(samples),
-            lambda x: cdf(x, t),
-        )
-
-        error_msg = f"Sample distribution does not match theoretical (p-value: {p_value}, t: {t}, k: {k})"
-        if method:
-            error_msg = f"Sample distribution does not match theoretical (method: {method.__name__}, p-value: {p_value}, t: {t}, k: {k})"
-
-        assert p_value > 0.01, error_msg
-
-
 def print_mmd_summary():
     """Print summary of all MMD distances collected during tests."""
     if mmd_results:
@@ -347,51 +262,3 @@ def print_mmd_summary():
 def assert_mmd_threshold(distance: float, threshold: float = 0.05):
     """Assert that MMD distance is below threshold."""
     assert distance < threshold, f"MMD distance {distance} exceeds threshold {threshold}"
-
-
-def plot_debug(generated_samples, reference_samples, test_config, plot_title: str, plot_if_enabled):
-    """Minimal debug plot with mixture PDF overlay."""
-
-    def create_debug_plot():
-        fig, ax = plt.subplots(figsize=(8, 6))
-
-        # Get final samples
-        gen = generated_samples[-1] if generated_samples.ndim == 3 else generated_samples
-        ref = reference_samples[-1] if reference_samples.ndim == 3 else reference_samples
-
-        if test_config.d == 1:
-            # 1D: histograms + PDF
-            range_val = jnp.max(jnp.abs(jnp.concatenate([gen.flatten(), ref.flatten()]))) * 1.1
-            bins = jnp.linspace(-range_val, range_val, 40)
-            ax.hist(ref.flatten(), bins=bins, alpha=0.5, color="blue", density=True, label="Reference")
-            ax.hist(gen.flatten(), bins=bins, alpha=0.5, color="red", density=True, label="Generated")
-
-            # Plot mixture PDF
-            if hasattr(test_config, "posterior_state") or hasattr(test_config, "mix_state"):
-                state = getattr(test_config, "posterior_state", test_config.mix_state)
-                x = jnp.linspace(-range_val, range_val, 200)
-                pdf_vals = jax.vmap(lambda xi: test_config.pdf(xi, test_config.t_final))(x)
-                ax.plot(x, pdf_vals, "k-", linewidth=2, label="Mixture PDF")
-
-        elif test_config.d == 2:
-            # 2D: scatter + contours
-            range_val = jnp.max(jnp.abs(jnp.concatenate([gen, ref]))) * 1.1
-            ax.scatter(ref[:, 0], ref[:, 1], alpha=0.5, c="blue", s=10, label="Reference")
-            ax.scatter(gen[:, 0], gen[:, 1], alpha=0.5, c="red", s=10, label="Generated")
-
-            # Plot mixture PDF contours
-            if hasattr(test_config, "posterior_state") or hasattr(test_config, "mix_state"):
-                x = jnp.linspace(-range_val, range_val, 50)
-                X, Y = jnp.meshgrid(x, x)
-                points = jnp.stack([X.flatten(), Y.flatten()], axis=1)
-                # pdf = lambda x, t: rho_t(x, t, test_config.posterior_state, test_config.sde)
-                pdf_vals = jax.vmap(lambda p: test_config.pdf(p, 0.0))(points).reshape(X.shape)
-                ax.contour(X, Y, pdf_vals, levels=8, colors="black", alpha=0.7, linewidths=1)
-            ax.set_aspect("equal")
-
-        ax.legend()
-        ax.set_title(plot_title)
-        plt.tight_layout()
-        return fig
-
-    plot_if_enabled(create_debug_plot)
