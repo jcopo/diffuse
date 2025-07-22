@@ -2,10 +2,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import matplotlib.pyplot as plt
-from dataclasses import dataclass
-from typing import Optional, Dict, Any, Tuple, Callable, Union
+from typing import Callable, Union
 
-from diffuse.denoisers.base import BaseDenoiser
 from diffuse.denoisers.denoiser import Denoiser
 from diffuse.denoisers.cond import DPSDenoiser, TMPDenoiser, FPSDenoiser, CondDenoiser
 from diffuse.integrator.base import Integrator
@@ -15,7 +13,6 @@ from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.neural_network.unet import UNet
 from diffuse.utils.plotting import plot_lines
 from diffuse.timer.base import VpTimer
-from diffuse.base_forward_model import ForwardModel, MeasurementState
 from examples.mnist.images import SquareMask  # Import the mask class
 
 # Global configuration dictionary

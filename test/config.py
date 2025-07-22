@@ -5,15 +5,14 @@ the triax configuration approach, but designed for pytest fixtures.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Type
 
 import jax
 import jax.numpy as jnp
 import pytest
 
 from diffuse.base_forward_model import ForwardModel
-from diffuse.denoisers.cond import CondDenoiser, DPSDenoiser, FPSDenoiser, TMPDenoiser
-from diffuse.denoisers.denoiser import Denoiser
+from diffuse.denoisers.cond import DPSDenoiser, FPSDenoiser, TMPDenoiser
 from diffuse.diffusion.sde import SDE, LinearSchedule, CosineSchedule
 from diffuse.integrator.deterministic import (
     DDIMIntegrator,
@@ -22,7 +21,7 @@ from diffuse.integrator.deterministic import (
     HeunIntegrator,
 )
 from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
-from diffuse.timer.base import HeunTimer, VpTimer
+from diffuse.timer.base import VpTimer
 from examples.gaussian_mixtures.mixture import rho_t
 
 from examples.gaussian_mixtures.forward_models.matrix_product import MatrixProduct
@@ -30,7 +29,6 @@ from examples.gaussian_mixtures.initialization import (
     init_simple_mixture,
     init_grid_mixture,
     init_bimodal_setup,
-    init_circular_setup,
 )
 
 

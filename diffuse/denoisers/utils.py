@@ -2,8 +2,17 @@ import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 from jaxtyping import Array
-from blackjax.smc.resampling import stratified
 from typing import Tuple
+
+
+def stratified_resampling(key, w):
+    N = w.shape[0]
+    u = (jnp.arange(N) + jax.random.uniform(key, (N,))) / N
+    bins = jnp.cumsum(w)
+    idx = jnp.digitize(u, bins)
+    return idx
+
+
 from diffuse.base_forward_model import MeasurementState
 import einops
 from diffuse.utils.mapping import pmapper
@@ -82,7 +91,7 @@ def resample_particles(
     weights = jax.nn.softmax(log_weights, axis=0)
     ess_val = ess(log_weights)
     n_particles = position.shape[0]
-    idx = stratified(rng_key, weights, n_particles)
+    idx = stratified_resampling(rng_key, weights)
 
     return jax.lax.cond(
         (ess_val < ess_high * n_particles) & (ess_val > ess_low * n_particles),

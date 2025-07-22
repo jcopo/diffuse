@@ -6,7 +6,7 @@ from jaxtyping import PyTreeDef, PRNGKeyArray, Array
 from diffuse.diffusion.sde import SDE, SDEState
 from functools import partial
 from dataclasses import dataclass
-from diffuse.timer.base import Timer, VpTimer
+from diffuse.timer.base import Timer
 from diffuse.neural_network import AutoEncoder
 
 

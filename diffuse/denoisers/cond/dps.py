@@ -8,7 +8,6 @@ from jaxtyping import Array, PRNGKeyArray
 from diffuse.diffusion.sde import SDEState
 from diffuse.denoisers.cond import CondDenoiser, CondDenoiserState
 from diffuse.base_forward_model import MeasurementState
-from diffuse.utils.plotting import sigle_plot
 
 
 @dataclass

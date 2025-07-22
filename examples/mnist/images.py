@@ -5,7 +5,6 @@ import einops
 from dataclasses import dataclass
 from jaxtyping import Array, PRNGKeyArray
 from diffuse.base_forward_model import MeasurementState
-from diffuse.utils.plotting import sigle_plot
 
 
 @dataclass

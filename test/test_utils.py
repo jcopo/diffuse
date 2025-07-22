@@ -5,16 +5,10 @@ across different test files to reduce code duplication.
 """
 
 from collections import defaultdict
-from typing import Callable, List, Optional, Any
+from typing import List
 
-import jax
 import jax.numpy as jnp
-import numpy as np
-import scipy as sp
-import matplotlib.pyplot as plt
-import ott
 
-from examples.gaussian_mixtures.mixture import cdf_t, sampler_mixtr, rho_t
 from examples.gaussian_mixtures.plotting import (
     display_trajectories,
     display_trajectories_at_times,

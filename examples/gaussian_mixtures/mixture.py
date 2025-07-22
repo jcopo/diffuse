@@ -2,7 +2,6 @@ from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
 from jaxtyping import Array, PyTreeDef
 
 from diffuse.diffusion.sde import SDE

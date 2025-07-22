@@ -3,7 +3,6 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import einops
-from functools import partial
 from tqdm import tqdm
 from pathlib import Path
 

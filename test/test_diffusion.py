@@ -11,13 +11,10 @@ Mathematical Framework:
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 import pytest
 import einops
 
-from examples.gaussian_mixtures.cond_mixture import compute_xt_given_y
 from examples.gaussian_mixtures.mixture import sampler_mixtr
-from examples.gaussian_mixtures.plotting import plot_2d_mixture_and_samples
 from diffuse.diffusion.sde import SDEState
 from diffuse.denoisers.denoiser import Denoiser
 

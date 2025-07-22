@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from functools import partial
-from typing import Callable, NamedTuple, Tuple, Union
+from typing import Callable, NamedTuple, Union
 
 import jax
 import jax.numpy as jnp

@@ -1,7 +1,6 @@
 import jax
 import jax.numpy as jnp
 import dm_pix
-import pdb
 import optax
 import numpy as np
 import os
@@ -10,14 +9,12 @@ import csv
 from diffuse.neural_network.unet import UNet
 from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
-from diffuse.integrator.deterministic import DPMpp2sIntegrator
 from diffuse.denoisers.cond import FPSDenoiser
 from diffuse.design.bayesian_design import ExperimentOptimizer
 from examples.mnist.images import SquareMask
-from diffuse.utils.plotting import plot_lines, sigle_plot
-import matplotlib.pyplot as plt
+from diffuse.utils.plotting import sigle_plot
 from functools import partial
-from diffuse.utils.plotting import log_samples, plot_comparison, plotter_random
+from diffuse.utils.plotting import log_samples
 
 from jaxtyping import PRNGKeyArray
 
