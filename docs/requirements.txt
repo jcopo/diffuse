@@ -1,0 +1,13 @@
+# Sphinx and theme
+sphinx>=5.0
+sphinx-book-theme>=1.0.0
+sphinx-copybutton>=0.5.0
+sphinx-design>=0.3.0
+
+# MyST and notebooks  
+myst-nb>=0.17.0
+myst-parser>=0.18.0
+linkify-it-py>=2.0.0
+
+# Additional dependencies
+pandoc>=2.0

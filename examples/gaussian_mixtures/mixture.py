@@ -14,14 +14,14 @@ class MixState(NamedTuple):
     Attributes:
         means (PyTreeDef): The means of the mixture components.
         cov (PyTreeDef): Covariances components of the mixture
-        mix_weights (PyTreeDef): The mixture weights.
+        weights (PyTreeDef): The mixture weights.
         grad_state (GradState, optional): The gradient state. Defaults to GradState().
         info (INFO, optional): Hyperparameters
     """
 
     means: PyTreeDef
-    cov: PyTreeDef
-    mix_weights: PyTreeDef
+    covariances: PyTreeDef
+    weights: PyTreeDef
 
 
 def cdf_mixtr(mix_state: MixState, x: Array) -> Array:

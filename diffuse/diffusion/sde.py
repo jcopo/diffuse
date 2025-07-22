@@ -180,7 +180,8 @@ class SDE(DiffusionModel):
     """
 
     beta: Schedule
-    tf: float
+    def __post_init__(self):
+        self.tf = self.beta.T  # type: ignore
 
     def noise_level(self, t: float) -> float:
         """Compute noise level for diffusion process.
