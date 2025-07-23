@@ -354,7 +354,7 @@ def _create_sde(schedule_name: str, t_final: float = 1.0) -> SDE:
             T=t_final,
         )
 
-    return SDE(beta=beta, tf=t_final)
+    return SDE(beta=beta)
 
 
 def _create_timer(timer_name: str, n_steps: int, t_final: float = 1.0):
@@ -447,7 +447,6 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
             score=unconditional_score,
             forward_model=config.forward_model,
             x0_shape=x_sample.shape,
-            keep_history=True,
         )
 
         config.denoiser = Denoiser(
@@ -455,7 +454,6 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
             sde=config.sde,
             score=conditional_score,
             x0_shape=x_sample.shape,
-            keep_history=True,
         )
 
         # Store conditional-specific functions

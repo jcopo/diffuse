@@ -148,7 +148,7 @@ def test_backward_sde_mixture(backward_config, plot_if_enabled):
 
     # Generate samples
     key_samples, _ = jax.random.split(backward_config.key)
-    state, hist_position = denoise.generate(key_samples, backward_config.n_steps, backward_config.n_samples)
+    state, hist_position = denoise.generate(key_samples, backward_config.n_steps, backward_config.n_samples, keep_history=True)
     hist_position = hist_position.squeeze()
 
     # Create plots
@@ -185,7 +185,7 @@ def test_backward_sde_conditional_mixture(conditional_config, plot_if_enabled):
 
     # Use pre-configured denoiser directly (with conditional score)
     state, hist_position = conditional_config.denoiser.generate(
-        key_gen, conditional_config.n_steps, conditional_config.n_samples
+        key_gen, conditional_config.n_steps, conditional_config.n_samples, keep_history=True
     )
     hist_position = hist_position.squeeze()
 
@@ -226,7 +226,7 @@ def test_backward_conditional_denoisers(cond_denoiser_config, plot_if_enabled):
 
     # Use pre-configured conditional denoiser (with conditioning handled by denoiser)
     state, hist_position = cond_denoiser_config.cond_denoiser.generate(
-        key_gen, measurement_state, cond_denoiser_config.n_steps, cond_denoiser_config.n_samples
+        key_gen, measurement_state, cond_denoiser_config.n_steps, cond_denoiser_config.n_samples, keep_history=True
     )
     hist_position = hist_position.squeeze()
 
