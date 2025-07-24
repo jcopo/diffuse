@@ -8,6 +8,7 @@ from collections import defaultdict
 from typing import List
 
 import jax.numpy as jnp
+import warnings
 
 from examples.gaussian_mixtures.plotting import (
     display_trajectories,
@@ -254,5 +255,13 @@ def print_mmd_summary():
 
 
 def assert_mmd_threshold(distance: float, threshold: float = 0.05):
-    """Assert that MMD distance is below threshold."""
+    """Assert that MMD distance is below threshold.
+
+    Raises a warning if distance is between 0.01 and threshold.
+    """
+    if 0.02 < distance < threshold:
+        warnings.warn(
+            f"MMD distance {distance} is close to the threshold {threshold}.",
+            UserWarning
+        )
     assert distance < threshold, f"MMD distance {distance} exceeds threshold {threshold}"
