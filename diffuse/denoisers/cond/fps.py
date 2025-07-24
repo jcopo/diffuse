@@ -15,7 +15,7 @@ class FPSDenoiser(CondDenoiser):
     """Filtering Posterior Sampling Denoiser implementing continuous-time SDE version."""
 
     def __post_init__(self):
-        self.resample = True
+        self.resample = False
         self.ess_low = 0.1
 
     def step(

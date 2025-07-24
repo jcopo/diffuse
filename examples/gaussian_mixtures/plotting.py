@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import os
+from matplotlib.collections import LineCollection
 
 from examples.gaussian_mixtures.mixture import pdf_mixtr
 
@@ -75,17 +76,40 @@ def plot_2d_mixture_and_samples(mixture_state, final_samples, title):
 
     # plot whole trajectory for 100 particles randomly selected with different colors
     # colors depends on the last position of the particle
-    idxs = jax.random.choice(jax.random.PRNGKey(0), final_samples.shape[0], (10,), replace=False)
+    idxs = jax.random.choice(jax.random.PRNGKey(0), final_samples.shape[0], (50,), replace=False)
+    # idxs = jnp.arange(final_samples.shape[0])
     sorted_idxs = jnp.argsort(final_samples[-1, idxs, 0])
+
     for i in sorted_idxs:
-        color_marker = i / (sorted_idxs.shape[0] - 1)
-        plt.plot(
-            final_samples[::10, i, 0],
-            final_samples[::10, i, 1],
-            "-o",
-            alpha=0.6,
-            linewidth=1,
-            c=[float(color_marker), 0, float(1 - color_marker)],
+        # Subsample the trajectory
+        x = final_samples[::50, i, 0]
+        y = final_samples[::50, i, 1]
+        points = jnp.stack([x, y], axis=1)
+        points = jnp.array(points)
+
+        # Create segments for LineCollection
+        segments = jnp.stack([points[:-1], points[1:]], axis=1)
+        segments = jnp.array(segments)
+
+        # Normalize color along the trajectory
+        norm = plt.Normalize(0, len(segments))
+        lc = LineCollection(
+            segments,
+            norm=norm,
+            linewidth=2,
+            alpha=0.8
+        )
+        lc.set_array(jnp.arange(len(segments)))
+        plt.gca().add_collection(lc)
+
+        # Add discretization points
+        plt.scatter(
+            x, y,
+            color='black',
+            s=4,
+            zorder=10,
+            alpha=0.7,
+            marker='o'
         )
 
     # Determine plot range based on samples

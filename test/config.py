@@ -83,17 +83,17 @@ class TestConfig:
 
 # Configuration templates for different test scenarios
 SCHEDULE_CONFIGS = {
-    "LinearSchedule": {"b_min": 0.0001, "b_max": 20.0},
-    "CosineSchedule": {"b_min": 0.1, "b_max": 20.0},
+    "LinearSchedule": {"b_min": 0.1, "b_max": 7.0},
+    "CosineSchedule": {"b_min": .1, "b_max": 14.0},
 }
 
 # Simplified integrator configs - keeping essential combinations
 INTEGRATOR_CONFIGS = [
     (EulerMaruyamaIntegrator, {}),
-    (DDIMIntegrator, {}),
-    (DPMpp2sIntegrator, {}),
+    (DDIMIntegrator, {"stochastic_churn_rate": 1.0, "churn_min": 0.5, "churn_max": 2.0}),
+    (DPMpp2sIntegrator, {"stochastic_churn_rate": 1.0, "churn_min": 0.5, "churn_max": 2.0}),
     (HeunIntegrator, {"stochastic_churn_rate": 1.0, "churn_min": 0.5, "churn_max": 2.0}),
-    (EulerIntegrator, {"stochastic_churn_rate": 0.0}),
+    (EulerIntegrator, {"stochastic_churn_rate": 1.0, "churn_min": 0.5, "churn_max": 2.0}),
 ]
 
 TIMER_CONFIGS = {
@@ -103,7 +103,7 @@ TIMER_CONFIGS = {
 
 DENOISER_CLASSES = [DPSDenoiser, TMPDenoiser, FPSDenoiser]
 
-PERCENTILES = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+PERCENTILES = [0.0, 0.1, 0.3, 0.4, 0.5, 0.6, 0.7, .75, 0.8, .95, .98, 1.0]
 
 
 # Adaptive percentile functions

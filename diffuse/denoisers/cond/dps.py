@@ -38,7 +38,7 @@ class DPSDenoiser(CondDenoiser):
             (val, denoised), guidance = jax.value_and_grad(norm_tweedie, has_aux=True)(x)
 
             # Compute guidance scale
-            zeta = 3.0 / (jnp.sqrt(val) + 1e-3)
+            zeta = 1. / (jnp.sqrt(val) + 1e-3)
 
             return self.score(x, t) - zeta * guidance
 

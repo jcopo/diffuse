@@ -92,7 +92,7 @@ def cond_denoiser_config(request):
     x_{t-1} = μ_θ(x_t,t) + σ_t ε + λ∇log p(y|x_t) where λ controls conditioning strength.
     """
     return get_test_config(
-        conditional=True, adaptive_percentiles=True, percentile_strategy="logarithmic", **request.param
+        conditional=True, adaptive_percentiles=True, percentile_strategy="fixed", **request.param
     )
 
 
