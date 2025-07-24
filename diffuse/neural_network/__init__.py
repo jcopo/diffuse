@@ -1,7 +1,3 @@
-from diffuse.neural_network.SDvae import AutoEncoder, AutoEncoderParams
-from diffuse.neural_network.unet import UNet, UNetParams
+from .nn import CondUNet2D, SDVae
 
-model_zoo = {
-    "UNet": (UNet, UNetParams),
-    "SDVAE": (AutoEncoder, AutoEncoderParams),
-}
+__all__ = ["CondUNet2D", "SDVae"]

@@ -1,32 +1,50 @@
 from typing import Callable
 
-import flax.linen as nn
 import jax.numpy as jnp
-from chex import Array
-from jax.typing import DTypeLike
 
-from diffuse.neural_network.block import AttnBlock, Downsample, ResnetBlock
+from flax import nnx
+from jax import Array
+from jax.typing import ArrayLike, DTypeLike
+
+from .attention import AttnBlock
+from .downsample import Downsample
+from .resnet_block import ResnetBlock
 
 
-class Encoder(nn.Module):
-    in_channels: int
-    ch: int
-    ch_mult: list[int]
-    num_res_blocks: int
-    z_channels: int
-    activation: Callable = nn.swish
-    deterministic: bool = True
-    param_dtype: DTypeLike = jnp.bfloat16
+class Encoder(nnx.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        ch: int,
+        ch_mult: list[int],
+        num_res_blocks: int,
+        z_channels: int,
+        activation: Callable = nnx.swish,
+        dropout: bool = False,
+        param_dtype: DTypeLike = jnp.float32,
+        dtype: DTypeLike = jnp.float32,
+        rngs: nnx.Rngs = None,
+    ):
+        self.in_channels = in_channels
+        self.ch = ch
+        self.ch_mult = ch_mult
+        self.num_res_blocks = num_res_blocks
+        self.z_channels = z_channels
+        self.activation = activation
+        self.dropout = dropout
+        self.param_dtype = param_dtype
 
-    def setup(self) -> None:
         num_resolutions = len(self.ch_mult)
 
-        self.conv_in = nn.Conv(
-            features=self.ch,
+        self.conv_in = nnx.Conv(
+            in_features=self.in_channels,
+            out_features=self.ch,
             kernel_size=(3, 3),
             strides=(1, 1),
             padding=(1, 1),
             param_dtype=self.param_dtype,
+            dtype=dtype,
+            rngs=rngs,
         )
 
         in_ch_mult = (1,) + tuple(self.ch_mult)
@@ -42,8 +60,10 @@ class Encoder(nn.Module):
                         in_channels=block_in,
                         out_channels=block_out,
                         activation=self.activation,
-                        deterministic=self.deterministic,
                         param_dtype=self.param_dtype,
+                        dtype=dtype,
+                        dropout=self.dropout,
+                        rngs=rngs,
                     )
                 )
                 block_in = block_out
@@ -53,49 +73,63 @@ class Encoder(nn.Module):
                     Downsample(
                         in_channels=block_in,
                         param_dtype=self.param_dtype,
+                        dtype=dtype,
+                        rngs=rngs,
                     )
                 )
             blocks_down += block
 
-        self.down = nn.Sequential(blocks_down)
+        self.down = nnx.Sequential(*blocks_down)
 
         res_block_mid_in = ResnetBlock(
             in_channels=block_in,
             out_channels=block_in,
             activation=self.activation,
-            deterministic=self.deterministic,
             param_dtype=self.param_dtype,
+            dtype=dtype,
+            dropout=self.dropout,
+            rngs=rngs,
         )
         mid_attn = AttnBlock(
             in_channels=block_in,
             param_dtype=self.param_dtype,
+            dtype=dtype,
+            rngs=rngs,
         )
 
         res_block_mid_out = ResnetBlock(
             in_channels=block_in,
             out_channels=block_in,
             activation=self.activation,
-            deterministic=self.deterministic,
             param_dtype=self.param_dtype,
+            dtype=dtype,
+            dropout=self.dropout,
+            rngs=rngs,
         )
 
-        self.mid = nn.Sequential([res_block_mid_in, mid_attn, res_block_mid_out])
+        self.mid = nnx.Sequential(res_block_mid_in, mid_attn, res_block_mid_out)
 
-        self.norm_out = nn.GroupNorm(
+        self.norm_out = nnx.GroupNorm(
+            num_features=block_in,
             num_groups=32,
             epsilon=1e-6,
             param_dtype=self.param_dtype,
+            dtype=dtype,
+            rngs=rngs,
         )
 
-        self.conv_out = nn.Conv(
-            features=2 * self.z_channels,
+        self.conv_out = nnx.Conv(
+            in_features=block_in,
+            out_features=2 * self.z_channels,
             kernel_size=(3, 3),
             strides=(1, 1),
             padding=(1, 1),
             param_dtype=self.param_dtype,
+            dtype=dtype,
+            rngs=rngs,
         )
 
-    def __call__(self, x: Array) -> Array:
+    def __call__(self, x: ArrayLike) -> Array:
         h = self.conv_in(x)
         h = self.down(h)
         h = self.mid(h)
