@@ -76,14 +76,14 @@ def plot_2d_mixture_and_samples(mixture_state, final_samples, title):
 
     # plot whole trajectory for 100 particles randomly selected with different colors
     # colors depends on the last position of the particle
-    idxs = jax.random.choice(jax.random.PRNGKey(0), final_samples.shape[0], (50,), replace=False)
+    idxs = jax.random.choice(jax.random.PRNGKey(0), final_samples.shape[0], (50,), replace=True)
     # idxs = jnp.arange(final_samples.shape[0])
-    sorted_idxs = jnp.argsort(final_samples[-1, idxs, 0])
+    steps_to_plot = final_samples.shape[0] // 10
 
-    for i in sorted_idxs:
+    for i in idxs:
         # Subsample the trajectory
-        x = final_samples[::50, i, 0]
-        y = final_samples[::50, i, 1]
+        x = final_samples[::steps_to_plot, i, 0]
+        y = final_samples[::steps_to_plot, i, 1]
         points = jnp.stack([x, y], axis=1)
         points = jnp.array(points)
 
@@ -97,7 +97,7 @@ def plot_2d_mixture_and_samples(mixture_state, final_samples, title):
             segments,
             norm=norm,
             linewidth=2,
-            alpha=0.8
+            alpha=0.5
         )
         lc.set_array(jnp.arange(len(segments)))
         plt.gca().add_collection(lc)
@@ -108,8 +108,8 @@ def plot_2d_mixture_and_samples(mixture_state, final_samples, title):
             color='black',
             s=4,
             zorder=10,
-            alpha=0.7,
-            marker='o'
+            alpha=0.5,
+            marker='|'
         )
 
     # Determine plot range based on samples
