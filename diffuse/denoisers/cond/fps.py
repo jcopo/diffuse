@@ -15,8 +15,9 @@ class FPSDenoiser(CondDenoiser):
     """Filtering Posterior Sampling Denoiser implementing continuous-time SDE version."""
 
     def __post_init__(self):
-        self.resample = False
-        self.ess_low = 0.1
+        self.resample = True
+        self.ess_low = 0.05
+        self.ess_high = 0.9
 
     def step(
         self,
@@ -59,8 +60,7 @@ class FPSDenoiser(CondDenoiser):
 
         # Noise y_t as the mean to keep deterministic sampling methods deterministic
         # rndm = jax.random.normal(key, y_0.shape)
-        # res = jnp.sqrt(alpha) * y_0 #+ jnp.sqrt(1 - alpha) * self.forward_model.apply(rndm, measurement_state)
-        res = jnp.sqrt(alpha) * y_0
+        res = jnp.sqrt(alpha) * y_0 #+ noise_level * rndm
 
         return SDEState(res, t)
 
@@ -91,12 +91,19 @@ class FPSDenoiser(CondDenoiser):
         t = self.integrator.timer(state_next.integrator_state.step)
         alpha_t = self.sde.noise_level(t)
 
-        y_t = jax.vmap(self.y_noiser, in_axes=(None, 0, None))(rng_key, t, measurement_state).position
+        keys = jax.random.split(rng_key, x_t.shape[0])
+        y_t = jax.vmap(self.y_noiser, in_axes=(0, 0, None))(keys, t, measurement_state).position
         f_x_t = jax.vmap(self.forward_model.apply, in_axes=(0, None))(x_t, measurement_state)
         residual = jnp.linalg.norm(y_t - f_x_t, axis=-1)
 
+        t_prev = self.integrator.timer(state_next.integrator_state.step - 1)
+        alpha_prev = self.sde.noise_level(t_prev)
+        y_t_prev = jax.vmap(self.y_noiser, in_axes=(0, 0, None))(keys, t_prev, measurement_state).position
+        f_x_t_prev = jax.vmap(self.forward_model.apply, in_axes=(0, None))(x_t, measurement_state)
+        residual_prev = jnp.linalg.norm(y_t_prev - f_x_t_prev, axis=-1)
         # compute log weights
-        log_weights = log_weights - 0.5 * residual**2 / (self.forward_model.std * alpha_t)
+        # log_weights = - 0.5 * residual**2 / (self.forward_model.std**2 * alpha_t**2)  - 0.5 * (residual_prev**2) / (self.forward_model.std**2 * alpha_prev**2)
+        log_weights = - 0.5 * residual**2  - 0.5 * (residual_prev**2)
         log_weights = normalize_log_weights(log_weights)
         position, log_weights = resample_particles(
             integrator_state.position, log_weights, rng_key_resample, self.ess_low, self.ess_high
