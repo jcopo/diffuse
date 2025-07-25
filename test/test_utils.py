@@ -260,8 +260,5 @@ def assert_mmd_threshold(distance: float, threshold: float = 0.05):
     Raises a warning if distance is between 0.01 and threshold.
     """
     if 0.02 < distance < threshold:
-        warnings.warn(
-            f"MMD distance {distance} is close to the threshold {threshold}.",
-            UserWarning
-        )
+        warnings.warn(f"MMD distance {distance} is close to the threshold {threshold}.", UserWarning)
     assert distance < threshold, f"MMD distance {distance} exceeds threshold {threshold}"

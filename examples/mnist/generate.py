@@ -13,7 +13,7 @@ from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.neural_network.unet import UNet
 from diffuse.utils.plotting import plot_lines
 from diffuse.timer.base import VpTimer
-from examples.mnist.images import SquareMask  # Import the mask class
+from examples.mnist.forward_model import SquareMask  # Import the mask class
 
 # Global configuration dictionary
 CONFIG = {

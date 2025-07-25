@@ -43,9 +43,6 @@ class SquareMask:
         hist_mask = measurement_state.mask_history
         return img * hist_mask
 
-    def measure(self, rng_key: PRNGKeyArray, img: Array, xi: Array):
-        return img * self.make(xi)
-
     def restore(self, img: Array, measurement_state: MeasurementState):
         mask = measurement_state.mask_history
         inv_mask = 1 - mask
@@ -70,30 +67,6 @@ class SquareMask:
         mask_history = mask_state.mask_history + new_part_mask
         return MaskState(y=joint_y, mask_history=mask_history, xi=design)
 
-    # def logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
-    #     f_y = self.measure(design, theta)
-    #     # Preserve batch dimension while flattening spatial dimensions
-    #     # If input is (batch, 28, 28, 1), output will be (batch, 784)
-    #     f_y_flat = einops.rearrange(f_y, "... h w c -> ... (h w c)")
-    #     y_flat = einops.rearrange(y, "... h w c -> ... (h w c)")
-
-    #     #import pdb; pdb.set_trace()
-    #     return jax.scipy.stats.multivariate_normal.logpdf(
-    #         y_flat, mean=f_y_flat, cov=self.sigma**2
-    #     )  # returns shape (batch,)
-
-    # def grad_logprob_y(self, theta: Array, y: Array, design: Array) -> Array:
-    #     meas_x = self.measure_from_mask(design, theta)
-    #     #jax.experimental.io_callback(sigle_plot, None, y)
-    #     # jax.experimental.io_callback(sigle_plot, None, meas_x)
-    #     return self.restore_from_mask(design, jnp.zeros_like(theta), (y - meas_x)) / self.sigma
-
-    # def logprob_y_t(self, theta: Array, y: Array, mask: Array, alpha_t: float) -> Array:
-    #     A_theta = self.measure_from_mask(mask, theta)
-    #     logsprobs = jax.scipy.stats.norm.logpdf(y, A_theta, alpha_t)
-    #     logsprobs = einops.reduce(logsprobs, "t ... -> t ", "sum")
-    #     return logsprobs
-
 
 if __name__ == "__main__":
     data = jnp.load("dataset/mnist.npz")
@@ -107,7 +80,9 @@ if __name__ == "__main__":
     xi = jnp.array([15.0, 15.0])
     xi2 = jnp.array([20.0, 10.0])
 
-    mask_history = mask.restore(xi2, mask.make(xi), mask.make(xi2))
+    # Demonstrate mask combination
+    mask_history = mask.make(xi) + mask.make(xi2)
+    mask_history = jnp.clip(mask_history, 0, 1)  # Keep values in [0,1]
     print(jnp.max(mask_history))
     plt.imshow(mask_history, cmap="gray")
     plt.scatter(xi[0], xi[1], color="red")
@@ -129,7 +104,7 @@ if __name__ == "__main__":
     ax2.axis("off")
 
     # Plot the third image
-    measured = mask.measure(xi, x)
+    measured = x * mask.make(xi)
     im3 = ax3.imshow(measured, cmap="gray")
     ax3.set_title("Masked")
     ax3.axis("off")
@@ -141,13 +116,14 @@ if __name__ == "__main__":
     ax4.axis("off")
 
     # plot restored image
-    restored = mask.restore(xi, x, 0.0 * measured)
+    measurement_state = MeasurementState(measured, mask_history=mask.make(xi))
+    restored = mask.restore(x, measurement_state)
     im5 = ax5.imshow(restored, cmap="gray")
     ax5.set_title("Restored")
     ax5.axis("off")
 
     def norm_measure(xi: Array, img: Array, mask: SquareMask):
-        return (mask.measure(xi, img) ** 2).sum()
+        return (img * mask.make(xi) ** 2).sum()
 
     # plot the norm of the measure
     im6 = ax6.imshow(x, cmap="gray")

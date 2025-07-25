@@ -180,6 +180,7 @@ class SDE(DiffusionModel):
     """
 
     beta: Schedule
+
     def __post_init__(self):
         self.tf = self.beta.T  # type: ignore
 

@@ -91,9 +91,7 @@ def cond_denoiser_config(request):
     Configures denoisers that incorporate measurement y via guidance:
     x_{t-1} = μ_θ(x_t,t) + σ_t ε + λ∇log p(y|x_t) where λ controls conditioning strength.
     """
-    return get_test_config(
-        conditional=True, adaptive_percentiles=True, percentile_strategy="fixed", **request.param
-    )
+    return get_test_config(conditional=True, adaptive_percentiles=True, percentile_strategy="fixed", **request.param)
 
 
 # === Basic SDE Tests ===
@@ -148,7 +146,9 @@ def test_backward_sde_mixture(backward_config, plot_if_enabled):
 
     # Generate samples
     key_samples, _ = jax.random.split(backward_config.key)
-    state, hist_position = denoise.generate(key_samples, backward_config.n_steps, backward_config.n_samples, keep_history=True)
+    state, hist_position = denoise.generate(
+        key_samples, backward_config.n_steps, backward_config.n_samples, keep_history=True
+    )
     hist_position = hist_position.squeeze()
 
     # Create plots

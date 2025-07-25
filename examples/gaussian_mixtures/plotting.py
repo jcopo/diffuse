@@ -93,24 +93,12 @@ def plot_2d_mixture_and_samples(mixture_state, final_samples, title):
 
         # Normalize color along the trajectory
         norm = plt.Normalize(0, len(segments))
-        lc = LineCollection(
-            segments,
-            norm=norm,
-            linewidth=2,
-            alpha=0.5
-        )
+        lc = LineCollection(segments, norm=norm, linewidth=2, alpha=0.5)
         lc.set_array(jnp.arange(len(segments)))
         plt.gca().add_collection(lc)
 
         # Add discretization points
-        plt.scatter(
-            x, y,
-            color='black',
-            s=4,
-            zorder=10,
-            alpha=0.5,
-            marker='|'
-        )
+        plt.scatter(x, y, color="black", s=4, zorder=10, alpha=0.5, marker="|")
 
     # Determine plot range based on samples
     sample_range = jnp.max(jnp.abs(final_samples)) * 1.2
