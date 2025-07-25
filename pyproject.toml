@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "diffuz"
+version = "0.1.0"
+authors = [
+    {name = "Jacopo Iollo", email = "jacopo.iollo@inria.fr"},
+]
+description = "A research-oriented package for diffusion-based generative modeling with modular components"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+keywords = ["diffusion", "generative-models", "machine-learning", "jax", "research"]
+dependencies = [
+    "jax>=0.4.31",
+    "jaxlib>=0.4.31",
+    "optax>=0.2.2",
+    "matplotlib>=3.8.2",
+    "numpy>=1.24.0",
+    "einops>=0.8.0",
+    "tqdm>=4.66.1",
+    "jax-tqdm>=0.1.2",
+    "flax>=0.8.5",
+    "chex>=0.1.86",
+    "jaxtyping>=0.2.24",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=6.0", "pytest-cov"]
+docs = ["sphinx", "sphinx-rtd-theme"]
+
+[project.urls]
+Homepage = "https://github.com/jcopo/diffuse"
+Repository = "https://github.com/jcopo/diffuse"
+Documentation = "https://diffuse.readthedocs.io"
+"Bug Tracker" = "https://github.com/jcopo/diffuse/issues"
+
+[tool.setuptools.packages.find]
+include = ["diffuse*"]
+
+[tool.setuptools.package-data]
+diffuse = ["*.py"]
