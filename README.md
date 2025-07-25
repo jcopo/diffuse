@@ -1,6 +1,8 @@
 # Diffuse
 
-![Denoising Process](docs/assets/denoised_image.gif)
+<p align="center">
+  <img src="docs/_static/logo.png" alt="Denoising Process" style="width: 36%;">
+</p>
 
 A Python package designed for research in diffusion-based generative modeling with modular components that can be easily swapped and combined for experimentation.
 
