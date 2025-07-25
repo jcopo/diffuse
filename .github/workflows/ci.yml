@@ -41,6 +41,9 @@ jobs:
         uv pip install --system pytest pytest-cov pytest-xdist
 
     - name: Run tests
+      env:
+        JAX_PLATFORMS: cpu
+        JAX_ENABLE_X64: true
       run: |
         pytest test/ -v --cov=diffuse --cov-report=xml --cov-report=term -n auto
 
