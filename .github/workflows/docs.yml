@@ -36,7 +36,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install mkdocs mkdocs-material pymdown-extensions mkdocstrings[python]
+          uv pip install --system mkdocs mkdocs-material pymdown-extensions mkdocstrings[python]
 
       - name: Build documentation
         run: mkdocs build --clean
