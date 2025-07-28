@@ -10,7 +10,7 @@ from typing import List
 import jax.numpy as jnp
 import warnings
 
-from examples.gaussian_mixtures.plotting import (
+from diffuse.examples.gaussian_mixtures.plotting import (
     display_trajectories,
     display_trajectories_at_times,
     plot_2d_mixture_and_samples,

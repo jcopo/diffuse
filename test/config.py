@@ -22,10 +22,10 @@ from diffuse.integrator.deterministic import (
 )
 from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
 from diffuse.timer.base import VpTimer
-from examples.gaussian_mixtures.mixture import rho_t
+from diffuse.examples.gaussian_mixtures.mixture import rho_t
 
-from examples.gaussian_mixtures.forward_models.matrix_product import MatrixProduct
-from examples.gaussian_mixtures.initialization import (
+from diffuse.examples.gaussian_mixtures.forward_models.matrix_product import MatrixProduct
+from diffuse.examples.gaussian_mixtures.initialization import (
     init_simple_mixture,
     init_grid_mixture,
     init_bimodal_setup,
@@ -405,8 +405,8 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
         # Conditional setup
         from diffuse.base_forward_model import MeasurementState
         from diffuse.denoisers.denoiser import Denoiser
-        from examples.gaussian_mixtures.cond_mixture import compute_posterior, compute_xt_given_y
-        from examples.gaussian_mixtures.mixture import pdf_mixtr, cdf_mixtr, sampler_mixtr
+        from diffuse.examples.gaussian_mixtures.cond_mixture import compute_posterior, compute_xt_given_y
+        from diffuse.examples.gaussian_mixtures.mixture import pdf_mixtr, cdf_mixtr, sampler_mixtr
 
         # Create mixture and forward model
         # config.mix_state, config.A, config.y_target, sigma_y = init_circular_setup(config.key, config.d)

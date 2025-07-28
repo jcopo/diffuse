@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 from matplotlib.collections import LineCollection
 
-from examples.gaussian_mixtures.mixture import pdf_mixtr
+from diffuse.examples.gaussian_mixtures.mixture import pdf_mixtr
 
 
 def display_histogram(samples, ax):

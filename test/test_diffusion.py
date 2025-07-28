@@ -14,7 +14,7 @@ import jax.numpy as jnp
 import pytest
 import einops
 
-from examples.gaussian_mixtures.mixture import sampler_mixtr
+from diffuse.examples.gaussian_mixtures.mixture import sampler_mixtr
 from diffuse.diffusion.sde import SDEState
 from diffuse.denoisers.denoiser import Denoiser
 

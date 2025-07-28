@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from examples.gaussian_mixtures.mixture import MixState
+from diffuse.examples.gaussian_mixtures.mixture import MixState
 
 
 def init_simple_mixture(key, d=1, n_components=3):

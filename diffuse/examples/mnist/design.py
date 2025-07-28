@@ -11,7 +11,7 @@ from diffuse.diffusion.sde import SDE, LinearSchedule
 from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
 from diffuse.denoisers.cond import FPSDenoiser
 from diffuse.design.bayesian_design import ExperimentOptimizer
-from examples.mnist.forward_model import SquareMask
+from diffuse.examples.mnist.forward_model import SquareMask
 from diffuse.utils.plotting import sigle_plot
 from functools import partial
 from diffuse.utils.plotting import log_samples

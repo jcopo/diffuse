@@ -61,7 +61,7 @@ from jax import Array
 from jaxtyping import PRNGKeyArray
 
 from diffuse.diffusion.sde import SDE
-from examples.gaussian_mixtures.mixture import (
+from diffuse.examples.gaussian_mixtures.mixture import (
     MixState,
 )
 

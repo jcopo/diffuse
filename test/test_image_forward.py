@@ -1,7 +1,7 @@
 import pytest
 import jax
 import jax.numpy as jnp
-from examples.mnist.forward_model import SquareMask, MaskState
+from diffuse.examples.mnist.forward_model import SquareMask, MaskState
 import matplotlib.pyplot as plt
 from diffuse.base_forward_model import MeasurementState
 

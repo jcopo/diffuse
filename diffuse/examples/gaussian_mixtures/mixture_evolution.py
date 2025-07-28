@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
 from diffuse.diffusion.sde import SDEState
-from examples.gaussian_mixtures.mixture import (
+from diffuse.examples.gaussian_mixtures.mixture import (
     MixState,
     rho_t,
     sampler_mixtr,
