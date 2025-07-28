@@ -183,21 +183,12 @@ For conditional sampling :math:`x_0 \sim p(x_0|y)` given measurements :math:`y`,
 
    from diffuse.denoisers.cond import FPSDenoiser, TMPDenoiser
    from diffuse.base_forward_model import MeasurementState
-
-   # Define forward model (measurement process)
-   class LinearMeasurement:
-       def __init__(self, A, noise_std):
-           self.A = A  # Measurement matrix
-           self.noise_std = noise_std
-
-       def __call__(self, x):
-           # y = Ax + noise
-           return self.A @ x
+   from diffuse.examples.gaussian_mixtures.forward_models.matrix_product import MatrixProduct
 
    # Create measurement
    A = jnp.array([[1.0, 0.0]])  # Observe first coordinate
    y_observed = jnp.array([1.5])
-   forward_model = LinearMeasurement(A, noise_std=0.1)
+   forward_model = MatrixProduct(A, std=0.1)
 
    measurement_state = MeasurementState(y=y_observed, mask_history=A)
 
@@ -252,3 +243,10 @@ Here's a minimal working example:
 
    print(f"✓ Generated {samples.shape} samples")
 
+Pytest
+------------------
+This packages comes with an extensive test suite that can be run using pytest. To visualize the results, you can add --plot and use pytest -k to select desired Denoisers and Integrators combinations:
+
+.. code-block:: bash
+
+   pytest --plot -k "DDIMIntegrator and DPSDenoiser"
