@@ -10,7 +10,7 @@ myst-parser>=0.18.0
 linkify-it-py>=2.0.0
 
 # TikZ support
-sphinxext-tikz>=0.4.0
+sphinxcontrib-tikz>=0.4.0
 
 # Additional dependencies
 pandoc>=2.0
