@@ -62,7 +62,7 @@ def display_trajectories_at_times(particles, timer, n_steps, space, perct, pdf, 
         axs[i].plot(space, jax.vmap(pdf, in_axes=(0, None))(space, t))
 
 
-def plot_2d_mixture_and_samples(mixture_state, final_samples, title):
+def plot_2d_mixture_and_samples(mixture_state, final_samples, title, ax=None, save_plot=False):
     """
     Plot 2D samples overlaid on theoretical mixture contours.
     Similar to display_histogram but for 2D case.
@@ -71,14 +71,22 @@ def plot_2d_mixture_and_samples(mixture_state, final_samples, title):
         mixture_state: Mixture state to plot contours
         final_samples: Generated samples from diffusion
         title: Plot title
+        ax: Optional matplotlib axis to plot on. If None, creates new figure.
+        save_plot: If True, save the plot to the plots directory
     """
-    plt.figure(figsize=(8, 8))
+    if ax is None:
+        plt.figure(figsize=(8, 8))
+        ax = plt.gca()
 
     # plot whole trajectory for 100 particles randomly selected with different colors
     # colors depends on the last position of the particle
     idxs = jax.random.choice(jax.random.PRNGKey(0), final_samples.shape[0], (50,), replace=True)
     # idxs = jnp.arange(final_samples.shape[0])
     steps_to_plot = final_samples.shape[0] // 10
+
+    # Track if we've added labels for legend
+    trajectory_labeled = False
+    discretization_labeled = False
 
     for i in idxs:
         # Subsample the trajectory
@@ -95,10 +103,16 @@ def plot_2d_mixture_and_samples(mixture_state, final_samples, title):
         norm = plt.Normalize(0, len(segments))
         lc = LineCollection(segments, norm=norm, linewidth=2, alpha=0.5)
         lc.set_array(jnp.arange(len(segments)))
-        plt.gca().add_collection(lc)
+        if not trajectory_labeled:
+            lc.set_label("Sample trajectories")
+            trajectory_labeled = True
+        ax.add_collection(lc)
 
         # Add discretization points
-        plt.scatter(x, y, color="black", s=4, zorder=10, alpha=0.5, marker="|")
+        scatter_label = "Time discretization" if not discretization_labeled else ""
+        ax.scatter(x, y, color="black", s=4, zorder=10, alpha=0.5, marker="|", label=scatter_label)
+        if not discretization_labeled:
+            discretization_labeled = True
 
     # Determine plot range based on samples
     sample_range = jnp.max(jnp.abs(final_samples)) * 1.2
@@ -112,29 +126,29 @@ def plot_2d_mixture_and_samples(mixture_state, final_samples, title):
     pdf_grid = pdf_values.reshape(X.shape)
 
     # Plot contours of theoretical distribution
-    plt.contour(X, Y, pdf_grid, levels=10, colors="blue", alpha=0.6, linewidths=1.5)
+    ax.contour(X, Y, pdf_grid, levels=10, colors="blue", alpha=0.6, linewidths=1.5)
 
-    plt.title(title)
-    plt.legend()
-    plt.axis("equal")
-    plt.grid(True, alpha=0.3)
+    ax.set_title(title)
+    ax.legend()
+    ax.set_aspect("equal")
+    ax.grid(True, alpha=0.3)
 
-    # Save plot if title is provided
-    # if title:
-    #     # Create plots directory if it doesn't exist
-    #     plots_dir = "plots"
-    #     os.makedirs(plots_dir, exist_ok=True)
+    # Save plot if requested
+    if save_plot and title:
+        # Create plots directory if it doesn't exist
+        plots_dir = "plots"
+        os.makedirs(plots_dir, exist_ok=True)
 
-    #     # Create safe filename from title
-    #     safe_filename = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
-    #     safe_filename = safe_filename.replace(' ', '_')
-    #     filepath = os.path.join(plots_dir, f"{safe_filename}_2d_final.png")
+        # Create safe filename from title
+        safe_filename = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        safe_filename = safe_filename.replace(' ', '_')
+        filepath = os.path.join(plots_dir, f"{safe_filename}_2d_final.png")
 
-    #     plt.savefig(filepath, dpi=300, bbox_inches='tight')
-    #     print(f"Plot saved to: {filepath}")
+        plt.savefig(filepath, dpi=300, bbox_inches='tight')
+        print(f"Plot saved to: {filepath}")
 
 
-def display_2d_trajectories_at_times(particles, timer, n_steps, perct, pdf, title=None, score=None, sde=None):
+def display_2d_trajectories_at_times(particles, timer, n_steps, perct, pdf, title=None, score=None, sde=None, save_plot=False):
     """
     Display 2D particle evolution at different time points in a single horizontal line.
     Shows samples as scatter plots overlaid on theoretical PDF contours and score field.
@@ -148,6 +162,7 @@ def display_2d_trajectories_at_times(particles, timer, n_steps, perct, pdf, titl
         title: Optional title for the plot
         score: Optional score function that takes (x, t) and returns gradient
         sde: Optional SDE object to compute alpha values
+        save_plot: If True, save the plot to the plots directory
     """
     n_plots = len(perct)
 
@@ -236,8 +251,8 @@ def display_2d_trajectories_at_times(particles, timer, n_steps, perct, pdf, titl
 
     plt.tight_layout(rect=[0, 0, 1, 0.95])
 
-    # Save plot if title is provided
-    if title:
+    # Save plot if requested
+    if save_plot and title:
         # Create plots directory if it doesn't exist
         plots_dir = "plots"
         os.makedirs(plots_dir, exist_ok=True)
