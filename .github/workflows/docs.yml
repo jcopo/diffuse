@@ -36,10 +36,13 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install --system mkdocs mkdocs-material pymdown-extensions mkdocstrings[python]
+          uv pip install --system -r docs/requirements-docs.txt
+          uv pip install --system -e .
 
       - name: Build documentation
-        run: mkdocs build --clean
+        run: |
+          cd docs
+          sphinx-build -b html . _build/html
 
       - name: Setup Pages
         if: github.ref == 'refs/heads/main'
@@ -49,7 +52,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./site
+          path: ./docs/_build/html
 
   deploy:
     if: github.ref == 'refs/heads/main'

@@ -30,6 +30,7 @@ extensions = [
     "sphinx_design",
     "sphinx_copybutton",
     "sphinx_togglebutton",
+    "sphinxcontrib.tikz",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -125,3 +126,7 @@ togglebutton_hint_hide = "Click to hide code"
 # Copy button configuration
 copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
 copybutton_prompt_is_regexp = True
+
+# TikZ configuration
+tikz_proc_suite = 'GhostScript'  # Works well for most systems
+tikz_transparent = True

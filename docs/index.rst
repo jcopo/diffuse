@@ -45,7 +45,7 @@ Install Diffuse using pip:
 
 .. code-block:: bash
 
-   pip install diffuse
+   pip install diffuz
 
 For development:
 
@@ -58,21 +58,37 @@ For development:
 Quick Start
 -----------
 
-Here's a minimal example to get started:
+Here's a minimal pipeline example:
 
 .. code-block:: python
 
    import jax
    import jax.numpy as jnp
-   from diffuse.diffusion.sde import LinearSchedule, DiffusionModel
+   from diffuse.diffusion.sde import LinearSchedule, SDE
+   from diffuse.timer import VpTimer
+   from diffuse.integrator.deterministic import DDIMIntegrator
+   from diffuse.denoisers.denoiser import Denoiser
 
-   # Create components
-   key = jax.random.PRNGKey(42)
-   schedule = LinearSchedule(b_min=0.1, b_max=20.0, t0=0.0, T=1.0)
+   # 1. Define components
+   beta = LinearSchedule(b_min=0.02, b_max=7.0, t0=0.0, T=1.0)
+   sde = SDE(beta=beta)
+   timer = VpTimer(eps=1e-5, tf=1.0, n_steps=50)
+   integrator = DDIMIntegrator(sde=sde, timer=timer)
 
-   # Generate sample data
-   data = jax.random.normal(key, (1000, 2))
-   print(f"Created {data.shape[0]} samples in {data.shape[1]}D")
+   # 2. Create pipeline
+   denoiser = Denoiser(
+       integrator=integrator,
+       sde=sde,
+       score=score_function,  # Learned score function
+       x0_shape=data_dim      # Shape of data samples
+   )
+
+   # 3. Generate samples
+   key = jax.random.PRNGKey(0)
+   final_state, _ = denoiser.generate(key, n_steps=50, n_samples=100)
+   samples = final_state.integrator_state.position
+
+   print(f"✓ Generated {samples.shape} samples")
 
 See the :doc:`quickstart` guide for a complete tutorial.
 
@@ -82,7 +98,6 @@ See the :doc:`quickstart` guide for a complete tutorial.
    :hidden:
 
    quickstart
-   installation
    diffusion_crash_course
    diffusion_tutorial
 
