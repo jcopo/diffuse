@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, Tuple
+from typing import Callable, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -42,7 +42,7 @@ class Denoiser(BaseDenoiser):
         n_steps: int,
         n_particles: int,
         keep_history: bool = False,
-    ) -> Tuple[Array, Array]:
+    ) -> Tuple[DenoiserState, Union[Array, None]]:
         r"""Generate denoised samples \theta_0"""
         rng_key, rng_key_start = jax.random.split(rng_key)
 
