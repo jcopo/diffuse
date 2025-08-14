@@ -84,6 +84,9 @@ The flow-ODE becomes:
 
 where the velocity field :math:`u_t(x_t)` of the flow is learned using a neural network :math:`u_\theta(x_t, t)`.
 
+Denoising
+-----------------
+
 Finally, the final formulation learns to predict the noise that was added :math:`D_\theta(x_t, t) \approx \varepsilon` where :math:`\varepsilon` is the noise that was added to the data at time :math:`t`:  :math:`\varepsilon = \frac{x_t - \alpha_t x_0}{\sigma_t}`.
 
 For a same :math:`\alpha_t` and :math:`\sigma_t`, these parametrizations are equivalent and can be deduced from each other:
@@ -159,33 +162,32 @@ Popular methods
 EDM: Efficient Diffusion Models
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-EDM [Karras2022]_ framework retrieved by setting :math:`\alpha_t = 1` and :math:`\sigma_t = t` in the interpolation :eq:`eq:noise_interpolation`:
+The EDM [Karras2022]_ framework uses a specific interpolation obtained by setting :math:`\alpha_t = 1` and :math:`\sigma_t = t` in the general interpolation :eq:`eq:noise_interpolation`:
 
 .. math::
    :label: eq:edm_interpolation
 
    x_t = x_0 + t\varepsilon, \quad \varepsilon\sim\mathcal{N}(0,I)
 
-Then the probability-flow ODE :eq:`eq:backward_ode_alpha_sigma` becomes:
+With this parameterization, the probability-flow ODE :eq:`eq:backward_ode_alpha_sigma` becomes:
 
 .. math::
    :label: eq:edm_backward_ode
 
    \frac{d}{dt}x_t = - t \nabla_x\log p_t(x_t) = \frac{1}{t} \left( x_t - \mathbb{E}[x_0 \mid x_t] \right)
 
-That is then solved using Heun's method.
-Another key contribution of EDM is how the learned score :math:`s_\theta(x_t, t)` is parametrized in order to be trained.
+which is then solved using Heun's method for numerical integration.
 
-here are various known good practices for training neural networks in a supervised fashion. For
-example, it is advisable to keep input and output signal magnitudes fixed to, e.g., unit variance, and to
-avoid large variation in gradient magnitudes on a per-sample basis
+**Neural Network Parameterization**
 
-parameterization of the neural network :math:`F_\theta` used to construct the denoiser :math:`D_\theta` for diffusion-based generative models.
-The denoiser :math:`D_\theta(x; \sigma)` is defined as:
+A key contribution of EDM is the careful parameterization of the neural network used to learn the denoiser. Following established practices for training neural networks, EDM maintains input and output signal magnitudes at unit variance and avoids large variations in gradient magnitudes on a per-sample basis.
+
+The EDM framework introduces a specific parameterization of the neural network :math:`F_\theta` used to construct the denoiser :math:`D_\theta` for diffusion-based generative models.
+The denoiser :math:`D_\theta(x; t)` is defined as:
 
 .. math::
 
-   D_\theta(x; sigma_t) = c_{\text{skip}}(\sigma_t) x + c_{\text{out}}(\sigma_t) F_\theta \left( c_{\text{in}}(\sigma_t) x; c_{\text{noise}}(\sigma_t) \right)
+   D_\theta(x; t) = c_{\text{skip}}(\sigma_t) x + c_{\text{out}}(\sigma_t) F_\theta \left( c_{\text{in}}(\sigma_t) x; c_{\text{noise}}(\sigma_t) \right)
 
 where :math:`F_\theta` represents the trainable neural network, and the preconditioning functions :math:`c_{\text{skip}}(\sigma_t)`, :math:`c_{\text{in}}(\sigma_t)`, :math:`c_{\text{out}}(\sigma_t)`, and :math:`c_{\text{noise}}(\sigma_t)` modulate the skip connection, input scaling, output scaling, and noise conditioning, respectively. These functions are derived to maintain unit variance for inputs and training targets while minimizing error amplification. Specifically, the preconditioning functions are:
 
@@ -195,31 +197,7 @@ where :math:`F_\theta` represents the trainable neural network, and the precondi
 
 where :math:`\sigma_{\text{data}}^2` is the data distribution variance, and :math:`c_{\text{noise}}` is chosen empirically.
 
-The training objective follows denoising score matching, minimizing the expected L2 error:
-
-.. math::
-
-   L(D_\theta; \sigma_t) = \mathbb{E}_{y \sim p_{\text{data}}} \mathbb{E}_{n \sim \mathcal{N}(0, \sigma_t^2 I)} \left\| D_\theta(y + n; \sigma_t) - y \right\|_2^2
-
-The overall loss integrates this over a noise level distribution :math:`p_{\text{train}}(\sigma_t)`:
-
-.. math::
-
-   L(D_\theta) = \mathbb{E}_{\sigma_t \sim p_{\text{train}}} \left[ \lambda(\sigma_t) L(D_\theta; \sigma_t) \right]
-
-Substituting :math:`D_\theta`, the loss for :math:`F_\theta` is:
-
-.. math::
-
-   \mathbb{E}_{\sigma_t, y, n} \left[ \lambda(\sigma_t) c_{\text{out}}(\sigma_t)^2 \left\| F_\theta \left( c_{\text{in}}(\sigma_t) \cdot (y + n); c_{\text{noise}}(\sigma_t) \right) - \frac{1}{c_{\text{out}}(\sigma_t)} \left( y - c_{\text{skip}}(\sigma_t) \cdot (y + n) \right) \right\|_2^2 \right]
-
-with an effective training target:
-
-.. math::
-
-   F_{\text{target}}(y, n; \sigma_t) = \frac{1}{c_{\text{out}}(\sigma_t)} \left( y - c_{\text{skip}}(\sigma_t) \cdot (y + n) \right)
-
-and effective loss weight :math:`w(\sigma_t) = \lambda(\sigma_t) c_{\text{out}}(\sigma_t)^2`. To ensure uniform weighting, the loss weighting function is set as:
+EDM uses the denoising loss :eq:`eq:denoising_loss` defined above with the appropriate parameterization. To ensure uniform weighting across noise levels, the loss weighting function is set as:
 
 .. math::
 
@@ -231,11 +209,7 @@ The noise level distribution is modeled as log-normal:
 
    \ln(\sigma_t) \sim \mathcal{N}(P_{\text{mean}} = -1.2, P_{\text{std}} = 1.2)
 
-focusing training on intermediate noise levels critical for perceptual quality. To mitigate overfitting, a non-leaking augmentation pipeline, adapted from generative adversarial network literature, applies geometric transformations to training images, with augmentation parameters provided as conditioning inputs to :math:`F_\theta`, set to zero during inference.
-
-Evaluations on CIFAR-10, FFHQ, and AFHQv2 datasets, as reported in Table 2, demonstrate that this parameterization, combined with the proposed loss and noise distribution, achieves significant improvements, yielding Fréchet Inception Distances of 1.79 (conditional) and 1.97 (unconditional) for CIFAR-10, and 1.36 for ImageNet-64, surpassing previous records.
-
-The parameterization stabilizes training by normalizing signal magnitudes, enabling :math:`F_\theta` to focus on residual corrections via the skip connection, which is particularly effective at high noise levels. The log-normal noise distribution prioritizes relevant noise levels, enhancing training efficiency, while augmentation improves generalization on smaller datasets. The uniform loss weighting ensures consistent training across noise levels, contributing to robust performance and state-of-the-art results without requiring architectural modifications.
+The preconditioning keeps activations and targets near unit scale while :math:`F_\theta` focuses on predicting the small difference instead of reconstructing the whole denoised sample. Together this yields strong FIDs (e.g., CIFAR-10 ≈2, ImageNet-64 ≈1.36) without architectural changes.
 
 
 DDIM: Denoising Diffusion Implicit Models
