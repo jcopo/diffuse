@@ -8,10 +8,10 @@ Diffusion Crash Course
 Diffusion Models
 ----------------------
 
-Score-based generative models, Flows or denoising Diffusion Models all correspond to an iterative process over :math:`T` steps that converts some noise :math:`x_T \sim \mathcal{N}(0,I)` into a sample :math:`x_0 \sim p(x_0)` where :math:`p(x_0)` is the distribution of the data we want to generate. To define a way to map noise into data, Generative models rely on the fact that it is easy to define the interpolation that modifies data into noise.
+Score-based generative models [Song2019]_ [Song2020]_, Flows [Liu2022]_ [Lipman2022]_ or denoising Diffusion Models [Ho2020]_ [Nichol2021]_ all correspond to an iterative process over :math:`T` steps that converts some noise :math:`x_T \sim \mathcal{N}(0,I)` into a sample :math:`x_0 \sim p(x_0)` where :math:`p(x_0)` is the distribution of the data we want to generate. To define a way to map noise into data, Generative models rely on the fact that it is easy to define the interpolation that modifies data into noise.
 As we will see, from that interpolation, a neural network can be trained to define the reverse process that refines noise into data.
 
-To define an interpolation from data to noise, the strategy is to continuisly add noise to the data :math:`x_0` until it becomes pure noise :math:`x_T`. A general interpolation is defined by the following equation:
+To define an interpolation from data to noise, the strategy is to continuisly add noise to the data :math:`x_0` until it becomes pure noise :math:`x_T`. A general interpolation [Albergo2023]_ is defined by the following equation:
 
 .. math::
    :label: eq:noise_interpolation
@@ -20,7 +20,7 @@ To define an interpolation from data to noise, the strategy is to continuisly ad
 
 where the choice of :math:`\alpha_t` and :math:`\sigma_t` depends on the chosen formulation (Flows, Score-based generative models, Denoising Diffusion Models ...). The coefficient :math:`\alpha_t` describes how the original data :math:`x_0` is attenuated or amplified over time as noise is added while :math:`\sigma_t` controls how much noise has been injected into the system at that time step.
 
-An example that fits into this formulation is score-based generative models, which can be described by a stochastic differential equation (SDE) of the form:
+An example that fits into this formulation is score-based generative models [Song2020]_, which can be described by a stochastic differential equation (SDE) of the form:
 
 .. math::
    :label: eq:forward_sde
@@ -66,14 +66,14 @@ Interestingly, this ODE can also be written using :math:`\alpha_t` and :math:`\s
 Flow-based Generative Models
 ----------------------------
 
-A useful choice within the flows framework is the straight-line (rectified flow) path :math:`\sigma(t) = t` and :math:`\alpha(t) = 1 - t`:
+A useful choice within the flows framework is the straight-line (rectified flow) path [Liu2022]_ :math:`\sigma(t) = t` and :math:`\alpha(t) = 1 - t`:
 
 .. math::
    :label: eq:flow_interpolation
 
    x_t = (1-t)x_0 + t\varepsilon, \quad \varepsilon\sim\mathcal{N}(0,I)
 
-Flow-based models simplify the ODE sampling process by learning velocity field :math:`u_t(x_t)` from linear interpolation between data and noise. Simpler straight trajectories are more amenable to ODE-based sampling because they require less discretization points to reduce discretization error. So we can increase step size and reduce the number of needed integration steps.
+Flow-based models [Lipman2022]_ [Albergo2023]_ simplify the ODE sampling process by learning velocity field :math:`u_t(x_t)` from linear interpolation between data and noise. Simpler straight trajectories are more amenable to ODE-based sampling because they require less discretization points to reduce discretization error. So we can increase step size and reduce the number of needed integration steps.
 
 The flow-ODE becomes:
 
@@ -100,7 +100,7 @@ Which in turn can be written more simply with the SDE formulation :eq:`eq:forwar
 
    u_t(x) = f(t) x - \frac{g(t)^2}{2} \nabla \log p_t(x)
 
-In the same way, using Tweedie's formula, one can link the score and the denoiser:
+In the same way, using Tweedie's formula [Efron2011]_, one can link the score and the denoiser:
 
 .. math::
    :label: eq:score_denoiser_link
@@ -133,7 +133,7 @@ Flow loss (for rectified flows):
 
    \mathcal{L}_{\text{flow}}(\theta) = \mathbb{E} \left[ w(t) \| u_\theta(x_t, t) - (\varepsilon -x_0) \|^2 \right]
 
-where :math:`t \sim \mathcal{T}`, :math:`x_0 \sim p(x_0)`, :math:`\varepsilon \sim \mathcal{N}(0, I)`, :math:`x_t = \alpha(t)x_0 + \sigma(t)\varepsilon`, and :math:`w(t)` is an optional weighting function.
+where :math:`t \sim \mathcal{T}`, :math:`x_0 \sim p(x_0)`, :math:`\varepsilon \sim \mathcal{N}(0, I)`, :math:`x_t = \alpha_t x_0 + \sigma_t \varepsilon`, and :math:`w(t)` is an optional weighting function.
 
 Denoising loss (ε-prediction):
 
@@ -142,7 +142,7 @@ Denoising loss (ε-prediction):
 
    \mathcal{L}_{\text{denoise}}(\theta) = \mathbb{E} \left[ \lambda(t) \| D_\theta(x_t, t) - \varepsilon \|^2 \right]
 
-where :math:`t \sim \mathcal{T}`, :math:`x_0 \sim p(x_0)`, :math:`\varepsilon \sim \mathcal{N}(0, I)`, :math:`x_t = \alpha(t)x_0 + \sigma(t)\varepsilon`, and :math:`\lambda(t)` is a weighting function often chosen as :math:`\lambda(t) \propto \sigma_t^{-2}` to equalize SNR across time.
+where :math:`t \sim \mathcal{T}`, :math:`x_0 \sim p(x_0)`, :math:`\varepsilon \sim \mathcal{N}(0, I)`, :math:`x_t = \alpha_t x_0 + \sigma_t \varepsilon`, and :math:`\lambda(t)` is a weighting function often chosen as :math:`\lambda(t) \propto \sigma_t^{-2}` to equalize SNR across time.
 
 Score loss:
 
@@ -151,11 +151,7 @@ Score loss:
 
    \mathcal{L}_{\text{score}}(\theta) = \mathbb{E} \left[ \lambda(t) \| s_\theta(x_t, t) - \nabla_{x_t} \log p_t(x_t | x_0) \|^2 \right]
 
-where :math:`t \sim \mathcal{T}`, :math:`x_0 \sim p(x_0)`, and :math:`x_t \sim p_t(x_t | x_0)`. Here :math:`\mathcal{T}` is the time distribution and :math:`\lambda(t)` is a weighting function often chosen to be related to the noise variance :math:`\sigma_t^2`. The target score is:
-
-.. math::
-
-   \nabla_{x_t}\log p_t(x_t \mid x_0) \;=\; -\frac{1}{\sigma_t^2}\,(x_t - \alpha_t x_0).
+where :math:`t \sim \mathcal{T}`, :math:`x_0 \sim p(x_0)`, and :math:`x_t \sim p_t(x_t | x_0)`. Here :math:`\mathcal{T}` is the time distribution and :math:`\lambda(t)` is a weighting function often chosen to be related to the noise variance :math:`\sigma_t^2`. The target score is :math:`\nabla_{x_t}\log p_t(x_t \mid x_0) \;=\; -\frac{1}{\sigma_t^2}\,(x_t - \alpha_t x_0).`
 
 Popular methods
 ----------------
@@ -163,7 +159,7 @@ Popular methods
 EDM: Efficient Diffusion Models
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-EDM framework retrieved by setting :math:`\alpha_t = 1` and :math:`\sigma_t = t` in the interpolation :eq:`eq:noise_interpolation`:
+EDM [Karras2022]_ framework retrieved by setting :math:`\alpha_t = 1` and :math:`\sigma_t = t` in the interpolation :eq:`eq:noise_interpolation`:
 
 .. math::
    :label: eq:edm_interpolation
@@ -244,7 +240,7 @@ The parameterization stabilizes training by normalizing signal magnitudes, enabl
 
 DDIM: Denoising Diffusion Implicit Models
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-DDIM assumes the same latent noise :math:`\varepsilon` along the entire path so we can write:
+DDIM [Song2020b]_ assumes the same latent noise :math:`\varepsilon` along the entire path so we can write:
 
 .. math::
    :label: eq:ddim_interpolation
@@ -285,3 +281,26 @@ Most ``Integrator`` defined in the literature necessitate :math:`f` and :math:`g
 The time discretization used in the ``Denoiser`` is defined in the ``Timer`` class. Possible choices of ``Timer`` are: ``LinearTimer`` or ``CosineTimer``.
 
 We also provide a ``CondDenoiser`` class to sample conditionally on a measurement :math:`y` to generate samples :math:`x_0 \sim p(x_0|y)`.
+
+References
+----------
+
+.. [Song2019] Song, Y., & Ermon, S. (2019). Generative modeling by estimating gradients of the data distribution. *Advances in Neural Information Processing Systems*, 32.
+
+.. [Song2020] Song, Y., Sohl-Dickstein, J., Kingma, D. P., Kumar, A., Ermon, S., & Poole, B. (2020). Score-based generative modeling through stochastic differential equations. *arXiv preprint arXiv:2011.13456*.
+
+.. [Song2020b] Song, J., Meng, C., & Ermon, S. (2020). Denoising diffusion implicit models. *arXiv preprint arXiv:2010.02502*.
+
+.. [Ho2020] Ho, J., Jain, A., & Abbeel, P. (2020). Denoising diffusion probabilistic models. *Advances in Neural Information Processing Systems*, 33, 6840-6851.
+
+.. [Nichol2021] Nichol, A., & Dhariwal, P. (2021). Improved denoising diffusion probabilistic models. *International Conference on Machine Learning*, PMLR, 8162-8171.
+
+.. [Karras2022] Karras, T., Aittala, M., Aila, T., & Laine, S. (2022). Elucidating the design space of diffusion-based generative models. *Advances in Neural Information Processing Systems*, 35, 26565-26577.
+
+.. [Liu2022] Liu, X., Gong, C., & Liu, Q. (2022). Flow straight and fast: Learning to generate and transfer data with rectified flow. *arXiv preprint arXiv:2209.03003*.
+
+.. [Lipman2022] Lipman, Y., Chen, R. T., Ben-Hamu, H., Nickel, M., & Le, M. (2022). Flow matching for generative modeling. *arXiv preprint arXiv:2210.02747*.
+
+.. [Albergo2023] Albergo, M. S., & Vanden-Eijnden, E. (2023). Stochastic Interpolants: A Unifying Framework for Flows and Diffusions. *arXiv preprint arXiv:2209.15571*.
+
+.. [Efron2011] Efron, B. (2011). Tweedie's formula and selection bias. *Journal of the American Statistical Association*, 106(496), 1602-1614.
