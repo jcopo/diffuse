@@ -83,17 +83,17 @@ class TestConfig:
 
 # Configuration templates for different test scenarios
 SCHEDULE_CONFIGS = {
-    "LinearSchedule": {"b_min": 0.1, "b_max": 7.0},
+    "LinearSchedule": {"b_min": 0.01, "b_max": 7.0},
     "CosineSchedule": {"b_min": 0.1, "b_max": 14.0},
 }
 
 # Simplified integrator configs - keeping essential combinations
 INTEGRATOR_CONFIGS = [
     (EulerMaruyamaIntegrator, {}),
-    (DDIMIntegrator, {"stochastic_churn_rate": 1.0, "churn_min": 0.5, "churn_max": 2.0}),
-    (DPMpp2sIntegrator, {"stochastic_churn_rate": 1.0, "churn_min": 0.5, "churn_max": 2.0}),
-    (HeunIntegrator, {"stochastic_churn_rate": 1.0, "churn_min": 0.5, "churn_max": 2.0}),
-    (EulerIntegrator, {"stochastic_churn_rate": 1.0, "churn_min": 0.5, "churn_max": 2.0}),
+    (DDIMIntegrator, {"stochastic_churn_rate": 1.0, "churn_min": 0.5, "churn_max": 1.0}),
+    (DPMpp2sIntegrator, {"stochastic_churn_rate": 1.0, "churn_min": 0.2, "churn_max": .9}),
+    (HeunIntegrator, {"stochastic_churn_rate": 1.0, "churn_min": 0.5, "churn_max": 1.0}),
+    (EulerIntegrator, {"stochastic_churn_rate": 1.2, "churn_min": 0.5, "churn_max": 1.0}),
 ]
 
 TIMER_CONFIGS = {
@@ -145,9 +145,8 @@ def uniform_noise_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
     noise_start = sde.noise_level(0.0)
     noise_end = sde.noise_level(sde.tf)
 
-    # Sample uniformly in sqrt(noise_level) space
-    sqrt_noise_levels = jnp.linspace(jnp.sqrt(noise_start), jnp.sqrt(noise_end), n_points)
-    target_noise_levels = sqrt_noise_levels**2
+    # Sample uniformly in noise_level space (noise_level now returns σ(t), not σ²(t))
+    target_noise_levels = jnp.linspace(noise_start, noise_end, n_points)
 
     # Convert noise levels back to time percentiles
     percentiles = []
@@ -241,7 +240,7 @@ def logarithmic_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
     noise_start = max(noise_start, epsilon)
     noise_end = max(noise_end, epsilon)
 
-    # Sample logarithmically in noise space
+    # Sample logarithmically in noise space (noise_level now returns σ(t))
     log_noise_levels = jnp.linspace(jnp.log(noise_start), jnp.log(noise_end), n_points)
     target_noise_levels = jnp.exp(log_noise_levels)
 

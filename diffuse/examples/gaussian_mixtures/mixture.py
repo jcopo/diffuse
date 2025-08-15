@@ -113,8 +113,8 @@ def transform_mixture_params(state, sde, t):
     Close form solution of VP SDE for Gaussian Mixture
     """
     means, covs, weights = state
-    int_b = sde.beta.integrate(t, 0.0)
-    alpha, beta = jnp.exp(-0.5 * int_b), 1 - jnp.exp(-int_b)
-    means = alpha * means
-    covs = alpha**2 * covs + beta * jnp.eye(covs.shape[-1])
+    alpha_t = sde.signal_level(t)
+    sigma_t_squared = sde.noise_level(t) ** 2
+    means = alpha_t * means
+    covs = alpha_t**2 * covs + sigma_t_squared * jnp.eye(covs.shape[-1])
     return means, covs, weights

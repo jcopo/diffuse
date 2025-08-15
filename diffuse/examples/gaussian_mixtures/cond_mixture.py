@@ -138,13 +138,15 @@ def compute_xt_given_y(mix_state_posterior: MixState, sde: SDE, t: float):
     means, covs, weights = mix_state_posterior
 
     # Compute signal preservation ratio: α(t) = exp(-∫₀ᵗ β(s) ds)
-    alpha_t = jnp.exp(-sde.beta.integrate(t, 0.0))
+    #alpha_t = jnp.exp(-sde.beta.integrate(t, 0.0))
+    alpha_t = sde.signal_level(t)
 
-    # Transform means: μᵢ(t) = √αₜ μᵢ(0)
-    means_xt = jnp.sqrt(alpha_t) * means
+    # Transform means: μᵢ(t) = αₜ μᵢ(0)
+    means_xt = alpha_t * means
 
-    # Transform covariances: Σᵢ(t) = αₜ Σᵢ(0) + (1-αₜ)I
-    covs_xt = alpha_t * covs + (1 - alpha_t) * jnp.eye(covs.shape[-1])
+    # Transform covariances: Σᵢ(t) = αₜ² Σᵢ(0) + σₜ²I
+    sigma_t_squared = sde.noise_level(t) ** 2
+    covs_xt = alpha_t**2 * covs + sigma_t_squared * jnp.eye(covs.shape[-1])
 
     return MixState(means_xt, covs_xt, weights)
 

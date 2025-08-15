@@ -143,7 +143,9 @@ def next_churn_noise_level(
         stochastic_churn_rate / timer.n_steps,
     )
     churn_rate = jnp.where(t > churn_min, jnp.where(t < churn_max, churn_rate, 0), 0)
-    return t * (1 + churn_rate)
+    t_churned = t * (1 + churn_rate)
+    # Ensure churned time doesn't exceed timer bounds
+    return jnp.minimum(t_churned, timer.tf)
 
 
 def apply_stochastic_churn(
@@ -185,14 +187,12 @@ def apply_stochastic_churn(
     t = timer(step)
 
     t_churned = next_churn_noise_level(t, stochastic_churn_rate, churn_min, churn_max, timer)
-    noise_level = sde.noise_level(t)
-    noise_level_churned = sde.noise_level(t_churned)
-    alpha = 1 - noise_level
-    alpha_churned = 1 - noise_level_churned
+    alpha = sde.signal_level(t)
+    alpha_churned = sde.signal_level(t_churned)
 
     new_position = (
-        jnp.sqrt(alpha_churned / alpha) * position
-        + jax.random.normal(rng_key, position.shape) * jnp.sqrt(1 - alpha_churned / alpha) * noise_inflation_factor
+        (alpha_churned / alpha) * position
+        + jax.random.normal(rng_key, position.shape) * jnp.sqrt(1 - (alpha_churned / alpha)**2) * noise_inflation_factor
     )
 
     return new_position, t_churned

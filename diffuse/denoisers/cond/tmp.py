@@ -26,10 +26,10 @@ class TMPDenoiser(CondDenoiser):
         design_mask = measurement_state.mask_history
 
         # Define modified score function that includes measurement term
-        def modified_score(x: Array, t: float) -> Array:
-            noise_level = self.sde.noise_level(t)
-            alpha = 1 - noise_level
-            scale = noise_level / jnp.sqrt(alpha)
+        def modified_score(x: Array, t: Array) -> Array:
+            sigma_t = self.sde.noise_level(t)
+            alpha_t = self.sde.signal_level(t)
+            scale = sigma_t / alpha_t
 
             def tweedie_fn(x_):
                 return self.sde.tweedie(SDEState(x_, t), self.score).position

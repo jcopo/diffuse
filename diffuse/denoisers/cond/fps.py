@@ -31,16 +31,16 @@ class FPSDenoiser(CondDenoiser):
         """
 
         # Define modified score function that includes measurement term
-        def modified_score(x: Array, t: float) -> Array:
+        def modified_score(x: Array, t: Array) -> Array:
             # import pdb; pdb.set_trace()
             # noise y
             y_t = self.y_noiser(rng_key, t, measurement_state).position
 
             # Compute guidance term
-            alpha_t = self.sde.noise_level(t)
+            sigma_t = self.sde.noise_level(t)
             y_pred = self.forward_model.apply(x, measurement_state)
             residual = y_t - y_pred
-            guidance_term = self.forward_model.restore(residual, measurement_state) / (self.forward_model.std * alpha_t)
+            guidance_term = self.forward_model.restore(residual, measurement_state) / (self.forward_model.std * sigma_t)
 
             return self.score(x, t) + guidance_term
 
@@ -55,12 +55,11 @@ class FPSDenoiser(CondDenoiser):
         Generate y^{(t)} = \sqrt{\bar{\alpha}_t} y + \sqrt{1-\bar{\alpha}_t} A_\xi \epsilon
         """
         y_0 = measurement_state.y
-        noise_level = self.sde.noise_level(t)
-        alpha = 1 - noise_level
+        alpha_t = self.sde.signal_level(t)
 
         # Noise y_t as the mean to keep deterministic sampling methods deterministic
         # rndm = jax.random.normal(key, y_0.shape)
-        res = jnp.sqrt(alpha) * y_0 #+ noise_level * rndm
+        res = alpha_t * y_0 #+ noise_level * rndm
 
         return SDEState(res, t)
 
@@ -89,7 +88,7 @@ class FPSDenoiser(CondDenoiser):
         rng_key, rng_key_resample = jax.random.split(rng_key)
 
         t = self.integrator.timer(state_next.integrator_state.step)
-        alpha_t = self.sde.noise_level(t)
+        sigma_t_squared = self.sde.noise_level(t) ** 2
 
         keys = jax.random.split(rng_key, x_t.shape[0])
         y_t = jax.vmap(self.y_noiser, in_axes=(0, 0, None))(keys, t, measurement_state).position
@@ -97,7 +96,7 @@ class FPSDenoiser(CondDenoiser):
         residual = jnp.linalg.norm(y_t - f_x_t, axis=-1)
 
         t_prev = self.integrator.timer(state_next.integrator_state.step - 1)
-        alpha_prev = self.sde.noise_level(t_prev)
+        sigma_prev_squared = self.sde.noise_level(t_prev) ** 2
         y_t_prev = jax.vmap(self.y_noiser, in_axes=(0, 0, None))(keys, t_prev, measurement_state).position
         f_x_t_prev = jax.vmap(self.forward_model.apply, in_axes=(0, None))(x_t, measurement_state)
         residual_prev = jnp.linalg.norm(y_t_prev - f_x_t_prev, axis=-1)

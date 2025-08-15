@@ -27,7 +27,7 @@ class DPSDenoiser(CondDenoiser):
         y_meas = measurement_state.y
 
         # Define modified score function that includes guidance term
-        def modified_score(x: Array, t: float) -> Array:
+        def modified_score(x: Array, t: Array) -> Array:
             def norm_tweedie(x: Array):
                 # Apply Tweedie's formula
                 denoised = self.sde.tweedie(SDEState(x, t), self.score).position

@@ -242,8 +242,7 @@ def display_2d_trajectories_at_times(particles, timer, n_steps, perct, pdf, titl
         ax.axis("off")  # Remove axes and grid
 
         # Compute alpha if SDE is provided
-        noise_level = sde.noise_level(t)
-        alpha_t = 1 - noise_level
+        alpha_t = sde.signal_level(t)
         ax.set_title(f"t = {t:.2f}, step {k},\n α = {alpha_t:.3f}".replace("0.", "."), fontsize=8)
 
         if i == 0:  # Add legend to first subplot

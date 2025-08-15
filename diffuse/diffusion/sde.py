@@ -9,16 +9,18 @@ from jaxtyping import Array, PRNGKeyArray
 
 class SDEState(NamedTuple):
     position: Array
-    t: float
+    t: Array
 
 
 class Schedule(ABC):
+    T: float
+
     @abstractmethod
-    def __call__(self, t: float) -> float:
+    def __call__(self, t: Array) -> Array:
         pass
 
     @abstractmethod
-    def integrate(self, t: float, s: float) -> float:
+    def integrate(self, t: Array, s: Array) -> Array:
         pass
 
 
@@ -39,20 +41,20 @@ class LinearSchedule:
     t0: float
     T: float
 
-    def __call__(self, t):
+    def __call__(self, t: Array) -> Array:
         """
         Calculates the value of the linear schedule at a given time.
 
         Args:
-            t (float): The time at which to evaluate the schedule.
+            t (Array): The time at which to evaluate the schedule.
 
         Returns:
-            float: The value of the linear schedule at time t.
+            Array: The value of the linear schedule at time t.
         """
         b_min, b_max, t0, T = self.b_min, self.b_max, self.t0, self.T
         return (b_max - b_min) / (T - t0) * t + (b_min * T - b_max * t0) / (T - t0)
 
-    def integrate(self, t, s):
+    def integrate(self, t: Array, s: Array) -> Array:
         b_min, b_max, t0, T = self.b_min, self.b_max, self.t0, self.T
         slope = (b_max - b_min) / (T - t0)
         intercept = (b_min * T - b_max * t0) / (T - t0)
@@ -79,7 +81,7 @@ class CosineSchedule(Schedule):
     T: float
     s: float = 0.008
 
-    def __call__(self, t):
+    def __call__(self, t: Array) -> Array:
         """
         Calculates the value of the cosine schedule at a given time.
         """
@@ -90,7 +92,7 @@ class CosineSchedule(Schedule):
 
         return beta_t
 
-    def integrate(self, t, s):
+    def integrate(self, t: Array, s: Array) -> Array:
         time_scale = self.T - self.t0
         offset_scale = 1 + self.s
 
@@ -109,66 +111,75 @@ class CosineSchedule(Schedule):
 
 class DiffusionModel(ABC):
     @abstractmethod
-    def noise_level(self, t: float) -> float:
+    def noise_level(self, t: Array) -> Array:
         pass
 
-    def snr(self, t: float) -> float:
+    @abstractmethod
+    def signal_level(self, t: Array) -> Array:
+        pass
+
+    def snr(self, t: Array) -> Array:
         """
         Compute Signal-to-Noise Ratio (SNR) at timestep t.
 
-        SNR(t) = α²(t) / (1 - α²(t)) = α²(t) / noise_level(t)
+        For general interpolation x_t = α_t x_0 + σ_t ε:
+        SNR(t) = α_t² / σ_t²
         """
         noise_level = self.noise_level(t)
-        alpha_squared = 1 - noise_level
-        return alpha_squared / (noise_level + 1e-8)
+        signal_level = self.signal_level(t)
+        return (signal_level * signal_level) / (noise_level * noise_level + 1e-8)
 
     def score(self, state: SDEState, state_0: SDEState) -> Array:
         """
-        Closed-form expression for the score function ∇ₓ log p(xₜ | xₜ₀) of the Gaussian transition kernel
+        Closed-form expression for the score function ∇ₓ log p(xₜ | x₀) of the Gaussian transition kernel.
+        
+        From docs: ∇log p_t(x_t|x_0) = -1/σ_t² (x_t - α_t x_0)
         """
         x, t = state.position, state.t
         x0, t0 = state_0.position, state_0.t
-        noise_level = self.noise_level(t)
-        alpha_t = 1 - noise_level
+        sigma_t = self.noise_level(t)
+        signal_level_t = self.signal_level(t)
 
-        return -(x - jnp.sqrt(alpha_t) * x0) / noise_level
+        return -(x - signal_level_t * x0) / (sigma_t * sigma_t)
 
     def tweedie(self, state: SDEState, score_fn: Callable) -> SDEState:
         """
-        Tweedie's formula to compute E[x_t | x_0]
+        Tweedie's formula to compute E[x_0 | x_t].
+        
+        From docs: x̂_0 = 1/α_t (x_t + σ_t² ∇log p_t(x_t))
         """
         x, t = state.position, state.t
-        noise_level = self.noise_level(t)
-        alpha_t = 1 - noise_level
-        return SDEState((x + noise_level * score_fn(x, t)) / jnp.sqrt(alpha_t), 0.0)
+        sigma_t = self.noise_level(t)
+        signal_level_t = self.signal_level(t)
+        return SDEState((x + sigma_t * sigma_t * score_fn(x, t)) / signal_level_t, jnp.zeros_like(t))
 
     def path(
         self, key: PRNGKeyArray, state: SDEState, ts: Array, return_noise: bool = False
     ) -> Union[SDEState, tuple[SDEState, Array]]:
         """
-        Samples x_t | x_0 ~ N(sqrt(alpha_t) * x_0, (1 - alpha_t) * I)
+        Samples from the general interpolation: x_t = α_t x_0 + σ_t ε
         """
         x = state.position
-        noise_level = self.noise_level(ts)
-        alpha_t = 1 - noise_level
+        sigma_t = self.noise_level(ts)
+        signal_level_t = self.signal_level(ts)
 
         noise = jax.random.normal(key, x.shape)
-        res = jnp.sqrt(alpha_t) * x + jnp.sqrt(noise_level) * noise
+        res = signal_level_t * x + sigma_t * noise
         return (SDEState(res, ts), noise) if return_noise else SDEState(res, ts)
 
     def score_to_noise(self, score_fn: Callable) -> Callable:
         def noise_fn(x: Array, t: Array) -> Array:
-            noise_level = self.noise_level(t)
+            sigma_t = self.noise_level(t)
             score = score_fn(x, t)
-            return -jnp.sqrt(noise_level) * score
+            return -sigma_t * score
 
         return noise_fn
 
     def noise_to_score(self, noise_fn: Callable) -> Callable:
         def score_fn(x: Array, t: Array) -> Array:
-            noise_level = self.noise_level(t)
+            sigma_t = self.noise_level(t)
             noise = noise_fn(x, t)
-            return -noise / (jnp.sqrt(noise_level) + 1e-6)
+            return -noise / (sigma_t + 1e-6)
 
         return score_fn
 
@@ -177,14 +188,15 @@ class DiffusionModel(ABC):
 class SDE(DiffusionModel):
     r"""
     dX(t) = -0.5 \beta(t) X(t) dt + \sqrt{\beta(t)} dW(t)
+    dx_t = f(t)x_t dt + g(t) dW(t)
     """
 
     beta: Schedule
 
     def __post_init__(self):
-        self.tf = self.beta.T  # type: ignore
+        self.tf = self.beta.T
 
-    def noise_level(self, t: float) -> float:
+    def noise_level(self, t: Array) -> Array:
         """Compute noise level for diffusion process.
 
         For a diffusion process dX(t) = -0.5 β(t)X(t)dt + √β(t)dW(t):
@@ -196,12 +208,18 @@ class SDE(DiffusionModel):
         Returns:
             Noise level (1 - α(t)) clipped for numerical stability
         """
-        alpha = jnp.exp(-self.beta.integrate(t, 0.0))
+        alpha = jnp.exp(-self.beta.integrate(t, jnp.zeros_like(t)))
+        sigma = jnp.sqrt(1 - alpha)
+        sigma = jnp.clip(sigma, 0.001, 0.9999)
+        return sigma
+
+    def signal_level(self, t: Array) -> Array:
+        alpha = jnp.sqrt(jnp.exp(-self.beta.integrate(t, jnp.zeros_like(t))))
         alpha = jnp.clip(alpha, 0.001, 0.9999)
-        return 1 - alpha
+        return alpha
 
 
-def check_snr(model: DiffusionModel, t: float, tolerance: float = 1e-3) -> bool:
+def check_snr(model: DiffusionModel, t: Array, tolerance: float = 1e-3) -> Array:
     """
     Check if SNR at timestep t is effectively zero.
 
@@ -213,4 +231,4 @@ def check_snr(model: DiffusionModel, t: float, tolerance: float = 1e-3) -> bool:
     Returns:
         True if SNR is effectively zero
     """
-    return model.snr(t) < tolerance
+    return jnp.all(model.snr(t) < tolerance)
