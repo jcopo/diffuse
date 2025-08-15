@@ -38,8 +38,6 @@ class EulerIntegrator(ChurnedIntegrator):
 
         t_next = self.timer(step + 1)
         dt = t_next - t_churned
-        noise_level_churned = self.sde.noise_level(t_churned)
-        alpha_churned = 1 - noise_level_churned
         beta_churned = self.sde.beta(t_churned)
         drift = -0.5 * beta_churned * (position_churned + score(position_churned, t_churned))
         dx = drift * dt
@@ -80,8 +78,6 @@ class HeunIntegrator(ChurnedIntegrator):
 
         t_next = self.timer(step + 1)
         dt = t_next - t_churned
-        noise_level_churned = self.sde.noise_level(t_churned)
-        alpha_churned = 1 - noise_level_churned
         beta_churned = self.sde.beta(t_churned)
         drift_churned = -0.5 * beta_churned * (position_churned + score(position_churned, t_churned))
         position_next_churned = position_churned + drift_churned * dt
@@ -129,23 +125,18 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
         t_next = self.timer(step + 1)
         t_mid = (t_churned + t_next) / 2
 
-        noise_level_churned = self.sde.noise_level(t_churned)
-        noise_level_next = self.sde.noise_level(t_next)
-        noise_level_mid = self.sde.noise_level(t_mid)
-        alpha_churned = 1 - noise_level_churned
-        alpha_next = 1 - noise_level_next
-        alpha_mid = 1 - noise_level_mid
+        signal_level_churned = self.sde.signal_level(t_churned)
+        signal_level_mid = self.sde.signal_level(t_mid)
+        signal_level_next = self.sde.signal_level(t_next)
 
-        sigma_churned, sigma_next, sigma_mid = (
-            jnp.sqrt(1 - alpha_churned),
-            jnp.sqrt(1 - alpha_next),
-            jnp.sqrt(1 - alpha_mid),
-        )
+        sigma_churned = self.sde.noise_level(t_churned)
+        sigma_next = self.sde.noise_level(t_next)
+        sigma_mid = self.sde.noise_level(t_mid)
 
         log_scale_churned, log_scale_next, log_scale_mid = (
-            jnp.log(jnp.sqrt(alpha_churned) / sigma_churned),
-            jnp.log(jnp.sqrt(alpha_next) / sigma_next),
-            jnp.log(jnp.sqrt(alpha_mid) / sigma_mid),
+            jnp.log(signal_level_churned / sigma_churned),
+            jnp.log(signal_level_next / sigma_next),
+            jnp.log(signal_level_mid / sigma_mid),
         )
 
         h = jnp.clip(log_scale_next - log_scale_churned, 1e-6)
@@ -153,12 +144,12 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
 
         pred_x0_churned = self.sde.tweedie(SDEState(position_churned, t_churned), score).position
 
-        u = sigma_mid / sigma_churned * position_churned - jnp.sqrt(alpha_mid) * jnp.expm1(-h * r) * pred_x0_churned
+        u = sigma_mid / sigma_churned * position_churned - signal_level_mid * jnp.expm1(-h * r) * pred_x0_churned
 
         pred_x0_mid = self.sde.tweedie(SDEState(u, t_mid), score).position
         D = (1 - 1 / (2 * r)) * pred_x0_churned + (1 / (2 * r)) * pred_x0_mid
 
-        next_position = sigma_next / sigma_churned * position_churned - jnp.sqrt(alpha_next) * jnp.expm1(-h) * D
+        next_position = sigma_next / sigma_churned * position_churned - signal_level_next * jnp.expm1(-h) * D
 
         _, rng_key_next = jax.random.split(rng_key)
         next_state = IntegratorState(next_position, rng_key_next, step + 1)
@@ -218,15 +209,15 @@ class DDIMIntegrator(ChurnedIntegrator):
 
         t_next = self.timer(step + 1)
 
-        noise_level_churned = self.sde.noise_level(t_churned)
-        noise_level_next = self.sde.noise_level(t_next)
-        alpha_churned = 1 - noise_level_churned
-        alpha_next = 1 - noise_level_next
+        signal_level_churned = self.sde.signal_level(t_churned)
+        signal_level_next = self.sde.signal_level(t_next)
+        sigma_churned = self.sde.noise_level(t_churned)
+        sigma_next = self.sde.noise_level(t_next)
 
         eps = noise_pred(position_churned, t_churned)
 
-        pred_x0 = (position_churned - jnp.sqrt(1 - alpha_churned) * eps) / jnp.sqrt(alpha_churned)
+        pred_x0 = (position_churned - sigma_churned * eps) / signal_level_churned
 
-        position_next = jnp.sqrt(alpha_next) * pred_x0 + jnp.sqrt(1 - alpha_next) * eps
+        position_next = signal_level_next * pred_x0 + sigma_next * eps
 
         return IntegratorState(position_next, rng_key_next, step + 1)
