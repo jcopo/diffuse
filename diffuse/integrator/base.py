@@ -143,7 +143,9 @@ def next_churn_noise_level(
         stochastic_churn_rate / timer.n_steps,
     )
     churn_rate = jnp.where(t > churn_min, jnp.where(t < churn_max, churn_rate, 0), 0)
-    return t * (1 + churn_rate)
+    t_churned = t * (1 + churn_rate)
+    # Ensure churned time doesn't exceed timer bounds
+    return jnp.minimum(t_churned, timer.tf)
 
 
 def apply_stochastic_churn(
