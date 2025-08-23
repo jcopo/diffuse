@@ -128,5 +128,5 @@ copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: 
 copybutton_prompt_is_regexp = True
 
 # TikZ configuration
-tikz_proc_suite = 'GhostScript'  # Works well for most systems
+tikz_proc_suite = "GhostScript"  # Works well for most systems
 tikz_transparent = True

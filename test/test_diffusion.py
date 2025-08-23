@@ -138,7 +138,7 @@ def test_backward_sde_mixture(backward_config, plot_if_enabled):
 
     # Setup denoising process
     integrator = backward_config.integrator_class(
-        sde=backward_config.sde, timer=backward_config.timer, **backward_config.integrator_params
+        model=backward_config.sde, timer=backward_config.timer, **backward_config.integrator_params
     )
     denoise = Denoiser(
         integrator=integrator, sde=backward_config.sde, score=backward_config.score, x0_shape=(x0_shape,)

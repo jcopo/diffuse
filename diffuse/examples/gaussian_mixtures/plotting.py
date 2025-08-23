@@ -140,15 +140,17 @@ def plot_2d_mixture_and_samples(mixture_state, final_samples, title, ax=None, sa
         os.makedirs(plots_dir, exist_ok=True)
 
         # Create safe filename from title
-        safe_filename = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        safe_filename = safe_filename.replace(' ', '_')
+        safe_filename = "".join(c for c in title if c.isalnum() or c in (" ", "-", "_")).rstrip()
+        safe_filename = safe_filename.replace(" ", "_")
         filepath = os.path.join(plots_dir, f"{safe_filename}_2d_final.png")
 
-        plt.savefig(filepath, dpi=300, bbox_inches='tight')
+        plt.savefig(filepath, dpi=300, bbox_inches="tight")
         print(f"Plot saved to: {filepath}")
 
 
-def display_2d_trajectories_at_times(particles, timer, n_steps, perct, pdf, title=None, score=None, sde=None, save_plot=False):
+def display_2d_trajectories_at_times(
+    particles, timer, n_steps, perct, pdf, title=None, score=None, sde=None, save_plot=False
+):
     """
     Display 2D particle evolution at different time points in a single horizontal line.
     Shows samples as scatter plots overlaid on theoretical PDF contours and score field.

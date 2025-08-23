@@ -132,7 +132,7 @@ class DiffusionModel(ABC):
     def score(self, state: SDEState, state_0: SDEState) -> Array:
         """
         Closed-form expression for the score function ∇ₓ log p(xₜ | x₀) of the Gaussian transition kernel.
-        
+
         From docs: ∇log p_t(x_t|x_0) = -1/σ_t² (x_t - α_t x_0)
         """
         x, t = state.position, state.t
@@ -145,7 +145,7 @@ class DiffusionModel(ABC):
     def tweedie(self, state: SDEState, score_fn: Callable) -> SDEState:
         """
         Tweedie's formula to compute E[x_0 | x_t].
-        
+
         From docs: x̂_0 = 1/α_t (x_t + σ_t² ∇log p_t(x_t))
         """
         x, t = state.position, state.t
@@ -217,6 +217,60 @@ class SDE(DiffusionModel):
         alpha = jnp.sqrt(jnp.exp(-self.beta.integrate(t, jnp.zeros_like(t))))
         alpha = jnp.clip(alpha, 0.001, 0.9999)
         return alpha
+
+
+@dataclass
+class RectifiedFlow(DiffusionModel):
+    """Rectified Flow diffusion model with straight-line interpolation paths.
+
+    Implements the rectified flow formulation from Liu et al. (2022) using:
+    - α(t) = 1 - t (signal level decreases linearly)
+    - σ(t) = t (noise level increases linearly)
+
+    This creates straight-line paths in the interpolation x_t = (1-t)x_0 + t*ε,
+    which are more amenable to ODE-based sampling with fewer discretization steps.
+
+    References:
+        Liu, X., Gong, C., & Liu, Q. (2022). Flow straight and fast: Learning to
+        generate and transfer data with rectified flow. arXiv:2209.03003
+    """
+
+    T: float = 1.0
+
+    def noise_level(self, t: Array) -> Array:
+        """Compute noise level σ(t) = t."""
+        return jnp.clip(t / self.T, 0.001, 0.999)
+
+    def signal_level(self, t: Array) -> Array:
+        """Compute signal level α(t) = 1 - t."""
+        return jnp.clip(1 - t / self.T, 0.001, 0.999)
+
+
+@dataclass
+class EDM(DiffusionModel):
+    """Efficient Diffusion Model (EDM) from Karras et al. (2022).
+
+    Implements the EDM formulation using:
+    - α(t) = 1 (signal level remains constant)
+    - σ(t) = t (noise level increases linearly)
+
+    This creates the interpolation x_t = x_0 + t*ε, which simplifies the
+    probability-flow ODE and is solved using Heun's method.
+
+    References:
+        Karras, T., Aittala, M., Aila, T., & Laine, S. (2022). Elucidating the
+        design space of diffusion-based generative models. NeurIPS 35, 26565-26577.
+    """
+
+    T: float = 1.0
+
+    def noise_level(self, t: Array) -> Array:
+        """Compute noise level σ(t) = t."""
+        return jnp.clip(t, 0.001, 0.999)
+
+    def signal_level(self, t: Array) -> Array:
+        """Compute signal level α(t) = 1."""
+        return jnp.ones_like(t)
 
 
 def check_snr(model: DiffusionModel, t: Array, tolerance: float = 1e-3) -> Array:

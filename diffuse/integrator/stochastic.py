@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 
 from diffuse.integrator.base import IntegratorState, Integrator
+from diffuse.diffusion.sde import SDE
 
 __all__ = ["EulerMaruyamaIntegrator"]
 
@@ -28,6 +29,8 @@ class EulerMaruyamaIntegrator(Integrator):
     This is the simplest stochastic integration scheme with strong order 0.5
     convergence for general SDEs.
     """
+
+    model: SDE
 
     def __call__(self, integrator_state: IntegratorState, score: Callable) -> IntegratorState:
         """Perform one Euler-Maruyama integration step.
@@ -56,8 +59,8 @@ class EulerMaruyamaIntegrator(Integrator):
         position, rng_key, step = integrator_state
         t, t_next = self.timer(step), self.timer(step + 1)
         dt = t - t_next
-        drift = self.sde.beta(t) * (0.5 * position + score(position, t))
-        diffusion = jnp.sqrt(self.sde.beta(t))
+        drift = self.model.beta(t) * (0.5 * position + score(position, t))
+        diffusion = jnp.sqrt(self.model.beta(t))
         noise = jax.random.normal(rng_key, position.shape) * jnp.sqrt(dt)
 
         dx = drift * dt + diffusion * noise

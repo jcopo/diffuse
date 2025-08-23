@@ -138,7 +138,7 @@ def compute_xt_given_y(mix_state_posterior: MixState, sde: SDE, t: float):
     means, covs, weights = mix_state_posterior
 
     # Compute signal preservation ratio: α(t) = exp(-∫₀ᵗ β(s) ds)
-    #alpha_t = jnp.exp(-sde.beta.integrate(t, 0.0))
+    # alpha_t = jnp.exp(-sde.beta.integrate(t, 0.0))
     alpha_t = sde.signal_level(t)
 
     # Transform means: μᵢ(t) = αₜ μᵢ(0)

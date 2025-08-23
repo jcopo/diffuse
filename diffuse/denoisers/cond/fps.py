@@ -59,7 +59,7 @@ class FPSDenoiser(CondDenoiser):
 
         # Noise y_t as the mean to keep deterministic sampling methods deterministic
         # rndm = jax.random.normal(key, y_0.shape)
-        res = alpha_t * y_0 #+ noise_level * rndm
+        res = alpha_t * y_0  # + noise_level * rndm
 
         return SDEState(res, t)
 
@@ -102,7 +102,7 @@ class FPSDenoiser(CondDenoiser):
         residual_prev = jnp.linalg.norm(y_t_prev - f_x_t_prev, axis=-1)
         # compute log weights
         # log_weights = - 0.5 * residual**2 / (self.forward_model.std**2 * alpha_t**2)  - 0.5 * (residual_prev**2) / (self.forward_model.std**2 * alpha_prev**2)
-        log_weights = - 0.5 * residual**2  - 0.5 * (residual_prev**2)
+        log_weights = -0.5 * residual**2 - 0.5 * (residual_prev**2)
         log_weights = normalize_log_weights(log_weights)
         position, log_weights = resample_particles(
             integrator_state.position, log_weights, rng_key_resample, self.ess_low, self.ess_high

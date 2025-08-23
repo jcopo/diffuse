@@ -90,8 +90,9 @@ SCHEDULE_CONFIGS = {
 # Simplified integrator configs - keeping essential combinations
 INTEGRATOR_CONFIGS = [
     (EulerMaruyamaIntegrator, {}),
+    # (DDIMIntegrator, {"stochastic_churn_rate": 0., "churn_min": 0., "churn_max": 0.}),
     (DDIMIntegrator, {"stochastic_churn_rate": 1.0, "churn_min": 0.5, "churn_max": 1.0}),
-    (DPMpp2sIntegrator, {"stochastic_churn_rate": 1.0, "churn_min": 0.2, "churn_max": .9}),
+    (DPMpp2sIntegrator, {"stochastic_churn_rate": 1.0, "churn_min": 0.2, "churn_max": 0.9}),
     (HeunIntegrator, {"stochastic_churn_rate": 1.0, "churn_min": 0.5, "churn_max": 1.0}),
     (EulerIntegrator, {"stochastic_churn_rate": 1.2, "churn_min": 0.5, "churn_max": 1.0}),
 ]
@@ -413,7 +414,7 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
         config.forward_model = MatrixProduct(A=config.A, std=sigma_y)
 
         # Create integrator
-        config.integrator = config.integrator_class(sde=config.sde, timer=config.timer, **config.integrator_params)
+        config.integrator = config.integrator_class(model=config.sde, timer=config.timer, **config.integrator_params)
 
         # Generate sample for denoiser creation
         key_sample = jax.random.PRNGKey(123)

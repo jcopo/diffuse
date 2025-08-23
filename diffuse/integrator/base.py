@@ -6,7 +6,7 @@ from typing import Callable, NamedTuple, Tuple
 import jax
 import jax.numpy as jnp
 
-from diffuse.diffusion.sde import SDE
+from diffuse.diffusion.sde import SDE, DiffusionModel
 from diffuse.timer.base import Timer
 
 __all__ = ["Integrator", "IntegratorState", "ChurnedIntegrator"]
@@ -34,11 +34,11 @@ class Integrator:
     schemes for both deterministic and stochastic differential equations.
 
     Attributes:
-        sde: Stochastic Differential Equation object defining the diffusion process
+        model: Diffusion model defining the diffusion process
         timer: Timer object managing the discretization of the time interval
     """
 
-    sde: SDE
+    model: DiffusionModel
     timer: Timer
 
     def init(self, position: Array, rng_key: PRNGKeyArray) -> IntegratorState:
@@ -103,7 +103,7 @@ class ChurnedIntegrator(Integrator):
             churn_min=self.churn_min,
             churn_max=self.churn_max,
             noise_inflation_factor=self.noise_inflation_factor,
-            sde=self.sde,
+            model=self.model,
             timer=self.timer,
         )
         position_churned, t_churned = jax.lax.cond(
@@ -154,7 +154,7 @@ def apply_stochastic_churn(
     churn_min: float,
     churn_max: float,
     noise_inflation_factor: float,
-    sde: SDE,
+    model: DiffusionModel,
     timer: Timer,
 ) -> Tuple[Array, float]:
     """Apply stochastic churning to the current sample.
@@ -170,7 +170,7 @@ def apply_stochastic_churn(
         churn_min: Minimum time threshold for churning
         churn_max: Maximum time threshold for churning
         noise_inflation_factor: Factor to scale injected noise
-        sde: SDE object defining the diffusion process
+        model: DiffusionModel object defining the diffusion process
         timer: Timer object managing time discretization
 
     Returns:
@@ -187,12 +187,11 @@ def apply_stochastic_churn(
     t = timer(step)
 
     t_churned = next_churn_noise_level(t, stochastic_churn_rate, churn_min, churn_max, timer)
-    alpha = sde.signal_level(t)
-    alpha_churned = sde.signal_level(t_churned)
+    alpha = model.signal_level(t)
+    alpha_churned = model.signal_level(t_churned)
 
-    new_position = (
-        (alpha_churned / alpha) * position
-        + jax.random.normal(rng_key, position.shape) * jnp.sqrt(1 - (alpha_churned / alpha)**2) * noise_inflation_factor
-    )
+    new_position = (alpha_churned / alpha) * position + jax.random.normal(rng_key, position.shape) * jnp.sqrt(
+        1 - (alpha_churned / alpha) ** 2
+    ) * noise_inflation_factor
 
     return new_position, t_churned

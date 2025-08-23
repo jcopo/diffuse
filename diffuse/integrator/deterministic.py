@@ -4,7 +4,7 @@ from typing import Callable
 import jax
 import jax.numpy as jnp
 
-from diffuse.diffusion.sde import SDEState
+from diffuse.diffusion.sde import SDEState, SDE, DiffusionModel
 from diffuse.integrator.base import IntegratorState, ChurnedIntegrator
 
 
@@ -20,6 +20,8 @@ class EulerIntegrator(ChurnedIntegrator):
 
     where β(t) is the noise schedule and s(x,t) is the score function.
     """
+
+    model: SDE
 
     def __call__(self, integrator_state: IntegratorState, score: Callable) -> IntegratorState:
         """Perform one Euler integration step in reverse time.
@@ -38,7 +40,7 @@ class EulerIntegrator(ChurnedIntegrator):
 
         t_next = self.timer(step + 1)
         dt = t_next - t_churned
-        beta_churned = self.sde.beta(t_churned)
+        beta_churned = self.model.beta(t_churned)
         drift = -0.5 * beta_churned * (position_churned + score(position_churned, t_churned))
         dx = drift * dt
         _, rng_key_next = jax.random.split(rng_key)
@@ -60,6 +62,8 @@ class HeunIntegrator(ChurnedIntegrator):
     k₂ = drift(x_n + k₁*dt, t_{n+1})
     """
 
+    model: SDE
+
     def __call__(self, integrator_state: IntegratorState, score: Callable) -> IntegratorState:
         """Perform one Heun integration step in reverse time.
 
@@ -78,11 +82,11 @@ class HeunIntegrator(ChurnedIntegrator):
 
         t_next = self.timer(step + 1)
         dt = t_next - t_churned
-        beta_churned = self.sde.beta(t_churned)
+        beta_churned = self.model.beta(t_churned)
         drift_churned = -0.5 * beta_churned * (position_churned + score(position_churned, t_churned))
         position_next_churned = position_churned + drift_churned * dt
 
-        drift_next = -0.5 * self.sde.beta(t_next) * (position_next_churned + score(position_next_churned, t_next))
+        drift_next = -0.5 * self.model.beta(t_next) * (position_next_churned + score(position_next_churned, t_next))
         position_next_heun = position_churned + (drift_churned + drift_next) * dt / 2
 
         next_state = jax.lax.cond(
@@ -106,6 +110,8 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
     better handle the diffusion process dynamics.
     """
 
+    model: DiffusionModel
+
     def __call__(self, integrator_state: IntegratorState, score: Callable) -> IntegratorState:
         """Perform one DPM-Solver++ (2S) integration step in reverse time.
 
@@ -125,13 +131,13 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
         t_next = self.timer(step + 1)
         t_mid = (t_churned + t_next) / 2
 
-        signal_level_churned = self.sde.signal_level(t_churned)
-        signal_level_mid = self.sde.signal_level(t_mid)
-        signal_level_next = self.sde.signal_level(t_next)
+        signal_level_churned = self.model.signal_level(t_churned)
+        signal_level_mid = self.model.signal_level(t_mid)
+        signal_level_next = self.model.signal_level(t_next)
 
-        sigma_churned = self.sde.noise_level(t_churned)
-        sigma_next = self.sde.noise_level(t_next)
-        sigma_mid = self.sde.noise_level(t_mid)
+        sigma_churned = self.model.noise_level(t_churned)
+        sigma_next = self.model.noise_level(t_next)
+        sigma_mid = self.model.noise_level(t_mid)
 
         log_scale_churned, log_scale_next, log_scale_mid = (
             jnp.log(signal_level_churned / sigma_churned),
@@ -142,11 +148,11 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
         h = jnp.clip(log_scale_next - log_scale_churned, 1e-6)
         r = jnp.clip((log_scale_mid - log_scale_churned) / h, 1e-6)
 
-        pred_x0_churned = self.sde.tweedie(SDEState(position_churned, t_churned), score).position
+        pred_x0_churned = self.model.tweedie(SDEState(position_churned, t_churned), score).position
 
         u = sigma_mid / sigma_churned * position_churned - signal_level_mid * jnp.expm1(-h * r) * pred_x0_churned
 
-        pred_x0_mid = self.sde.tweedie(SDEState(u, t_mid), score).position
+        pred_x0_mid = self.model.tweedie(SDEState(u, t_mid), score).position
         D = (1 - 1 / (2 * r)) * pred_x0_churned + (1 / (2 * r)) * pred_x0_mid
 
         next_position = sigma_next / sigma_churned * position_churned - signal_level_next * jnp.expm1(-h) * D
@@ -160,28 +166,18 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
 class DDIMIntegrator(ChurnedIntegrator):
     """Denoising Diffusion Implicit Models (DDIM) integrator.
 
-    Implements the DDIM sampling procedure which enables fast, high-quality sampling
-    through a non-Markovian deterministic process. DDIM can generate samples in
-    significantly fewer steps than DDPM while maintaining sample quality.
+    DDIM assumes the same latent noise ε along the entire path. The update rule is:
 
-    The update rule follows:
-    x_{t-1} = √α_{t-1} * x̂₀ + √(1 - α_{t-1}) * ε_θ
+        x_s = (α_s/α_t) * x_t - (α_s*σ_t/α_t - σ_s) * ε_θ(x_t, t)
 
-    where:
-    - x̂₀ is the predicted denoised sample: (x_t - √(1-α_t) * ε_θ) / √α_t
-    - ε_θ is the predicted noise from the model
-    - α_t represents the cumulative product of (1 - β_t)
-    - β_t is the forward process noise schedule
-
-    This implementation uses a deterministic sampler (η=0) which provides a good
-    balance between speed and quality. The deterministic nature allows for exact
-    reconstruction of the reverse process given the same noise predictions.
+    where s < t, and ε_θ(x_t, t) is the predicted noise.
 
     References:
         Song, J., Meng, C., Ermon, S. (2020). "Denoising Diffusion Implicit Models"
-        https://arxiv.org/abs/2010.02502
-
+        arXiv:2010.02502
     """
+
+    model: DiffusionModel
 
     def __call__(self, integrator_state: IntegratorState, score: Callable) -> IntegratorState:
         """Perform one DDIM step in reverse time.
@@ -205,14 +201,14 @@ class DDIMIntegrator(ChurnedIntegrator):
 
         position_churned, t_churned = self._churn_fn(integrator_state)
 
-        noise_pred = self.sde.score_to_noise(score)
+        noise_pred = self.model.score_to_noise(score)
 
         t_next = self.timer(step + 1)
 
-        signal_level_churned = self.sde.signal_level(t_churned)
-        signal_level_next = self.sde.signal_level(t_next)
-        sigma_churned = self.sde.noise_level(t_churned)
-        sigma_next = self.sde.noise_level(t_next)
+        signal_level_churned = self.model.signal_level(t_churned)
+        signal_level_next = self.model.signal_level(t_next)
+        sigma_churned = self.model.noise_level(t_churned)
+        sigma_next = self.model.noise_level(t_next)
 
         eps = noise_pred(position_churned, t_churned)
 
