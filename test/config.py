@@ -13,7 +13,7 @@ import pytest
 
 from diffuse.base_forward_model import ForwardModel
 from diffuse.denoisers.cond import DPSDenoiser, FPSDenoiser, TMPDenoiser
-from diffuse.diffusion.sde import SDE, LinearSchedule, CosineSchedule
+from diffuse.diffusion.sde import SDE, Flow, LinearSchedule, CosineSchedule
 from diffuse.integrator.deterministic import (
     DDIMIntegrator,
     DPMpp2sIntegrator,
@@ -54,6 +54,7 @@ class TestConfig:
     n_percentile_points: int = 11
 
     # Component specifications
+    model_name: str = "SDE"
     schedule_name: str = "LinearSchedule"
     timer_name: str = "vp"
     integrator_class: Type = EulerIntegrator
@@ -61,7 +62,7 @@ class TestConfig:
     denoiser_class: Type = DPSDenoiser
 
     # Derived objects (will be populated by get_test_config)
-    sde: Optional[SDE] = None
+    model: Optional[Any] = None
     timer: Optional[Any] = None
     integrator: Optional[Any] = None
     forward_model: Optional[ForwardModel] = None
@@ -82,6 +83,8 @@ class TestConfig:
 
 
 # Configuration templates for different test scenarios
+MODEL_CONFIGS = ["SDE", "Flow"]
+
 SCHEDULE_CONFIGS = {
     "LinearSchedule": {"b_min": 0.01, "b_max": 7.0},
     "CosineSchedule": {"b_min": 0.1, "b_max": 14.0},
@@ -108,12 +111,12 @@ PERCENTILES = [0.0, 0.1, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.95, 0.98, 1.0]
 
 
 # Adaptive percentile functions
-def compute_noise_level_derivative(sde: SDE, t: float, dt: float = 1e-4) -> float:
+def compute_noise_level_derivative(model, t: float, dt: float = 1e-4) -> float:
     """
     Compute the derivative of noise level with respect to time.
 
     Args:
-        sde: SDE object with noise schedule
+        model: Diffusion model object with noise schedule
         t: Time point
         dt: Small time step for numerical differentiation
 
@@ -121,14 +124,14 @@ def compute_noise_level_derivative(sde: SDE, t: float, dt: float = 1e-4) -> floa
         Derivative of noise level at time t
     """
     if t <= dt:
-        return (sde.noise_level(t + dt) - sde.noise_level(t)) / dt
-    elif t >= sde.tf - dt:
-        return (sde.noise_level(t) - sde.noise_level(t - dt)) / dt
+        return (model.noise_level(t + dt) - model.noise_level(t)) / dt
+    elif t >= model.tf - dt:
+        return (model.noise_level(t) - model.noise_level(t - dt)) / dt
     else:
-        return (sde.noise_level(t + dt) - sde.noise_level(t - dt)) / (2 * dt)
+        return (model.noise_level(t + dt) - model.noise_level(t - dt)) / (2 * dt)
 
 
-def uniform_noise_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
+def uniform_noise_percentiles(model, n_points: int = 11) -> List[float]:
     """
     Generate percentiles that are uniform in noise level space.
 
@@ -136,15 +139,15 @@ def uniform_noise_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
     during high noise phases of the diffusion process.
 
     Args:
-        sde: SDE object with noise schedule
+        model: Diffusion model object with noise schedule
         n_points: Number of time points to generate
 
     Returns:
         List of percentiles (0.0 to 1.0)
     """
     # Get noise levels at start and end
-    noise_start = sde.noise_level(0.0)
-    noise_end = sde.noise_level(sde.tf)
+    noise_start = model.noise_level(0.0)
+    noise_end = model.noise_level(model.tf)
 
     # Sample uniformly in noise_level space (noise_level now returns σ(t), not σ²(t))
     target_noise_levels = jnp.linspace(noise_start, noise_end, n_points)
@@ -153,23 +156,23 @@ def uniform_noise_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
     percentiles = []
     for target_noise in target_noise_levels:
         # Binary search to find time corresponding to target noise level
-        t_min, t_max = 0.0, sde.tf
+        t_min, t_max = 0.0, model.tf
         for _ in range(50):  # Binary search iterations
             t_mid = (t_min + t_max) / 2
-            noise_mid = sde.noise_level(t_mid)
+            noise_mid = model.noise_level(t_mid)
             if noise_mid < target_noise:
                 t_min = t_mid
             else:
                 t_max = t_mid
 
         # Convert time to percentile
-        percentile = (t_min + t_max) / 2 / sde.tf
+        percentile = (t_min + t_max) / 2 / model.tf
         percentiles.append(float(percentile))
 
     return percentiles
 
 
-def derivative_based_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
+def derivative_based_percentiles(model, n_points: int = 11) -> List[float]:
     """
     Generate percentiles that are denser where noise level changes rapidly.
 
@@ -177,7 +180,7 @@ def derivative_based_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
     focusing on the most dynamic phases of the diffusion process.
 
     Args:
-        sde: SDE object with noise schedule
+        model: Diffusion model object with noise schedule
         n_points: Number of time points to generate
 
     Returns:
@@ -185,12 +188,12 @@ def derivative_based_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
     """
     # Sample candidate time points
     n_candidates = 1000
-    candidate_times = jnp.linspace(0.0, sde.tf, n_candidates)
+    candidate_times = jnp.linspace(0.0, model.tf, n_candidates)
 
     # Compute derivatives at candidate points
     derivatives = []
     for t in candidate_times:
-        deriv = abs(compute_noise_level_derivative(sde, float(t)))
+        deriv = abs(compute_noise_level_derivative(model, float(t)))
         derivatives.append(deriv)
 
     derivatives = jnp.array(derivatives)
@@ -212,13 +215,13 @@ def derivative_based_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
         idx = jnp.clip(idx, 0, len(candidate_times) - 1)
 
         # Convert time to percentile
-        percentile = float(candidate_times[idx] / sde.tf)
+        percentile = float(candidate_times[idx] / model.tf)
         percentiles.append(percentile)
 
     return percentiles
 
 
-def logarithmic_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
+def logarithmic_percentiles(model, n_points: int = 11) -> List[float]:
     """
     Generate percentiles that are logarithmically spaced in noise level.
 
@@ -226,15 +229,15 @@ def logarithmic_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
     and less detail in high noise regions (late diffusion stages).
 
     Args:
-        sde: SDE object with noise schedule
+        model: Diffusion model object with noise schedule
         n_points: Number of time points to generate
 
     Returns:
         List of percentiles (0.0 to 1.0)
     """
     # Get noise levels at start and end
-    noise_start = sde.noise_level(0.0)
-    noise_end = sde.noise_level(sde.tf)
+    noise_start = model.noise_level(0.0)
+    noise_end = model.noise_level(model.tf)
 
     # Add small epsilon to avoid log(0)
     epsilon = 1e-8
@@ -249,23 +252,23 @@ def logarithmic_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
     percentiles = []
     for target_noise in target_noise_levels:
         # Binary search to find time corresponding to target noise level
-        t_min, t_max = 0.0, sde.tf
+        t_min, t_max = 0.0, model.tf
         for _ in range(50):  # Binary search iterations
             t_mid = (t_min + t_max) / 2
-            noise_mid = sde.noise_level(t_mid)
+            noise_mid = model.noise_level(t_mid)
             if noise_mid < target_noise:
                 t_min = t_mid
             else:
                 t_max = t_mid
 
         # Convert time to percentile
-        percentile = (t_min + t_max) / 2 / sde.tf
+        percentile = (t_min + t_max) / 2 / model.tf
         percentiles.append(float(percentile))
 
     return percentiles
 
 
-def hybrid_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
+def hybrid_percentiles(model, n_points: int = 11) -> List[float]:
     """
     Generate percentiles using a hybrid approach.
 
@@ -273,7 +276,7 @@ def hybrid_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
     to provide good coverage across all noise levels.
 
     Args:
-        sde: SDE object with noise schedule
+        model: Diffusion model object with noise schedule
         n_points: Number of time points to generate
 
     Returns:
@@ -284,8 +287,8 @@ def hybrid_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
     n_derivative = n_points - n_uniform
 
     # Get percentiles from both methods
-    uniform_perct = uniform_noise_percentiles(sde, n_uniform)
-    derivative_perct = derivative_based_percentiles(sde, n_derivative)
+    uniform_perct = uniform_noise_percentiles(model, n_uniform)
+    derivative_perct = derivative_based_percentiles(model, n_derivative)
 
     # Combine and sort
     combined = uniform_perct + derivative_perct
@@ -299,12 +302,12 @@ def hybrid_percentiles(sde: SDE, n_points: int = 11) -> List[float]:
     return combined
 
 
-def compute_adaptive_percentiles(sde: SDE, n_points: int = 11, strategy: str = "logarithmic") -> List[float]:
+def compute_adaptive_percentiles(model, n_points: int = 11, strategy: str = "logarithmic") -> List[float]:
     """
     Compute adaptive percentiles based on noise schedule.
 
     Args:
-        sde: SDE object with noise schedule
+        model: Diffusion model object with noise schedule
         n_points: Number of time points to generate
         strategy: Strategy for adaptive sampling:
             - 'uniform_noise': Uniform in sqrt(noise_level) space
@@ -317,13 +320,13 @@ def compute_adaptive_percentiles(sde: SDE, n_points: int = 11, strategy: str = "
         List of percentiles (0.0 to 1.0) corresponding to meaningful noise levels
     """
     if strategy == "uniform_noise":
-        return uniform_noise_percentiles(sde, n_points)
+        return uniform_noise_percentiles(model, n_points)
     elif strategy == "derivative":
-        return derivative_based_percentiles(sde, n_points)
+        return derivative_based_percentiles(model, n_points)
     elif strategy == "logarithmic":
-        return logarithmic_percentiles(sde, n_points)
+        return logarithmic_percentiles(model, n_points)
     elif strategy == "hybrid":
-        return hybrid_percentiles(sde, n_points)
+        return hybrid_percentiles(model, n_points)
     elif strategy == "fixed":
         # Use traditional fixed percentiles
         if n_points <= len(PERCENTILES):
@@ -335,26 +338,33 @@ def compute_adaptive_percentiles(sde: SDE, n_points: int = 11, strategy: str = "
         raise ValueError(f"Unknown strategy: {strategy}")
 
 
-def _create_sde(schedule_name: str, t_final: float = 1.0) -> SDE:
-    """Create SDE with given schedule and final time."""
-    schedule_params = SCHEDULE_CONFIGS[schedule_name]
+def _create_model(model_name: str, schedule_name: str = "LinearSchedule", t_final: float = 1.0):
+    """Create diffusion model with given type, schedule, and final time."""
+    if model_name == "SDE":
+        schedule_params = SCHEDULE_CONFIGS[schedule_name]
 
-    if schedule_name == "LinearSchedule":
-        beta = LinearSchedule(
-            b_min=schedule_params["b_min"],
-            b_max=schedule_params["b_max"],
-            t0=0.0,
-            T=t_final,
-        )
-    else:  # CosineSchedule
-        beta = CosineSchedule(
-            b_min=schedule_params["b_min"],
-            b_max=schedule_params["b_max"],
-            t0=0.0,
-            T=t_final,
-        )
+        if schedule_name == "LinearSchedule":
+            beta = LinearSchedule(
+                b_min=schedule_params["b_min"],
+                b_max=schedule_params["b_max"],
+                t0=0.0,
+                T=t_final,
+            )
+        else:  # CosineSchedule
+            beta = CosineSchedule(
+                b_min=schedule_params["b_min"],
+                b_max=schedule_params["b_max"],
+                t0=0.0,
+                T=t_final,
+            )
 
-    return SDE(beta=beta)
+        return SDE(beta=beta)
+
+    elif model_name == "Flow":
+        return Flow(tf=t_final)
+
+    else:
+        raise ValueError(f"Unknown model: {model_name}")
 
 
 def _create_timer(timer_name: str, n_steps: int, t_final: float = 1.0):
@@ -388,7 +398,7 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
     config = TestConfig(key=jax.random.PRNGKey(42), **kwargs)
 
     # Common setup for both conditional and basic
-    config.sde = _create_sde(config.schedule_name, config.t_final)
+    config.model = _create_model(config.model_name, config.schedule_name, config.t_final)
     config.timer = _create_timer(config.timer_name, config.n_steps, config.t_final)
     config.space = jnp.linspace(config.space_min, config.space_max, config.space_points)
     config.ts = jnp.linspace(config.t_init, config.t_final, config.n_steps)
@@ -396,7 +406,7 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
     # Compute adaptive percentiles based on noise schedule
     if config.adaptive_percentiles:
         config.perct = compute_adaptive_percentiles(
-            config.sde, n_points=config.n_percentile_points, strategy=config.percentile_strategy
+            config.model, n_points=config.n_percentile_points, strategy=config.percentile_strategy
         )
     else:
         config.perct = PERCENTILES
@@ -414,7 +424,7 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
         config.forward_model = MatrixProduct(A=config.A, std=sigma_y)
 
         # Create integrator
-        config.integrator = config.integrator_class(model=config.sde, timer=config.timer, **config.integrator_params)
+        config.integrator = config.integrator_class(model=config.model, timer=config.timer, **config.integrator_params)
 
         # Generate sample for denoiser creation
         key_sample = jax.random.PRNGKey(123)
@@ -426,24 +436,24 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
         measurement_state = MeasurementState(y=y_sample, mask_history=config.A)
 
         def conditional_pdf(x, t):
-            mix_state_t = compute_xt_given_y(posterior_state, config.sde, t)
+            mix_state_t = compute_xt_given_y(posterior_state, config.model, t)
             return pdf_mixtr(mix_state_t, x)
 
         def conditional_cdf(x, t):
-            mix_state_t = compute_xt_given_y(posterior_state, config.sde, t)
+            mix_state_t = compute_xt_given_y(posterior_state, config.model, t)
             return cdf_mixtr(mix_state_t, x)
 
         def conditional_score(x, t):
             return jax.grad(conditional_pdf)(x, t) / conditional_pdf(x, t)
 
         def unconditional_score(x, t):
-            pdf = rho_t(x, t, init_mix_state=config.mix_state, sde=config.sde)
-            return jax.grad(lambda x: rho_t(x, t, init_mix_state=config.mix_state, sde=config.sde))(x) / pdf
+            pdf = rho_t(x, t, init_mix_state=config.mix_state, sde=config.model)
+            return jax.grad(lambda x: rho_t(x, t, init_mix_state=config.mix_state, sde=config.model))(x) / pdf
 
         # Create denoisers
         config.cond_denoiser = config.denoiser_class(
             integrator=config.integrator,
-            sde=config.sde,
+            sde=config.model,
             score=unconditional_score,
             forward_model=config.forward_model,
             x0_shape=x_sample.shape,
@@ -451,7 +461,7 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
 
         config.denoiser = Denoiser(
             integrator=config.integrator,
-            sde=config.sde,
+            sde=config.model,
             score=conditional_score,
             x0_shape=x_sample.shape,
         )
@@ -468,7 +478,7 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
         config.mix_state = _create_mixture(config.key, config.d)
 
         def pdf(x, t):
-            return rho_t(x, t, init_mix_state=config.mix_state, sde=config.sde)
+            return rho_t(x, t, init_mix_state=config.mix_state, sde=config.model)
 
         def score(x, t):
             return jax.grad(pdf)(x, t) / pdf(x, t)
@@ -495,30 +505,63 @@ def get_parametrized_configs() -> List[pytest.param]:
     Generate all combinations of parameters for comprehensive testing.
 
     This creates all possible combinations of:
-    - Schedules: LinearSchedule, CosineSchedule
-    - Timers: vp, heun
-    - Integrators: EulerMaruyama, DDIM, Heun, Euler
+    - Models: SDE, Flow
+    - Schedules: LinearSchedule, CosineSchedule (only for SDE)
+    - Timers: vp
+    - Integrators: EulerMaruyama, DDIM, Heun, Euler (compatible with model types)
 
-    Total combinations: 2 × 2 × 4 = 16 test cases
+    Note: Some integrators require specific model types:
+    - EulerMaruyama, Heun, Euler: Only work with SDE (need beta schedule)
+    - DDIM, DPMpp2s: Work with all model types (use generic DiffusionModel interface)
     """
     configs = []
 
+    models = MODEL_CONFIGS
     schedules = list(SCHEDULE_CONFIGS.keys())
     timers = list(TIMER_CONFIGS.keys())
     integrators = INTEGRATOR_CONFIGS
 
-    for schedule in schedules:
-        for timer in timers:
-            for integrator_class, integrator_params in integrators:
-                config_dict = {
-                    "schedule_name": schedule,
-                    "timer_name": timer,
-                    "integrator_class": integrator_class,
-                    "integrator_params": integrator_params,
-                }
+    # Integrators that work with all model types (use generic DiffusionModel interface)
+    generic_integrators = [
+        (DDIMIntegrator, integrator_params) for _, integrator_params in integrators if _ == DDIMIntegrator
+    ] + [(DPMpp2sIntegrator, integrator_params) for _, integrator_params in integrators if _ == DPMpp2sIntegrator]
 
-                test_id = f"{integrator_class.__name__}_{timer}_{schedule}"
-                configs.append(pytest.param(config_dict, id=test_id))
+    # Integrators that only work with SDE models (need beta schedule)
+    sde_only_integrators = [
+        (integrator_class, integrator_params)
+        for integrator_class, integrator_params in integrators
+        if integrator_class not in [DDIMIntegrator, DPMpp2sIntegrator]
+    ]
+
+    for model in models:
+        if model == "SDE":
+            # SDE uses both schedule types and all integrators
+            for schedule in schedules:
+                for timer in timers:
+                    for integrator_class, integrator_params in integrators:
+                        config_dict = {
+                            "model_name": model,
+                            "schedule_name": schedule,
+                            "timer_name": timer,
+                            "integrator_class": integrator_class,
+                            "integrator_params": integrator_params,
+                        }
+
+                        test_id = f"{integrator_class.__name__}_{timer}_{model}_{schedule}"
+                        configs.append(pytest.param(config_dict, id=test_id))
+        else:
+            # Flow only works with generic integrators
+            for timer in timers:
+                for integrator_class, integrator_params in generic_integrators:
+                    config_dict = {
+                        "model_name": model,
+                        "timer_name": timer,
+                        "integrator_class": integrator_class,
+                        "integrator_params": integrator_params,
+                    }
+
+                    test_id = f"{integrator_class.__name__}_{timer}_{model}"
+                    configs.append(pytest.param(config_dict, id=test_id))
 
     return configs
 
@@ -528,33 +571,63 @@ def get_conditional_configs() -> List[pytest.param]:
     Generate all combinations for conditional denoiser testing.
 
     This creates all possible combinations of:
-    - Schedules: LinearSchedule, CosineSchedule
-    - Timers: vp, heun
-    - Integrators: EulerMaruyama, DDIM, Heun, Euler
+    - Models: SDE, Flow
+    - Schedules: LinearSchedule, CosineSchedule (only for SDE)
+    - Timers: vp
+    - Integrators: EulerMaruyama, DDIM, Heun, Euler (compatible with model types)
     - Denoisers: DPSDenoiser, TMPDenoiser, FPSDenoiser
 
-    Total combinations: 2 × 2 × 4 × 3 = 48 test cases
+    Note: Some integrators require specific model types:
+    - EulerMaruyama, Heun, Euler: Only work with SDE (need beta schedule)
+    - DDIM, DPMpp2s: Work with all model types (use generic DiffusionModel interface)
     """
     configs = []
 
+    models = MODEL_CONFIGS
     schedules = list(SCHEDULE_CONFIGS.keys())
     timers = list(TIMER_CONFIGS.keys())
     integrators = INTEGRATOR_CONFIGS
     denoisers = DENOISER_CLASSES
 
-    for schedule in schedules:
-        for timer in timers:
-            for integrator_class, integrator_params in integrators:
-                for denoiser_class in denoisers:
-                    config_dict = {
-                        "schedule_name": schedule,
-                        "timer_name": timer,
-                        "integrator_class": integrator_class,
-                        "integrator_params": integrator_params,
-                        "denoiser_class": denoiser_class,
-                    }
+    # Integrators that work with all model types (use generic DiffusionModel interface)
+    generic_integrators = [
+        (DDIMIntegrator, integrator_params) for _, integrator_params in integrators if _ == DDIMIntegrator
+    ] + [(DPMpp2sIntegrator, integrator_params) for _, integrator_params in integrators if _ == DPMpp2sIntegrator]
 
-                    test_id = f"{denoiser_class.__name__}_{integrator_class.__name__}_{timer}_{schedule}"
-                    configs.append(pytest.param(config_dict, id=test_id))
+    for model in models:
+        if model == "SDE":
+            # SDE uses both schedule types and all integrators
+            for schedule in schedules:
+                for timer in timers:
+                    for integrator_class, integrator_params in integrators:
+                        for denoiser_class in denoisers:
+                            config_dict = {
+                                "model_name": model,
+                                "schedule_name": schedule,
+                                "timer_name": timer,
+                                "integrator_class": integrator_class,
+                                "integrator_params": integrator_params,
+                                "denoiser_class": denoiser_class,
+                            }
+
+                            test_id = (
+                                f"{denoiser_class.__name__}_{integrator_class.__name__}_{timer}_{model}_{schedule}"
+                            )
+                            configs.append(pytest.param(config_dict, id=test_id))
+        else:
+            # Flow only works with generic integrators
+            for timer in timers:
+                for integrator_class, integrator_params in generic_integrators:
+                    for denoiser_class in denoisers:
+                        config_dict = {
+                            "model_name": model,
+                            "timer_name": timer,
+                            "integrator_class": integrator_class,
+                            "integrator_params": integrator_params,
+                            "denoiser_class": denoiser_class,
+                        }
+
+                        test_id = f"{denoiser_class.__name__}_{integrator_class.__name__}_{timer}_{model}"
+                        configs.append(pytest.param(config_dict, id=test_id))
 
     return configs

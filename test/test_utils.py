@@ -58,7 +58,7 @@ def create_plots(test_config, hist_position, plot_title, plot_if_enabled):
                 test_config.perct,
                 lambda x, t: test_config.pdf(x, test_config.t_final - t),
                 title=plot_title,
-                sde=test_config.sde,
+                sde=test_config.model,
             )
         )
 

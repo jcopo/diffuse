@@ -220,7 +220,7 @@ class SDE(DiffusionModel):
 
 
 @dataclass
-class RectifiedFlow(DiffusionModel):
+class Flow(DiffusionModel):
     """Rectified Flow diffusion model with straight-line interpolation paths.
 
     Implements the rectified flow formulation from Liu et al. (2022) using:
@@ -235,15 +235,15 @@ class RectifiedFlow(DiffusionModel):
         generate and transfer data with rectified flow. arXiv:2209.03003
     """
 
-    T: float = 1.0
+    tf: float = 1.0
 
     def noise_level(self, t: Array) -> Array:
         """Compute noise level σ(t) = t."""
-        return jnp.clip(t / self.T, 0.001, 0.999)
+        return jnp.clip(t / self.tf, 0.001, 0.999)
 
     def signal_level(self, t: Array) -> Array:
         """Compute signal level α(t) = 1 - t."""
-        return jnp.clip(1 - t / self.T, 0.001, 0.999)
+        return jnp.clip(1 - t / self.tf, 0.001, 0.999)
 
 
 @dataclass
@@ -262,7 +262,7 @@ class EDM(DiffusionModel):
         design space of diffusion-based generative models. NeurIPS 35, 26565-26577.
     """
 
-    T: float = 1.0
+    tf: float = 1.0
 
     def noise_level(self, t: Array) -> Array:
         """Compute noise level σ(t) = t."""

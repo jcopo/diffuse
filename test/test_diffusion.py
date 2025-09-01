@@ -116,7 +116,7 @@ def test_forward_sde_mixture(forward_config, plot_if_enabled):
     state_mixt = SDEState(position=samples_mixt, t=t0)
 
     # Run forward process
-    noised_samples = jax.vmap(jax.vmap(forward_config.sde.path, in_axes=(0, None, 0)), in_axes=(0, 0, None))(
+    noised_samples = jax.vmap(jax.vmap(forward_config.model.path, in_axes=(0, None, 0)), in_axes=(0, 0, None))(
         keys, state_mixt, forward_config.ts
     )
     noised_positions = einops.rearrange(noised_samples.position, "n_samples n_steps d -> n_steps n_samples d")
@@ -138,10 +138,10 @@ def test_backward_sde_mixture(backward_config, plot_if_enabled):
 
     # Setup denoising process
     integrator = backward_config.integrator_class(
-        model=backward_config.sde, timer=backward_config.timer, **backward_config.integrator_params
+        model=backward_config.model, timer=backward_config.timer, **backward_config.integrator_params
     )
     denoise = Denoiser(
-        integrator=integrator, sde=backward_config.sde, score=backward_config.score, x0_shape=(x0_shape,)
+        integrator=integrator, sde=backward_config.model, score=backward_config.score, x0_shape=(x0_shape,)
     )
 
     # Generate samples
