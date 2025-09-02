@@ -6,6 +6,7 @@ from jaxtyping import Array, PRNGKeyArray
 from diffuse.diffusion.sde import SDEState
 from diffuse.denoisers.cond import CondDenoiser, CondDenoiserState
 from diffuse.base_forward_model import MeasurementState
+from diffuse.predictor import Predictor
 
 
 @dataclass
@@ -32,7 +33,7 @@ class TMPDenoiser(CondDenoiser):
             scale = sigma_t / alpha_t
 
             def tweedie_fn(x_):
-                return self.sde.tweedie(SDEState(x_, t), self.score).position
+                return self.sde.tweedie(SDEState(x_, t), self.predictor.score).position
 
             def efficient(v):
                 restored_v = self.forward_model.restore(v, measurement_state)
@@ -46,12 +47,15 @@ class TMPDenoiser(CondDenoiser):
             res, _ = jax.scipy.sparse.linalg.cg(efficient, b, maxiter=3)
             restored_res = self.forward_model.restore(res, measurement_state)
             _, guidance = jax.jvp(tweedie_fn, (x,), (restored_res,))
-            score_val = self.score(x, t)
+            score_val = self.predictor.score(x, t)
 
             return score_val + guidance
 
+        # Create modified predictor for guidance
+        modified_predictor = Predictor(self.sde, modified_score, "score")
+
         # Use integrator to compute next state
-        integrator_state_next = self.integrator(state.integrator_state, modified_score)
+        integrator_state_next = self.integrator(state.integrator_state, modified_predictor)
         state_next = CondDenoiserState(integrator_state_next, state.log_weights)
 
         return state_next

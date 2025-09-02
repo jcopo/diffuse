@@ -8,6 +8,7 @@ from diffuse.diffusion.sde import SDEState
 from diffuse.base_forward_model import MeasurementState
 from diffuse.denoisers.cond import CondDenoiser, CondDenoiserState
 from diffuse.denoisers.utils import resample_particles, normalize_log_weights
+from diffuse.predictor import Predictor
 
 
 @dataclass
@@ -42,10 +43,13 @@ class FPSDenoiser(CondDenoiser):
             residual = y_t - y_pred
             guidance_term = self.forward_model.restore(residual, measurement_state) / (self.forward_model.std * sigma_t)
 
-            return self.score(x, t) + guidance_term
+            return self.predictor.score(x, t) + guidance_term
+
+        # Create modified predictor for guidance
+        modified_predictor = Predictor(self.sde, modified_score, "score")
 
         # Use integrator to compute next state
-        integrator_state_next = self.integrator(state.integrator_state, modified_score)
+        integrator_state_next = self.integrator(state.integrator_state, modified_predictor)
         state_next = CondDenoiserState(integrator_state_next, state.log_weights)
 
         return state_next

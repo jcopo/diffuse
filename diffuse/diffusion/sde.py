@@ -167,22 +167,6 @@ class DiffusionModel(ABC):
         res = signal_level_t * x + sigma_t * noise
         return (SDEState(res, ts), noise) if return_noise else SDEState(res, ts)
 
-    def score_to_noise(self, score_fn: Callable) -> Callable:
-        def noise_fn(x: Array, t: Array) -> Array:
-            sigma_t = self.noise_level(t)
-            score = score_fn(x, t)
-            return -sigma_t * score
-
-        return noise_fn
-
-    def noise_to_score(self, noise_fn: Callable) -> Callable:
-        def score_fn(x: Array, t: Array) -> Array:
-            sigma_t = self.noise_level(t)
-            noise = noise_fn(x, t)
-            return -noise / (sigma_t + 1e-6)
-
-        return score_fn
-
 
 @dataclass
 class SDE(DiffusionModel):

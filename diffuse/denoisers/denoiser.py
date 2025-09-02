@@ -7,6 +7,7 @@ from jaxtyping import Array, PRNGKeyArray
 
 from diffuse.integrator.base import Integrator
 from diffuse.diffusion.sde import SDE
+from diffuse.predictor import Predictor
 
 from diffuse.denoisers.base import DenoiserState, BaseDenoiser
 
@@ -17,7 +18,7 @@ class Denoiser(BaseDenoiser):
 
     integrator: Integrator
     sde: SDE
-    score: Callable[[Array, float], Array]  # x -> t -> score(x, t)
+    predictor: Predictor
     x0_shape: Tuple[int, ...]
 
     def init(self, position: Array, rng_key: PRNGKeyArray) -> DenoiserState:
@@ -32,7 +33,7 @@ class Denoiser(BaseDenoiser):
         sample p(\theta_t-1 | \theta_t)
         """
         integrator_state = state.integrator_state
-        integrator_state_next = self.integrator(integrator_state, self.score)
+        integrator_state_next = self.integrator(integrator_state, self.predictor)
 
         return DenoiserState(integrator_state_next)
 

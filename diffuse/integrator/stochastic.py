@@ -6,6 +6,7 @@ import jax.numpy as jnp
 
 from diffuse.integrator.base import IntegratorState, Integrator
 from diffuse.diffusion.sde import SDE
+from diffuse.predictor import Predictor
 
 __all__ = ["EulerMaruyamaIntegrator"]
 
@@ -32,7 +33,7 @@ class EulerMaruyamaIntegrator(Integrator):
 
     model: SDE
 
-    def __call__(self, integrator_state: IntegratorState, score: Callable) -> IntegratorState:
+    def __call__(self, integrator_state: IntegratorState, predictor: Predictor) -> IntegratorState:
         """Perform one Euler-Maruyama integration step.
 
         Args:
@@ -59,7 +60,7 @@ class EulerMaruyamaIntegrator(Integrator):
         position, rng_key, step = integrator_state
         t, t_next = self.timer(step), self.timer(step + 1)
         dt = t - t_next
-        drift = self.model.beta(t) * (0.5 * position + score(position, t))
+        drift = self.model.beta(t) * (0.5 * position + predictor.score(position, t))
         diffusion = jnp.sqrt(self.model.beta(t))
         noise = jax.random.normal(rng_key, position.shape) * jnp.sqrt(dt)
 
