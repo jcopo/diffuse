@@ -6,6 +6,7 @@ import jax.numpy as jnp
 
 from diffuse.diffusion.sde import SDEState, SDE, DiffusionModel
 from diffuse.integrator.base import IntegratorState, ChurnedIntegrator
+from diffuse.predictor import Predictor
 
 
 __all__ = ["EulerIntegrator", "HeunIntegrator", "DPMpp2sIntegrator", "DDIMIntegrator"]
@@ -23,7 +24,7 @@ class EulerIntegrator(ChurnedIntegrator):
 
     model: SDE
 
-    def __call__(self, integrator_state: IntegratorState, score: Callable) -> IntegratorState:
+    def __call__(self, integrator_state: IntegratorState, predictor: Predictor) -> IntegratorState:
         """Perform one Euler integration step in reverse time.
 
         Args:
@@ -41,7 +42,7 @@ class EulerIntegrator(ChurnedIntegrator):
         t_next = self.timer(step + 1)
         dt = t_next - t_churned
         beta_churned = self.model.beta(t_churned)
-        drift = -0.5 * beta_churned * (position_churned + score(position_churned, t_churned))
+        drift = -0.5 * beta_churned * (position_churned + predictor.score(position_churned, t_churned))
         dx = drift * dt
         _, rng_key_next = jax.random.split(rng_key)
 
@@ -64,7 +65,7 @@ class HeunIntegrator(ChurnedIntegrator):
 
     model: SDE
 
-    def __call__(self, integrator_state: IntegratorState, score: Callable) -> IntegratorState:
+    def __call__(self, integrator_state: IntegratorState, predictor: Predictor) -> IntegratorState:
         """Perform one Heun integration step in reverse time.
 
         Args:
@@ -83,10 +84,12 @@ class HeunIntegrator(ChurnedIntegrator):
         t_next = self.timer(step + 1)
         dt = t_next - t_churned
         beta_churned = self.model.beta(t_churned)
-        drift_churned = -0.5 * beta_churned * (position_churned + score(position_churned, t_churned))
+        drift_churned = -0.5 * beta_churned * (position_churned + predictor.score(position_churned, t_churned))
         position_next_churned = position_churned + drift_churned * dt
 
-        drift_next = -0.5 * self.model.beta(t_next) * (position_next_churned + score(position_next_churned, t_next))
+        drift_next = (
+            -0.5 * self.model.beta(t_next) * (position_next_churned + predictor.score(position_next_churned, t_next))
+        )
         position_next_heun = position_churned + (drift_churned + drift_next) * dt / 2
 
         next_state = jax.lax.cond(
@@ -112,7 +115,7 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
 
     model: DiffusionModel
 
-    def __call__(self, integrator_state: IntegratorState, score: Callable) -> IntegratorState:
+    def __call__(self, integrator_state: IntegratorState, predictor: Predictor) -> IntegratorState:
         """Perform one DPM-Solver++ (2S) integration step in reverse time.
 
         Args:
@@ -148,11 +151,11 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
         h = jnp.clip(log_scale_next - log_scale_churned, 1e-6)
         r = jnp.clip((log_scale_mid - log_scale_churned) / h, 1e-6)
 
-        pred_x0_churned = self.model.tweedie(SDEState(position_churned, t_churned), score).position
+        pred_x0_churned = self.model.tweedie(SDEState(position_churned, t_churned), predictor.score).position
 
         u = sigma_mid / sigma_churned * position_churned - signal_level_mid * jnp.expm1(-h * r) * pred_x0_churned
 
-        pred_x0_mid = self.model.tweedie(SDEState(u, t_mid), score).position
+        pred_x0_mid = self.model.tweedie(SDEState(u, t_mid), predictor.score).position
         D = (1 - 1 / (2 * r)) * pred_x0_churned + (1 / (2 * r)) * pred_x0_mid
 
         next_position = sigma_next / sigma_churned * position_churned - signal_level_next * jnp.expm1(-h) * D
@@ -179,7 +182,7 @@ class DDIMIntegrator(ChurnedIntegrator):
 
     model: DiffusionModel
 
-    def __call__(self, integrator_state: IntegratorState, score: Callable) -> IntegratorState:
+    def __call__(self, integrator_state: IntegratorState, predictor: Predictor) -> IntegratorState:
         """Perform one DDIM step in reverse time.
 
         Args:
@@ -201,8 +204,6 @@ class DDIMIntegrator(ChurnedIntegrator):
 
         position_churned, t_churned = self._churn_fn(integrator_state)
 
-        noise_pred = self.model.score_to_noise(score)
-
         t_next = self.timer(step + 1)
 
         signal_level_churned = self.model.signal_level(t_churned)
@@ -210,7 +211,7 @@ class DDIMIntegrator(ChurnedIntegrator):
         sigma_churned = self.model.noise_level(t_churned)
         sigma_next = self.model.noise_level(t_next)
 
-        eps = noise_pred(position_churned, t_churned)
+        eps = predictor.noise(position_churned, t_churned)
 
         pred_x0 = (position_churned - sigma_churned * eps) / signal_level_churned
 

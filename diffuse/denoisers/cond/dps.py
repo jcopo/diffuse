@@ -8,6 +8,7 @@ from jaxtyping import Array, PRNGKeyArray
 from diffuse.diffusion.sde import SDEState
 from diffuse.denoisers.cond import CondDenoiser, CondDenoiserState
 from diffuse.base_forward_model import MeasurementState
+from diffuse.predictor import Predictor
 
 
 @dataclass
@@ -30,7 +31,7 @@ class DPSDenoiser(CondDenoiser):
         def modified_score(x: Array, t: Array) -> Array:
             def norm_tweedie(x: Array):
                 # Apply Tweedie's formula
-                denoised = self.sde.tweedie(SDEState(x, t), self.score).position
+                denoised = self.sde.tweedie(SDEState(x, t), self.predictor.score).position
                 norm = jnp.linalg.norm(y_meas - self.forward_model.apply(denoised, measurement_state)) ** 2
                 return norm, denoised  # Return both norm and denoised
 
@@ -40,10 +41,13 @@ class DPSDenoiser(CondDenoiser):
             # Compute guidance scale
             zeta = 1.0 / (jnp.sqrt(val) + 1e-3)
 
-            return self.score(x, t) - zeta * guidance
+            return self.predictor.score(x, t) - zeta * guidance
+
+        # Create modified predictor for guidance
+        modified_predictor = Predictor(self.sde, modified_score, "score")
 
         # Use integrator to compute next state
-        integrator_state_next = self.integrator(state.integrator_state, modified_score)
+        integrator_state_next = self.integrator(state.integrator_state, modified_predictor)
         state_next = CondDenoiserState(integrator_state_next, state.log_weights)
 
         return state_next

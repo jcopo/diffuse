@@ -23,6 +23,7 @@ from diffuse.integrator.deterministic import (
 from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
 from diffuse.timer.base import VpTimer
 from diffuse.examples.gaussian_mixtures.mixture import rho_t
+from diffuse.predictor import Predictor
 
 from diffuse.examples.gaussian_mixtures.forward_models.matrix_product import MatrixProduct
 from diffuse.examples.gaussian_mixtures.initialization import (
@@ -450,11 +451,14 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
             pdf = rho_t(x, t, init_mix_state=config.mix_state, sde=config.model)
             return jax.grad(lambda x: rho_t(x, t, init_mix_state=config.mix_state, sde=config.model))(x) / pdf
 
-        # Create denoisers
+        # Create predictors and denoisers
+        unconditional_predictor = Predictor(config.model, unconditional_score, "score")
+        conditional_predictor = Predictor(config.model, conditional_score, "score")
+
         config.cond_denoiser = config.denoiser_class(
             integrator=config.integrator,
             sde=config.model,
-            score=unconditional_score,
+            predictor=unconditional_predictor,
             forward_model=config.forward_model,
             x0_shape=x_sample.shape,
         )
@@ -462,14 +466,14 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
         config.denoiser = Denoiser(
             integrator=config.integrator,
             sde=config.model,
-            score=conditional_score,
+            predictor=conditional_predictor,
             x0_shape=x_sample.shape,
         )
 
         # Store conditional-specific functions
         config.pdf = conditional_pdf
         config.cdf = conditional_cdf
-        config.score = conditional_score
+        config.predictor = conditional_predictor
         config.posterior_state = posterior_state
         config.measurement_state = measurement_state
 
@@ -483,8 +487,10 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
         def score(x, t):
             return jax.grad(pdf)(x, t) / pdf(x, t)
 
+        # Create predictor for basic case
+        config.predictor = Predictor(config.model, score, "score")
+
         config.pdf = pdf
-        config.score = score
 
     return config
 

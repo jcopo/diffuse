@@ -8,6 +8,7 @@ import jax.numpy as jnp
 
 from diffuse.diffusion.sde import SDE, DiffusionModel
 from diffuse.timer.base import Timer
+from diffuse.predictor import Predictor
 
 __all__ = ["Integrator", "IntegratorState", "ChurnedIntegrator"]
 
@@ -53,12 +54,12 @@ class Integrator:
         """
         return IntegratorState(position, rng_key)
 
-    def __call__(self, integrator_state: IntegratorState, score: Callable) -> IntegratorState:
+    def __call__(self, integrator_state: IntegratorState, predictor: Predictor) -> IntegratorState:
         """Perform one integration step.
 
         Args:
             integrator_state: Current state of the integration
-            score: Score function approximating ∇ₓ log p(x|t)
+            predictor: Neural network predictor providing score/noise/velocity/x0 predictions
 
         Returns:
             Updated IntegratorState

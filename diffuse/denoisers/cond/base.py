@@ -11,6 +11,7 @@ from diffuse.base_forward_model import ForwardModel, MeasurementState
 from diffuse.utils.mapping import pmapper
 from typing import Tuple
 from diffuse.denoisers.base import BaseDenoiser
+from diffuse.predictor import Predictor
 
 
 class CondDenoiserState(NamedTuple):
@@ -24,7 +25,7 @@ class CondDenoiserState(NamedTuple):
 class CondDenoiser(BaseDenoiser):
     integrator: Integrator
     sde: SDE
-    score: Callable[[Array, float], Array]
+    predictor: Predictor
     forward_model: ForwardModel
     x0_shape: Tuple[int, ...]
     resample: Optional[bool] = False
