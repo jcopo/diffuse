@@ -1,4 +1,22 @@
-"""Network adapter providing all prediction types (score, noise, velocity, x0) from any trained network."""
+"""Network adapter providing all prediction types (score, noise, velocity, x0) from any trained network.
+
+This module implements general conversions between different diffusion model parameterizations:
+
+1. **Score parameterization**: Predicts the score function ∇log p_t(x)
+2. **Noise parameterization**: Predicts the noise ε added during the forward process
+3. **Velocity parameterization**: Predicts the velocity field u_t(x) for probability flow ODEs
+4. **x0 parameterization**: Predicts the denoised data x̂_0
+
+The conversions use the general SDE formulation dx_t = f(t) x_t dt + g(t) dW_t
+where f(t) and g(t) are model-specific coefficients:
+
+- **SDE**: f(t) = -β(t)/2, g(t) = √β(t)
+- **Flow**: f(t) = -1/(1-t), g(t) = √(2t/(1-t))
+- **EDM**: f(t) = 0, g(t) = 1
+
+Velocity conversion uses the probability flow ODE:
+u_t(x) = f(t) x - g(t)²/2 ∇log p_t(x)
+"""
 
 from typing import Callable, Dict
 from dataclasses import dataclass
@@ -20,13 +38,20 @@ def score_to_noise(score_fn: Callable, model: DiffusionModel) -> Callable:
 
 
 def score_to_velocity(score_fn: Callable, model: DiffusionModel) -> Callable:
-    def velocity_fn(x: Array, t: Array) -> Array:
-        t_safe = jnp.clip(t, 1e-6, 1 - 1e-6)
-        score = score_fn(x, t_safe)
+    """Convert score function to velocity field using general SDE coefficients.
 
-        # For rectified flow: u_t(x) = -x/(1-t) - (t + t²/(1-t)) * ∇log p_t(x)
-        denominator = t_safe + (t_safe * t_safe) / (1 - t_safe)
-        return -x / (1 - t_safe) - denominator * score
+    Uses the probability flow ODE formula:
+    u_t(x) = f(t) x - g(t)²/2 ∇log p_t(x)
+
+    This replaces the previous rectified flow-specific implementation.
+    """
+
+    def velocity_fn(x: Array, t: Array) -> Array:
+        score = score_fn(x, t)
+        f_t, g_t = model.sde_coefficients(t)
+
+        # General velocity formula from probability flow ODE
+        return f_t * x - (g_t * g_t / 2) * score
 
     return velocity_fn
 
@@ -72,14 +97,20 @@ def noise_to_x0(noise_fn: Callable, model: DiffusionModel) -> Callable:
 
 # Conversion functions from velocity to other types
 def velocity_to_score(velocity_fn: Callable, model: DiffusionModel) -> Callable:
-    def score_fn(x: Array, t: Array) -> Array:
-        t_safe = jnp.clip(t, 1e-6, 1 - 1e-6)
-        v = velocity_fn(x, t_safe)
+    """Convert velocity field to score function using general SDE coefficients.
 
-        # For rectified flow: ∇log p_t(x) = (-x/(1-t) - u_t(x)) / (t + t²/(1-t))
-        numerator = -x / (1 - t_safe) - v
-        denominator = t_safe + (t_safe * t_safe) / (1 - t_safe)
-        return numerator / (denominator + 1e-8)
+    Inverts the probability flow ODE formula:
+    ∇log p_t(x) = 2(f(t) x - u_t(x)) / g(t)²
+
+    This replaces the previous rectified flow-specific implementation.
+    """
+
+    def score_fn(x: Array, t: Array) -> Array:
+        v = velocity_fn(x, t)
+        f_t, g_t = model.sde_coefficients(t)
+
+        # Invert the velocity formula: score = 2(f(t) x - u_t(x)) / g(t)²
+        return 2 * (f_t * x - v) / (g_t * g_t + 1e-8)
 
     return score_fn
 

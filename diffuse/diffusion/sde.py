@@ -118,6 +118,11 @@ class DiffusionModel(ABC):
     def signal_level(self, t: Array) -> Array:
         pass
 
+    @abstractmethod
+    def sde_coefficients(self, t: Array) -> tuple[Array, Array]:
+        """Compute SDE coefficients f(t) and g(t) for dx_t = f(t) x_t dt + g(t) dW_t."""
+        pass
+
     def snr(self, t: Array) -> Array:
         """
         Compute Signal-to-Noise Ratio (SNR) at timestep t.
@@ -180,6 +185,13 @@ class SDE(DiffusionModel):
     def __post_init__(self):
         self.tf = self.beta.T
 
+    def sde_coefficients(self, t: Array) -> tuple[Array, Array]:
+        """SDE coefficients for dX(t) = -0.5 β(t) X(t) dt + √β(t) dW(t)."""
+        beta_t = self.beta(t)
+        f_t = -0.5 * beta_t
+        g_t = jnp.sqrt(beta_t)
+        return f_t, g_t
+
     def noise_level(self, t: Array) -> Array:
         """Compute noise level for diffusion process.
 
@@ -229,6 +241,13 @@ class Flow(DiffusionModel):
         """Compute signal level α(t) = 1 - t."""
         return jnp.clip(1 - t / self.tf, 0.001, 0.999)
 
+    def sde_coefficients(self, t: Array) -> tuple[Array, Array]:
+        """SDE coefficients for rectified flow: f(t) = -1/(1-t), g(t) = √(2t/(1-t))."""
+        t_safe = jnp.clip(t / self.tf, 0.001, 0.999)
+        f_t = -1.0 / (1 - t_safe)
+        g_t = jnp.sqrt(2 * t_safe / (1 - t_safe))
+        return f_t, g_t
+
 
 @dataclass
 class EDM(DiffusionModel):
@@ -255,6 +274,12 @@ class EDM(DiffusionModel):
     def signal_level(self, t: Array) -> Array:
         """Compute signal level α(t) = 1."""
         return jnp.ones_like(t)
+
+    def sde_coefficients(self, t: Array) -> tuple[Array, Array]:
+        """SDE coefficients for EDM: f(t) = 0, g(t) = 1."""
+        f_t = jnp.zeros_like(t)
+        g_t = jnp.ones_like(t)
+        return f_t, g_t
 
 
 def check_snr(model: DiffusionModel, t: Array, tolerance: float = 1e-3) -> Array:
