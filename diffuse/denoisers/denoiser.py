@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, Tuple, Union
+from typing import Callable, Tuple, Union, Optional, Any
 
 import jax
 import jax.numpy as jnp
@@ -43,16 +43,23 @@ class Denoiser(BaseDenoiser):
         n_steps: int,
         n_particles: int,
         keep_history: bool = False,
+        data_sharding: Optional[Any] = None,
     ) -> Tuple[DenoiserState, Union[Array, None]]:
         r"""Generate denoised samples \theta_0"""
         rng_key, rng_key_start = jax.random.split(rng_key)
 
         rndm_start = jax.random.normal(rng_key_start, shape=(n_particles, *self.x0_shape))
-        # sample with
-        # ppf = jax.scipy.stats.norm.ppf(
-        #     jnp.arange(0, n_particles) / n_particles + 1 / (2 * n_particles)
-        #     )[:, None]
+
+        # Shard the initial noise if sharding is provided
+        if data_sharding is not None:
+            rndm_start = jax.device_put(rndm_start, data_sharding)
+
         keys = jax.random.split(rng_key, n_particles)
+
+        # Also shard the keys
+        if data_sharding is not None:
+            keys = jax.device_put(keys, data_sharding)
+
         state = jax.vmap(self.init, in_axes=(0, 0))(rndm_start, keys)
 
         def body_fun(state, _):
