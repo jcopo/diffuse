@@ -41,12 +41,6 @@ experimenting with diffusion models.
 Quick Installation
 ------------------
 
-Install Diffuse using pip:
-
-.. code-block:: bash
-
-   pip install diffuz
-
 For development:
 
 .. code-block:: bash
