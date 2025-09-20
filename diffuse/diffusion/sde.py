@@ -168,7 +168,7 @@ class DiffusionModel(ABC):
         sigma_t = self.noise_level(ts)
         signal_level_t = self.signal_level(ts)
 
-        noise = jax.random.normal(key, x.shape)
+        noise = jax.random.normal(key, x.shape, dtype=x.dtype)
         res = signal_level_t * x + sigma_t * noise
         return (SDEState(res, ts), noise) if return_noise else SDEState(res, ts)
 
