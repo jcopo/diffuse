@@ -1,8 +1,6 @@
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import jax.numpy as jnp
-
-from einops import rearrange
 from flax import nnx
 from jax.typing import ArrayLike, DTypeLike
 
@@ -19,6 +17,33 @@ from .params import CondUNet2DOutput
 
 
 class CondUNet2D(nnx.Module):
+    """Conditional U-Net for diffusion models with timestep conditioning.
+
+    A U-Net architecture for conditional image generation, featuring hierarchical
+    downsampling/upsampling paths with skip connections, ResNet blocks, attention
+    mechanisms, and sinusoidal timestep embeddings.
+
+    Args:
+        in_channels: Number of input channels.
+        ch: Base number of channels.
+        ch_mult: Channel multipliers for each resolution level.
+        num_res_blocks: Number of ResNet blocks at each resolution.
+        attention_resolutions: Resolution levels where attention is applied.
+        activation: Activation function to use throughout the network.
+        dropout: Whether to enable dropout in ResNet blocks.
+        num_heads: Number of attention heads for multi-head attention.
+        param_dtype: Data type for parameters.
+        dtype: Data type for computation.
+        rngs: Random number generators for parameter initialization.
+
+    Example:
+        >>> rngs = nnx.Rngs(42)
+        >>> unet = CondUNet2D(ch=128, attention_resolutions=(8, 16), rngs=rngs)
+        >>> x = jnp.ones((2, 64, 64, 3))
+        >>> t = jnp.array([100, 200])
+        >>> output = unet(x, t)
+    """
+
     def __init__(
         self,
         in_channels: int = 3,
@@ -28,6 +53,8 @@ class CondUNet2D(nnx.Module):
         attention_resolutions: tuple[int, ...] = (1, 2, 4, 8),
         activation: Callable = nnx.swish,
         dropout: bool = True,
+        dropout_rate: float = 0.1,
+        num_heads: int = 8,
         param_dtype: DTypeLike = jnp.float32,
         dtype: DTypeLike = jnp.float32,
         rngs: nnx.Rngs = None,
@@ -72,6 +99,7 @@ class CondUNet2D(nnx.Module):
                         param_dtype=self.param_dtype,
                         dtype=dtype,
                         dropout=dropout,
+                        dropout_rate=dropout_rate,
                         rngs=rngs,
                     )
                 ]
@@ -80,6 +108,7 @@ class CondUNet2D(nnx.Module):
                     layers.append(
                         AttnBlock(
                             in_channels=current_ch,
+                            num_heads=num_heads,
                             param_dtype=param_dtype,
                             dtype=dtype,
                             rngs=rngs,
@@ -115,9 +144,16 @@ class CondUNet2D(nnx.Module):
                 param_dtype=self.param_dtype,
                 dtype=dtype,
                 dropout=dropout,
+                dropout_rate=dropout_rate,
                 rngs=rngs,
             ),
-            AttnBlock(in_channels=current_ch, param_dtype=param_dtype, dtype=dtype, rngs=rngs),
+            AttnBlock(
+                in_channels=current_ch,
+                num_heads=num_heads,
+                param_dtype=param_dtype,
+                dtype=dtype,
+                rngs=rngs,
+            ),
             ResnetBlock(
                 in_channels=current_ch,
                 out_channels=current_ch,
@@ -126,6 +162,7 @@ class CondUNet2D(nnx.Module):
                 param_dtype=self.param_dtype,
                 dtype=dtype,
                 dropout=dropout,
+                dropout_rate=dropout_rate,
                 rngs=rngs,
             ),
         )
@@ -144,6 +181,7 @@ class CondUNet2D(nnx.Module):
                         param_dtype=self.param_dtype,
                         dtype=dtype,
                         dropout=dropout,
+                        dropout_rate=dropout_rate,
                         rngs=rngs,
                     )
                 ]
@@ -153,6 +191,7 @@ class CondUNet2D(nnx.Module):
                     layers.append(
                         AttnBlock(
                             in_channels=current_ch,
+                            num_heads=num_heads,
                             param_dtype=self.param_dtype,
                             dtype=dtype,
                             rngs=rngs,
@@ -199,13 +238,22 @@ class CondUNet2D(nnx.Module):
 
         self.out = nnx.Sequential(norm_out, activation_out, conv_out)
 
-    def __call__(self, x: ArrayLike, t: Optional[ArrayLike] = None) -> CondUNet2DOutput:
+    def __call__(self, x: ArrayLike, t: ArrayLike | None = None) -> CondUNet2DOutput:
+        """Forward pass through the U-Net with timestep conditioning.
+
+        Args:
+            x: Input tensor of shape (batch, channels, height, width).
+            t: Timestep values for conditioning. If None, defaults to zeros.
+
+        Returns:
+            CondUNet2DOutput containing the processed tensor.
+        """
         squeeze = False
         if x.ndim < 4:
             x = jnp.expand_dims(x, 0)
             squeeze = True
 
-        h = rearrange(x, "b c h w -> b h w c")
+        h = x
 
         if t is None:
             t = jnp.zeros((x.shape[0], 1)).astype(self.dtype)
@@ -225,7 +273,6 @@ class CondUNet2D(nnx.Module):
             h = block(h, t_emb)
 
         h = self.out(h)
-        h = rearrange(h, "b h w c -> b c h w")
 
         if squeeze:
             h = h.squeeze(axis=0)
