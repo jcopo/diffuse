@@ -14,22 +14,23 @@ __all__ = ["EulerIntegrator", "HeunIntegrator", "DPMpp2sIntegrator", "DDIMIntegr
 
 @dataclass
 class EulerIntegrator(ChurnedIntegrator):
-    """Euler deterministic integrator for reverse-time diffusion processes.
+    """Euler integrator for probability flow ODEs in diffusion models.
 
-    Implements the basic Euler method for numerical integration of the reverse-time SDE:
-    dx = [-0.5 * β(t) * (x + s(x,t))] * dt
+    Implements the basic Euler method for numerical integration:
+    dx = v(x,t) * dt
 
-    where β(t) is the noise schedule and s(x,t) is the score function.
+    where v(x,t) is the velocity field from the probability flow ODE.
+    Works with all diffusion models (SDE, Flow, EDM) using the velocity parameterization.
     """
 
-    model: SDE
+    model: DiffusionModel
 
     def __call__(self, integrator_state: IntegratorState, predictor: Predictor) -> IntegratorState:
-        """Perform one Euler integration step in reverse time.
+        """Perform one Euler integration step.
 
         Args:
             integrator_state: Current state containing (position, rng_key, step)
-            score: Score function s(x,t) that approximates ∇ₓ log p(x|t)
+            predictor: Predictor providing velocity field v(x,t)
 
         Returns:
             Updated IntegratorState with the next position
@@ -41,9 +42,10 @@ class EulerIntegrator(ChurnedIntegrator):
 
         t_next = self.timer(step + 1)
         dt = t_next - t_churned
-        beta_churned = self.model.beta(t_churned)
-        drift = -0.5 * beta_churned * (position_churned + predictor.score(position_churned, t_churned))
-        dx = drift * dt
+
+        # Use velocity directly for probability flow ODE
+        velocity = predictor.velocity(position_churned, t_churned)
+        dx = velocity * dt
         _, rng_key_next = jax.random.split(rng_key)
 
         return IntegratorState(position_churned + dx, rng_key_next, step + 1)
@@ -51,30 +53,31 @@ class EulerIntegrator(ChurnedIntegrator):
 
 @dataclass
 class HeunIntegrator(ChurnedIntegrator):
-    """Heun's method integrator for reverse-time diffusion processes.
+    """Heun's method integrator for probability flow ODEs in diffusion models.
 
     Implements a second-order Runge-Kutta method (Heun's method) that uses an
-    intermediate Euler step to improve accuracy. The final step is computed as:
+    intermediate Euler step to improve accuracy:
 
-    x_{n+1} = x_n + (k₁ + k₂)/2 * dt
+    x_{n+1} = x_n + (v₁ + v₂)/2 * dt
 
     where:
-    k₁ = drift(x_n, t_n)
-    k₂ = drift(x_n + k₁*dt, t_{n+1})
+    v₁ = velocity(x_n, t_n)
+    v₂ = velocity(x_n + v₁*dt, t_{n+1})
+
+    Works with all diffusion models (SDE, Flow, EDM) using the velocity parameterization.
     """
 
-    model: SDE
+    model: DiffusionModel
 
     def __call__(self, integrator_state: IntegratorState, predictor: Predictor) -> IntegratorState:
-        """Perform one Heun integration step in reverse time.
+        """Perform one Heun integration step.
 
         Args:
             integrator_state: Current state containing (position, rng_key, step)
-            score: Score function s(x,t) that approximates ∇ₓ log p(x|t)
+            predictor: Predictor providing velocity field v(x,t)
 
         Returns:
-            Updated IntegratorState with the next position. For the final step,
-            returns the Euler prediction instead of the Heun correction.
+            Updated IntegratorState with the next position using Heun's method
         """
         _, rng_key, step = integrator_state
         _, rng_key_next = jax.random.split(rng_key)
@@ -83,22 +86,19 @@ class HeunIntegrator(ChurnedIntegrator):
 
         t_next = self.timer(step + 1)
         dt = t_next - t_churned
-        beta_churned = self.model.beta(t_churned)
-        drift_churned = -0.5 * beta_churned * (position_churned + predictor.score(position_churned, t_churned))
-        position_next_churned = position_churned + drift_churned * dt
 
-        drift_next = (
-            -0.5 * self.model.beta(t_next) * (position_next_churned + predictor.score(position_next_churned, t_next))
-        )
-        position_next_heun = position_churned + (drift_churned + drift_next) * dt / 2
+        # Heun's method using velocity (probability flow ODE)
+        # k1 = velocity at current point
+        velocity_churned = predictor.velocity(position_churned, t_churned)
+        position_next_euler = position_churned + velocity_churned * dt
 
-        next_state = jax.lax.cond(
-            step + 1 == self.timer.n_steps,
-            lambda: IntegratorState(position_next_churned, rng_key_next, step + 1),
-            lambda: IntegratorState(position_next_heun, rng_key_next, step + 1),
-        )
+        # k2 = velocity at Euler prediction
+        velocity_next = predictor.velocity(position_next_euler, t_next)
 
-        return next_state
+        # Heun correction: average of the two velocities
+        position_next_heun = position_churned + (velocity_churned + velocity_next) * dt / 2
+
+        return IntegratorState(position_next_heun, rng_key_next, step + 1)
 
 
 @dataclass

@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 
 from diffuse.integrator.base import IntegratorState, Integrator
-from diffuse.diffusion.sde import SDE
+from diffuse.diffusion.sde import DiffusionModel
 from diffuse.predictor import Predictor
 
 __all__ = ["EulerMaruyamaIntegrator"]
@@ -31,7 +31,7 @@ class EulerMaruyamaIntegrator(Integrator):
     convergence for general SDEs.
     """
 
-    model: SDE
+    model: DiffusionModel
 
     def __call__(self, integrator_state: IntegratorState, predictor: Predictor) -> IntegratorState:
         """Perform one Euler-Maruyama integration step.
@@ -60,8 +60,11 @@ class EulerMaruyamaIntegrator(Integrator):
         position, rng_key, step = integrator_state
         t, t_next = self.timer(step), self.timer(step + 1)
         dt = t - t_next
-        drift = self.model.beta(t) * (0.5 * position + predictor.score(position, t))
-        diffusion = jnp.sqrt(self.model.beta(t))
+        f_t, g_t = self.model.sde_coefficients(t)
+        # For reverse-time: drift = f(t)*x - g(t)^2*score, but rearranged as: g(t)^2 * (0.5*x + score)
+        # Since f(t) = -0.5*beta(t) and g(t) = sqrt(beta(t)), we have beta(t) = g(t)^2
+        drift = g_t * g_t * (0.5 * position + predictor.score(position, t))
+        diffusion = g_t
         noise = jax.random.normal(rng_key, position.shape) * jnp.sqrt(dt)
 
         dx = drift * dt + diffusion * noise
