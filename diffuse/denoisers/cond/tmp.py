@@ -11,14 +11,7 @@ from diffuse.predictor import Predictor
 
 @dataclass
 class TMPDenoiser(CondDenoiser):
-    """Conditional denoiser using Tweedie's Moments from https://arxiv.org/pdf/2310.06721v3
-
-    Args:
-        cg_maxiter: Maximum iterations for conjugate gradient solver (default: 10)
-        epsilon: Small constant for numerical stability (default: 1e-8)
-    """
-    cg_maxiter: int = 10
-    epsilon: float = 1e-8
+    """Conditional denoiser using Tweedie's Moments from https://arxiv.org/pdf/2310.06721v3"""
 
     def step(
         self,
@@ -31,12 +24,13 @@ class TMPDenoiser(CondDenoiser):
         Modifies the score to include measurement term and uses integrator for the update.
         """
         y_meas = measurement_state.y
+        design_mask = measurement_state.mask_history
 
         # Define modified score function that includes measurement term
         def modified_score(x: Array, t: Array) -> Array:
             sigma_t = self.sde.noise_level(t)
             alpha_t = self.sde.signal_level(t)
-            scale = sigma_t / (alpha_t + self.epsilon)
+            scale = sigma_t / alpha_t
 
             def tweedie_fn(x_):
                 return self.sde.tweedie(SDEState(x_, t), self.predictor.score).position
@@ -45,12 +39,12 @@ class TMPDenoiser(CondDenoiser):
                 restored_v = self.forward_model.restore(v, measurement_state)
                 _, tangents = jax.jvp(tweedie_fn, (x,), (restored_v,))
                 measured_tangents = self.forward_model.apply(tangents, measurement_state)
-                return scale * measured_tangents + (self.forward_model.std**2 + self.epsilon) * v
+                return scale * measured_tangents + self.forward_model.std**2 * v
 
             denoised = tweedie_fn(x)
             b = y_meas - self.forward_model.apply(denoised, measurement_state)
 
-            res, _ = jax.scipy.sparse.linalg.cg(efficient, b, maxiter=self.cg_maxiter)
+            res, _ = jax.scipy.sparse.linalg.cg(efficient, b, maxiter=3)
             restored_res = self.forward_model.restore(res, measurement_state)
             _, guidance = jax.jvp(tweedie_fn, (x,), (restored_res,))
             score_val = self.predictor.score(x, t)

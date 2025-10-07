@@ -13,12 +13,7 @@ from diffuse.predictor import Predictor
 
 @dataclass
 class FPSDenoiser(CondDenoiser):
-    """Filtering Posterior Sampling Denoiser implementing continuous-time SDE version.
-
-    Args:
-        epsilon: Small constant for numerical stability (default: 1e-8)
-    """
-    epsilon: float = 1e-8
+    """Filtering Posterior Sampling Denoiser implementing continuous-time SDE version."""
 
     def __post_init__(self):
         self.resample = True
@@ -38,16 +33,15 @@ class FPSDenoiser(CondDenoiser):
 
         # Define modified score function that includes measurement term
         def modified_score(x: Array, t: Array) -> Array:
-            # Noise y
+            # import pdb; pdb.set_trace()
+            # noise y
             y_t = self.y_noiser(rng_key, t, measurement_state).position
 
-            # Compute guidance term with numerical stability
+            # Compute guidance term
             sigma_t = self.sde.noise_level(t)
             y_pred = self.forward_model.apply(x, measurement_state)
             residual = y_t - y_pred
-            guidance_term = self.forward_model.restore(residual, measurement_state) / (
-                self.forward_model.std * sigma_t + self.epsilon
-            )
+            guidance_term = self.forward_model.restore(residual, measurement_state) / (self.forward_model.std * sigma_t)
 
             return self.predictor.score(x, t) + guidance_term
 
@@ -103,20 +97,16 @@ class FPSDenoiser(CondDenoiser):
         keys = jax.random.split(rng_key, x_t.shape[0])
         y_t = jax.vmap(self.y_noiser, in_axes=(0, 0, None))(keys, t, measurement_state).position
         f_x_t = jax.vmap(self.forward_model.apply, in_axes=(0, None))(x_t, measurement_state)
-        # Compute residual squared norm for each particle: [n_particles, H, W, C] -> [n_particles]
-        residual_squared = jnp.sum((y_t - f_x_t).reshape(x_t.shape[0], -1) ** 2, axis=-1)
+        residual = jnp.linalg.norm(y_t - f_x_t, axis=-1)
 
         t_prev = self.integrator.timer(state_next.integrator_state.step - 1)
         sigma_prev_squared = self.sde.noise_level(t_prev) ** 2
         y_t_prev = jax.vmap(self.y_noiser, in_axes=(0, 0, None))(keys, t_prev, measurement_state).position
         f_x_t_prev = jax.vmap(self.forward_model.apply, in_axes=(0, None))(x_t, measurement_state)
-        # Compute residual squared norm for each particle: [n_particles, H, W, C] -> [n_particles]
-        residual_prev_squared = jnp.sum((y_t_prev - f_x_t_prev).reshape(x_t.shape[0], -1) ** 2, axis=-1)
-
-        # Compute incremental log weights with proper variance normalization
-        variance = self.forward_model.std**2 * sigma_t_squared + self.epsilon
-        variance_prev = self.forward_model.std**2 * sigma_prev_squared + self.epsilon
-        log_weights = -0.5 * residual_squared / variance + 0.5 * residual_prev_squared / variance_prev
+        residual_prev = jnp.linalg.norm(y_t_prev - f_x_t_prev, axis=-1)
+        # compute log weights
+        # log_weights = - 0.5 * residual**2 / (self.forward_model.std**2 * alpha_t**2)  - 0.5 * (residual_prev**2) / (self.forward_model.std**2 * alpha_prev**2)
+        log_weights = -0.5 * residual**2 - 0.5 * (residual_prev**2)
         log_weights = normalize_log_weights(log_weights)
         position, log_weights = resample_particles(
             integrator_state.position, log_weights, rng_key_resample, self.ess_low, self.ess_high
