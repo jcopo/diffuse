@@ -94,6 +94,7 @@ See the :doc:`quickstart` guide for a complete tutorial.
    quickstart
    diffusion_crash_course
    diffusion_tutorial
+   new_mixtures
 
 
 

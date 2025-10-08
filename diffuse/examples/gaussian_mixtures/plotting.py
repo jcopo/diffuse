@@ -12,7 +12,7 @@ def display_histogram(samples, ax):
     flat_samples = samples.flatten()
     nb = flat_samples.shape[0]
     xmax = jnp.max(jnp.abs(samples))
-    nbins = 120
+    nbins = 80
 
     # Freedman-Diaconis rule
     percentiles = jnp.array([75, 25])
@@ -36,14 +36,14 @@ def display_trajectories(Y, m, title=None):
     Display 1D particle trajectories with color coding.
     m: number of trajectories to plot
     """
-    P, N = Y.shape
+    N, P = Y.shape
     idxs = jnp.round(jnp.linspace(0, P - 1, m)).astype(jnp.int32)
-    sorted_idx = jnp.argsort(Y[:, -1])
+    sorted_idx = jnp.argsort(Y[-1, :])
     I = sorted_idx[idxs]
 
     for i, idx in enumerate(I):
         color_marker = i / (m - 1)
-        plt.plot(Y[idx, :], c=[color_marker, 0, 1 - color_marker], alpha=0.3, linewidth=0.5)
+        plt.plot(Y[:, idx], c=[color_marker, 0, 1 - color_marker], alpha=0.3, linewidth=0.5)
     if title:
         plt.title(title)
 
@@ -58,7 +58,7 @@ def display_trajectories_at_times(particles, timer, n_steps, space, perct, pdf, 
     for i, x in enumerate(perct):
         k = int(x * n_steps)
         t = timer(0) - timer(k + 1)
-        display_histogram(particles[:, k], axs[i])
+        display_histogram(particles[k, :], axs[i])
         axs[i].plot(space, jax.vmap(pdf, in_axes=(0, None))(space, t))
 
 

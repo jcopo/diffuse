@@ -28,12 +28,12 @@ class TMPDenoiser(CondDenoiser):
 
         # Define modified score function that includes measurement term
         def modified_score(x: Array, t: Array) -> Array:
-            sigma_t = self.sde.noise_level(t)
-            alpha_t = self.sde.signal_level(t)
+            sigma_t = self.model.noise_level(t)
+            alpha_t = self.model.signal_level(t)
             scale = sigma_t / alpha_t
 
             def tweedie_fn(x_):
-                return self.sde.tweedie(SDEState(x_, t), self.predictor.score).position
+                return self.model.tweedie(SDEState(x_, t), self.predictor.score).position
 
             def efficient(v):
                 restored_v = self.forward_model.restore(v, measurement_state)
@@ -52,7 +52,7 @@ class TMPDenoiser(CondDenoiser):
             return score_val + guidance
 
         # Create modified predictor for guidance
-        modified_predictor = Predictor(self.sde, modified_score, "score")
+        modified_predictor = Predictor(self.model, modified_score, "score")
 
         # Use integrator to compute next state
         integrator_state_next = self.integrator(state.integrator_state, modified_predictor)

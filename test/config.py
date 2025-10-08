@@ -41,7 +41,7 @@ class TestConfig:
     key: jax.random.PRNGKey
     t_init: float = 0.0
     t_final: float = 1.0
-    n_samples: int = 300
+    n_samples: int = 500
     n_steps: int = 300
     d: int = 2
     sigma_y: float = 0.1

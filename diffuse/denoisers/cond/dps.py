@@ -9,12 +9,14 @@ from diffuse.diffusion.sde import SDEState
 from diffuse.denoisers.cond import CondDenoiser, CondDenoiserState
 from diffuse.base_forward_model import MeasurementState
 from diffuse.predictor import Predictor
+from diffuse.integrator.base import IntegratorState
 
 
 @dataclass
 class DPSDenoiser(CondDenoiser):
     """Conditional denoiser using Diffusion Posterior Sampling with Tweedie's formula"""
-
+    epsilon: float = 1e-3  # Small constant to avoid division by zero in norm calculation
+    zeta: float = .5
     def step(
         self,
         rng_key: PRNGKeyArray,
@@ -23,31 +25,41 @@ class DPSDenoiser(CondDenoiser):
     ) -> CondDenoiserState:
         """Single step of DPS sampling.
 
-        Modifies the score to include measurement term and uses integrator for the update.
+        Implements the DPS algorithm as originally intended:
+        1. Compute Tweedie estimate at current position
+        2. Take unconditional diffusion step with integrator
+        3. Apply measurement-consistency gradient correction
+
+        This approach works correctly with second-order integrators (Heun, DPM++, etc.)
+        because the integrator sees the true unconditional score/velocity.
         """
         y_meas = measurement_state.y
+        position_current = state.integrator_state.position
+        t_current = self.integrator.timer(state.integrator_state.step)
 
-        # Define modified score function that includes guidance term
-        def modified_score(x: Array, t: Array) -> Array:
-            def norm_tweedie(x: Array):
-                # Apply Tweedie's formula
-                denoised = self.sde.tweedie(SDEState(x, t), self.predictor.score).position
-                norm = jnp.linalg.norm(y_meas - self.forward_model.apply(denoised, measurement_state)) ** 2
-                return norm, denoised  # Return both norm and denoised
+        # Compute measurement loss and gradient at current position
+        # The gradient includes the chain rule through Tweedie's formula
+        def measurement_loss(x: Array) -> Array:
+            # Tweedie estimate: x̂_0 from x at time t
+            denoised = self.model.tweedie(SDEState(x, t_current), self.predictor.score).position
+            # Measurement consistency loss: ||y - A(x̂_0)||²
+            residual = y_meas - self.forward_model.apply(denoised, measurement_state)
+            return jnp.sum(residual ** 2)
 
-            # Compute residual and guidance
-            (val, denoised), guidance = jax.value_and_grad(norm_tweedie, has_aux=True)(x)
+        # Compute loss value and gradient ∇_x ||y - A(x̂_0)||²
+        loss_val, gradient = jax.value_and_grad(measurement_loss)(position_current)
 
-            # Compute guidance scale
-            zeta = 1.0 / (jnp.sqrt(val) + 1e-3)
+        # Adaptive guidance scale (normalized by residual magnitude)
+        zeta = self.zeta / (jnp.sqrt(loss_val) + self.epsilon)
 
-            return self.predictor.score(x, t) - zeta * guidance
+        # Take unconditional integrator step (works with any integrator)
+        integrator_state_uncond = self.integrator(state.integrator_state, self.predictor)
 
-        # Create modified predictor for guidance
-        modified_predictor = Predictor(self.sde, modified_score, "score")
+        # Apply measurement correction: x_{i-1} = x'_{i-1} - ζ ∇_x ||y - A(x̂_0)||²
+        position_corrected = integrator_state_uncond.position - zeta * gradient
 
-        # Use integrator to compute next state
-        integrator_state_next = self.integrator(state.integrator_state, modified_predictor)
-        state_next = CondDenoiserState(integrator_state_next, state.log_weights)
+        # Create next state with corrected position
+        integrator_state_next = integrator_state_uncond._replace(position=position_corrected)
+        state_next = state._replace(integrator_state=integrator_state_next)
 
         return state_next

@@ -24,7 +24,7 @@ class CondDenoiserState(NamedTuple):
 @dataclass
 class CondDenoiser(BaseDenoiser):
     integrator: Integrator
-    sde: SDE
+    model: SDE
     predictor: Predictor
     forward_model: ForwardModel
     x0_shape: Tuple[int, ...]

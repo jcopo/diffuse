@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray
 
 from diffuse.integrator.base import Integrator
-from diffuse.diffusion.sde import SDE
+from diffuse.diffusion.sde import SDE, DiffusionModel
 from diffuse.predictor import Predictor
 
 from diffuse.denoisers.base import DenoiserState, BaseDenoiser
@@ -17,7 +17,7 @@ class Denoiser(BaseDenoiser):
     """Denoiser"""
 
     integrator: Integrator
-    sde: SDE
+    model: DiffusionModel
     predictor: Predictor
     x0_shape: Tuple[int, ...]
 
