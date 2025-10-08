@@ -189,10 +189,11 @@ def apply_stochastic_churn(
 
     t_churned = next_churn_noise_level(t, stochastic_churn_rate, churn_min, churn_max, timer)
     alpha = model.signal_level(t)
+    sigma = model.noise_level(t)
+    sigma_churned = model.noise_level(t_churned)
     alpha_churned = model.signal_level(t_churned)
 
-    new_position = (alpha_churned / alpha) * position + jax.random.normal(rng_key, position.shape) * jnp.sqrt(
-        1 - (alpha_churned / alpha) ** 2
-    ) * noise_inflation_factor
+    new_position = (alpha_churned / alpha) * position \
+                    + jax.random.normal(rng_key, position.shape) *(alpha_churned * sigma / alpha - sigma_churned) * noise_inflation_factor
 
     return new_position, t_churned
