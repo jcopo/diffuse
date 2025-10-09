@@ -457,7 +457,7 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
 
         config.cond_denoiser = config.denoiser_class(
             integrator=config.integrator,
-            sde=config.model,
+            model=config.model,
             predictor=unconditional_predictor,
             forward_model=config.forward_model,
             x0_shape=x_sample.shape,
@@ -465,7 +465,7 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
 
         config.denoiser = Denoiser(
             integrator=config.integrator,
-            sde=config.model,
+            model=config.model,
             predictor=conditional_predictor,
             x0_shape=x_sample.shape,
         )

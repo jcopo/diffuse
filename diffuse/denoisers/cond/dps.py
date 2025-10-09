@@ -16,7 +16,7 @@ from diffuse.integrator.base import IntegratorState
 class DPSDenoiser(CondDenoiser):
     """Conditional denoiser using Diffusion Posterior Sampling with Tweedie's formula"""
     epsilon: float = 1e-3  # Small constant to avoid division by zero in norm calculation
-    zeta: float = .5
+    zeta: float = 1e-2
     def step(
         self,
         rng_key: PRNGKeyArray,

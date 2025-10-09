@@ -24,7 +24,6 @@ class TMPDenoiser(CondDenoiser):
         Modifies the score to include measurement term and uses integrator for the update.
         """
         y_meas = measurement_state.y
-        design_mask = measurement_state.mask_history
 
         # Define modified score function that includes measurement term
         def modified_score(x: Array, t: Array) -> Array:

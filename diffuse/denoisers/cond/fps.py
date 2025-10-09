@@ -55,8 +55,10 @@ class FPSDenoiser(CondDenoiser):
 
         # Apply guidance correction
         # In the probability flow ODE, score modifications affect position through g(t)² factor
+        # For numerical stability, we clip g_t^2 to prevent overflow with Flow models
         _, g_t = self.model.sde_coefficients(t_current)
-        correction = -g_t**2 * dt * guidance_score
+        g_t_squared = jnp.clip(g_t**2, 0.0, 100.0)  # Clip to prevent overflow
+        correction = -g_t_squared * dt * guidance_score
         position_corrected = integrator_state_uncond.position + correction
 
         # Create next state with corrected position

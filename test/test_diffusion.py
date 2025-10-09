@@ -141,7 +141,7 @@ def test_backward_sde_mixture(backward_config, plot_if_enabled):
         model=backward_config.model, timer=backward_config.timer, **backward_config.integrator_params
     )
     denoise = Denoiser(
-        integrator=integrator, sde=backward_config.model, predictor=backward_config.predictor, x0_shape=(x0_shape,)
+        integrator=integrator, model=backward_config.model, predictor=backward_config.predictor, x0_shape=(x0_shape,)
     )
 
     # Generate samples

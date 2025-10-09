@@ -115,7 +115,7 @@ def test_image(model_components):
         integrator = DDIMIntegrator(model=flow, timer=timer)
         denoiser = Denoiser(
             integrator=integrator,
-            sde=flow,
+            model=flow,
             predictor=predictor,
             x0_shape=img_shape
         )
@@ -272,7 +272,7 @@ def test_unconditional_generation(model_components, integrator_class, plot_if_en
     # Create denoiser
     denoiser = Denoiser(
         integrator=integrator,
-        sde=flow,
+        model=flow,
         predictor=predictor,
         x0_shape=img_shape
     )
@@ -357,7 +357,7 @@ def test_conditional_inpainting(model_components, test_image, denoiser_class, in
     # Create conditional denoiser
     cond_denoiser = denoiser_class(
         integrator=integrator,
-        sde=flow,
+        model=flow,
         predictor=predictor,
         forward_model=mask_model,
         x0_shape=img_shape,
@@ -432,7 +432,7 @@ def test_restore_with_zero_measured(model_components, plot_if_enabled):
     integrator = DDIMIntegrator(model=flow, timer=timer)
     cond_denoiser = DPSDenoiser(
         integrator=integrator,
-        sde=flow,
+        model=flow,
         predictor=predictor,
         forward_model=mask_model,
         x0_shape=img_shape,
@@ -521,7 +521,7 @@ def test_visual_comparison_all_methods(model_components, test_image, plot_if_ena
             integrator = int_class(model=flow, timer=timer)
             denoiser = method_class(
                 integrator=integrator,
-                sde=flow,
+                model=flow,
                 predictor=predictor,
                 forward_model=mask_model,
                 x0_shape=img_shape,
