@@ -1,3 +1,6 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 import pytest
 import matplotlib.pyplot as plt
 
@@ -23,7 +26,7 @@ def pytest_addoption(parser):
 def plot_if_enabled(request):
     def _plot_if_enabled(plot_func):
         if request.config.getoption("--plot"):
-            fig = plot_func()
+            plot_func()
             if request.config.getoption("--plot-wait"):
                 plt.show()
             else:

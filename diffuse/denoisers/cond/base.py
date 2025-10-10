@@ -1,11 +1,14 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 from abc import abstractmethod
-from typing import Callable, Optional, NamedTuple
+from typing import Optional, NamedTuple
 from jaxtyping import Array, PRNGKeyArray
 from diffuse.integrator.base import IntegratorState
 import jax.numpy as jnp
 from dataclasses import dataclass
 import jax
-from diffuse.diffusion.sde import SDE
+from diffuse.diffusion.sde import DiffusionModel
 from diffuse.integrator.base import Integrator
 from diffuse.base_forward_model import ForwardModel, MeasurementState
 from diffuse.utils.mapping import pmapper
@@ -24,7 +27,7 @@ class CondDenoiserState(NamedTuple):
 @dataclass
 class CondDenoiser(BaseDenoiser):
     integrator: Integrator
-    sde: SDE
+    model: DiffusionModel
     predictor: Predictor
     forward_model: ForwardModel
     x0_shape: Tuple[int, ...]
@@ -75,9 +78,7 @@ class CondDenoiser(BaseDenoiser):
         return jax.lax.scan(body_fun, state, keys)
 
     @abstractmethod
-    def step(
-        self, rng_key: PRNGKeyArray, state: CondDenoiserState, measurement_state: MeasurementState
-    ) -> CondDenoiserState:
+    def step(self, rng_key: PRNGKeyArray, state: CondDenoiserState, measurement_state: MeasurementState) -> CondDenoiserState:
         """
         Abstract method to perform a single step of conditional denoising.
 

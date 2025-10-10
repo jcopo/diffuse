@@ -1,10 +1,12 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 from dataclasses import dataclass
-from typing import Callable
 
 import jax
 import jax.numpy as jnp
 
-from diffuse.diffusion.sde import SDEState, SDE, DiffusionModel
+from diffuse.diffusion.sde import SDEState, DiffusionModel
 from diffuse.integrator.base import IntegratorState, ChurnedIntegrator
 from diffuse.predictor import Predictor
 
@@ -14,13 +16,23 @@ __all__ = ["EulerIntegrator", "HeunIntegrator", "DPMpp2sIntegrator", "DDIMIntegr
 
 @dataclass
 class EulerIntegrator(ChurnedIntegrator):
-    """Euler integrator for probability flow ODEs in diffusion models.
+    r"""Euler integrator for probability flow ODEs in diffusion models.
 
     Implements the basic Euler method for numerical integration:
-    dx = v(x,t) * dt
 
-    where v(x,t) is the velocity field from the probability flow ODE.
+    .. math::
+        dx = v(x,t) \cdot dt
+
+    where :math:`v(x,t)` is the velocity field from the probability flow ODE.
     Works with all diffusion models (SDE, Flow, EDM) using the velocity parameterization.
+
+    Args:
+        model: Diffusion model defining the diffusion process
+        timer: Timer object managing the discretization of the time interval
+        stochastic_churn_rate: Rate of applying stochastic churning (default: 0.0)
+        churn_min: Minimum time threshold for churning (default: 0.0)
+        churn_max: Maximum time threshold for churning (default: 0.0)
+        noise_inflation_factor: Factor to scale injected noise (default: 1.0)
     """
 
     model: DiffusionModel
@@ -53,18 +65,28 @@ class EulerIntegrator(ChurnedIntegrator):
 
 @dataclass
 class HeunIntegrator(ChurnedIntegrator):
-    """Heun's method integrator for probability flow ODEs in diffusion models.
+    r"""Heun's method integrator for probability flow ODEs in diffusion models.
 
     Implements a second-order Runge-Kutta method (Heun's method) that uses an
     intermediate Euler step to improve accuracy:
 
-    x_{n+1} = x_n + (v₁ + v₂)/2 * dt
+    .. math::
+        x_{n+1} = x_n + \frac{v_1 + v_2}{2} \cdot dt
 
     where:
-    v₁ = velocity(x_n, t_n)
-    v₂ = velocity(x_n + v₁*dt, t_{n+1})
+
+    - :math:`v_1 = v(x_n, t_n)`
+    - :math:`v_2 = v(x_n + v_1 \cdot dt, t_{n+1})`
 
     Works with all diffusion models (SDE, Flow, EDM) using the velocity parameterization.
+
+    Args:
+        model: Diffusion model defining the diffusion process
+        timer: Timer object managing the discretization of the time interval
+        stochastic_churn_rate: Rate of applying stochastic churning (default: 0.0)
+        churn_min: Minimum time threshold for churning (default: 0.0)
+        churn_max: Maximum time threshold for churning (default: 0.0)
+        noise_inflation_factor: Factor to scale injected noise (default: 1.0)
     """
 
     model: DiffusionModel
@@ -167,13 +189,22 @@ class DPMpp2sIntegrator(ChurnedIntegrator):
 
 @dataclass
 class DDIMIntegrator(ChurnedIntegrator):
-    """Denoising Diffusion Implicit Models (DDIM) integrator.
+    r"""Denoising Diffusion Implicit Models (DDIM) integrator.
 
-    DDIM assumes the same latent noise ε along the entire path. The update rule is:
+    DDIM assumes the same latent noise :math:`\varepsilon` along the entire path. The update rule is:
 
-        x_s = (α_s/α_t) * x_t - (α_s*σ_t/α_t - σ_s) * ε_θ(x_t, t)
+    .. math::
+        x_s = \frac{\alpha_s}{\alpha_t} x_t - \left(\frac{\alpha_s \sigma_t}{\alpha_t} - \sigma_s\right) \varepsilon_\theta(x_t, t)
 
-    where s < t, and ε_θ(x_t, t) is the predicted noise.
+    where :math:`s < t`, and :math:`\varepsilon_\theta(x_t, t)` is the predicted noise.
+
+    Args:
+        model: Diffusion model defining the diffusion process
+        timer: Timer object managing the discretization of the time interval
+        stochastic_churn_rate: Rate of applying stochastic churning (default: 0.0)
+        churn_min: Minimum time threshold for churning (default: 0.0)
+        churn_max: Maximum time threshold for churning (default: 0.0)
+        noise_inflation_factor: Factor to scale injected noise (default: 1.0)
 
     References:
         Song, J., Meng, C., Ermon, S. (2020). "Denoising Diffusion Implicit Models"
@@ -183,21 +214,24 @@ class DDIMIntegrator(ChurnedIntegrator):
     model: DiffusionModel
 
     def __call__(self, integrator_state: IntegratorState, predictor: Predictor) -> IntegratorState:
-        """Perform one DDIM step in reverse time.
+        r"""Perform one DDIM step in reverse time.
 
         Args:
             integrator_state: Current state containing (position, rng_key, step)
-            score: Score function s(x,t) that approximates ∇ₓ log p(x|t)
+            predictor: Predictor providing noise prediction :math:`\varepsilon_\theta(x_t, t)`
 
         Returns:
-            Updated IntegratorState with the next position computed using
-            the DDIM update rule:
-            x_{t-1} = √α_{t-1} * x̂₀ + √(1 - α_{t-1}) * ε_θ
+            Updated IntegratorState with the next position computed using the DDIM update rule:
+
+            .. math::
+                x_{t-1} = \sqrt{\alpha_{t-1}} \hat{x}_0 + \sqrt{1 - \alpha_{t-1}} \varepsilon_\theta
+
             where:
-            - x̂₀ is the predicted denoised sample: (x_t - √(1-α_t) * ε_θ) / √α_t
-            - ε_θ is the predicted noise from the model
-            - α_t represents the cumulative product of (1 - β_t)
-            - β_t is the forward process noise schedule
+
+            - :math:`\hat{x}_0 = (x_t - \sqrt{1-\alpha_t} \varepsilon_\theta) / \sqrt{\alpha_t}` is the predicted denoised sample
+            - :math:`\varepsilon_\theta` is the predicted noise from the model
+            - :math:`\alpha_t` represents the signal level (cumulative product of :math:`1 - \beta_t`)
+            - :math:`\beta_t` is the forward process noise schedule
         """
         _, rng_key, step = integrator_state
         _, rng_key_next = jax.random.split(rng_key)

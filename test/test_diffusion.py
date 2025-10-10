@@ -1,3 +1,6 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 """Unified tests for SDE forward/backward processes and conditional sampling.
 
 This module combines tests for both basic SDE processes and conditional denoising,
@@ -116,9 +119,7 @@ def test_forward_sde_mixture(forward_config, plot_if_enabled):
     state_mixt = SDEState(position=samples_mixt, t=t0)
 
     # Run forward process
-    noised_samples = jax.vmap(jax.vmap(forward_config.model.path, in_axes=(0, None, 0)), in_axes=(0, 0, None))(
-        keys, state_mixt, forward_config.ts
-    )
+    noised_samples = jax.vmap(jax.vmap(forward_config.model.path, in_axes=(0, None, 0)), in_axes=(0, 0, None))(keys, state_mixt, forward_config.ts)
     noised_positions = einops.rearrange(noised_samples.position, "n_samples n_steps d -> n_steps n_samples d")
 
     # Create plots using unified plotting function
@@ -137,22 +138,18 @@ def test_backward_sde_mixture(backward_config, plot_if_enabled):
     x0_shape = backward_config.mix_state.means.shape[1]
 
     # Setup denoising process
-    integrator = backward_config.integrator_class(
-        model=backward_config.model, timer=backward_config.timer, **backward_config.integrator_params
-    )
-    denoise = Denoiser(
-        integrator=integrator, sde=backward_config.model, predictor=backward_config.predictor, x0_shape=(x0_shape,)
-    )
+    integrator = backward_config.integrator_class(model=backward_config.model, timer=backward_config.timer, **backward_config.integrator_params)
+    denoise = Denoiser(integrator=integrator, model=backward_config.model, predictor=backward_config.predictor, x0_shape=(x0_shape,))
 
     # Generate samples
     key_samples, _ = jax.random.split(backward_config.key)
-    state, hist_position = denoise.generate(
-        key_samples, backward_config.n_steps, backward_config.n_samples, keep_history=True
-    )
+    state, hist_position = denoise.generate(key_samples, backward_config.n_steps, backward_config.n_samples, keep_history=True)
     hist_position = hist_position.squeeze()
 
     # Create plots
-    plot_title = f"Backward SDE - {backward_config.integrator_class.__name__} (Timer: {backward_config.timer_name}, Schedule: {backward_config.schedule_name})"
+    plot_title = (
+        f"Backward SDE - {backward_config.integrator_class.__name__} (Timer: {backward_config.timer_name}, Schedule: {backward_config.schedule_name})"
+    )
     create_plots(backward_config, hist_position, plot_title, plot_if_enabled)
 
     # Generate reference samples from posterior
@@ -184,9 +181,7 @@ def test_backward_sde_conditional_mixture(conditional_config, plot_if_enabled):
     key_gen, key_samples = jax.random.split(conditional_config.key)
 
     # Use pre-configured denoiser directly (with conditional score)
-    state, hist_position = conditional_config.denoiser.generate(
-        key_gen, conditional_config.n_steps, conditional_config.n_samples, keep_history=True
-    )
+    state, hist_position = conditional_config.denoiser.generate(key_gen, conditional_config.n_steps, conditional_config.n_samples, keep_history=True)
     hist_position = hist_position.squeeze()
 
     # Create plots
@@ -194,9 +189,7 @@ def test_backward_sde_conditional_mixture(conditional_config, plot_if_enabled):
     create_plots(conditional_config, hist_position, plot_title, plot_if_enabled)
 
     # Generate reference samples from posterior
-    samples_from_posterior = sampler_mixtr(
-        key_samples, conditional_config.posterior_state, conditional_config.n_samples
-    )
+    samples_from_posterior = sampler_mixtr(key_samples, conditional_config.posterior_state, conditional_config.n_samples)
 
     # Compute and validate MMD distance
     result_key_parts = [
@@ -235,9 +228,7 @@ def test_backward_conditional_denoisers(cond_denoiser_config, plot_if_enabled):
     create_plots(cond_denoiser_config, hist_position, plot_title, plot_if_enabled)
 
     # Compute posterior for the actual measurement y
-    samples_from_posterior = sampler_mixtr(
-        key_samples, cond_denoiser_config.posterior_state, cond_denoiser_config.n_samples
-    )
+    samples_from_posterior = sampler_mixtr(key_samples, cond_denoiser_config.posterior_state, cond_denoiser_config.n_samples)
 
     # Compute and validate MMD distance
     result_key_parts = [
@@ -246,8 +237,6 @@ def test_backward_conditional_denoisers(cond_denoiser_config, plot_if_enabled):
         cond_denoiser_config.schedule_name,
         cond_denoiser_config.timer_name,
     ]
-    mmd_distance = compute_and_store_mmd(
-        cond_denoiser_config, state, samples_from_posterior, result_key_parts, print_result=True
-    )
+    mmd_distance = compute_and_store_mmd(cond_denoiser_config, state, samples_from_posterior, result_key_parts, print_result=True)
 
     assert_mmd_threshold(mmd_distance, 0.1)

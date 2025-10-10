@@ -1,6 +1,8 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 from dataclasses import dataclass
 import jax
-import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray
 
 from diffuse.diffusion.sde import SDEState
@@ -11,7 +13,21 @@ from diffuse.predictor import Predictor
 
 @dataclass
 class TMPDenoiser(CondDenoiser):
-    """Conditional denoiser using Tweedie's Moments from https://arxiv.org/pdf/2310.06721v3"""
+    """Conditional denoiser using Tweedie's Moment Projection (TMP).
+
+    Implements TMP which modifies the score function to incorporate measurement
+    information through Tweedie's formula and moment matching.
+
+    Args:
+        integrator: Numerical integrator for solving the reverse SDE
+        model: Diffusion model defining the forward process
+        predictor: Predictor for computing score/noise/velocity
+        forward_model: Forward measurement operator
+
+    References:
+        Boys, B., Girolami, M., Pidstrigach, J., Reich, S., Mosca, A., & Akyildiz, Ö. D. (2023).
+        Tweedie moment projected diffusions for inverse problems. arXiv:2310.06721
+    """
 
     def step(
         self,
@@ -22,18 +38,25 @@ class TMPDenoiser(CondDenoiser):
         """Single step of TMP sampling.
 
         Modifies the score to include measurement term and uses integrator for the update.
+
+        Args:
+            rng_key: Random number generator key
+            state: Current conditional denoiser state
+            measurement_state: Measurement information
+
+        Returns:
+            Updated conditional denoiser state
         """
         y_meas = measurement_state.y
-        design_mask = measurement_state.mask_history
 
         # Define modified score function that includes measurement term
         def modified_score(x: Array, t: Array) -> Array:
-            sigma_t = self.sde.noise_level(t)
-            alpha_t = self.sde.signal_level(t)
+            sigma_t = self.model.noise_level(t)
+            alpha_t = self.model.signal_level(t)
             scale = sigma_t / alpha_t
 
             def tweedie_fn(x_):
-                return self.sde.tweedie(SDEState(x_, t), self.predictor.score).position
+                return self.model.tweedie(SDEState(x_, t), self.predictor.score).position
 
             def efficient(v):
                 restored_v = self.forward_model.restore(v, measurement_state)
@@ -52,7 +75,7 @@ class TMPDenoiser(CondDenoiser):
             return score_val + guidance
 
         # Create modified predictor for guidance
-        modified_predictor = Predictor(self.sde, modified_score, "score")
+        modified_predictor = Predictor(self.model, modified_score, "score")
 
         # Use integrator to compute next state
         integrator_state_next = self.integrator(state.integrator_state, modified_predictor)

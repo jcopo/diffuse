@@ -1,3 +1,6 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 """Test configuration system for diffusion tests.
 
 This module provides a centralized configuration system for tests, similar to
@@ -41,7 +44,7 @@ class TestConfig:
     key: jax.random.PRNGKey
     t_init: float = 0.0
     t_final: float = 1.0
-    n_samples: int = 300
+    n_samples: int = 500
     n_steps: int = 300
     d: int = 2
     sigma_y: float = 0.1
@@ -406,9 +409,7 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
 
     # Compute adaptive percentiles based on noise schedule
     if config.adaptive_percentiles:
-        config.perct = compute_adaptive_percentiles(
-            config.model, n_points=config.n_percentile_points, strategy=config.percentile_strategy
-        )
+        config.perct = compute_adaptive_percentiles(config.model, n_points=config.n_percentile_points, strategy=config.percentile_strategy)
     else:
         config.perct = PERCENTILES
 
@@ -457,7 +458,7 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
 
         config.cond_denoiser = config.denoiser_class(
             integrator=config.integrator,
-            sde=config.model,
+            model=config.model,
             predictor=unconditional_predictor,
             forward_model=config.forward_model,
             x0_shape=x_sample.shape,
@@ -465,7 +466,7 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
 
         config.denoiser = Denoiser(
             integrator=config.integrator,
-            sde=config.model,
+            model=config.model,
             predictor=conditional_predictor,
             x0_shape=x_sample.shape,
         )
@@ -528,12 +529,12 @@ def get_parametrized_configs() -> List[pytest.param]:
     integrators = INTEGRATOR_CONFIGS
 
     # Integrators that work with all model types (use generic DiffusionModel interface)
-    generic_integrators = [
-        (DDIMIntegrator, integrator_params) for _, integrator_params in integrators if _ == DDIMIntegrator
-    ] + [(DPMpp2sIntegrator, integrator_params) for _, integrator_params in integrators if _ == DPMpp2sIntegrator]
+    generic_integrators = [(DDIMIntegrator, integrator_params) for _, integrator_params in integrators if _ == DDIMIntegrator] + [
+        (DPMpp2sIntegrator, integrator_params) for _, integrator_params in integrators if _ == DPMpp2sIntegrator
+    ]
 
     # Integrators that only work with SDE models (need beta schedule)
-    sde_only_integrators = [
+    [
         (integrator_class, integrator_params)
         for integrator_class, integrator_params in integrators
         if integrator_class not in [DDIMIntegrator, DPMpp2sIntegrator]
@@ -596,9 +597,9 @@ def get_conditional_configs() -> List[pytest.param]:
     denoisers = DENOISER_CLASSES
 
     # Integrators that work with all model types (use generic DiffusionModel interface)
-    generic_integrators = [
-        (DDIMIntegrator, integrator_params) for _, integrator_params in integrators if _ == DDIMIntegrator
-    ] + [(DPMpp2sIntegrator, integrator_params) for _, integrator_params in integrators if _ == DPMpp2sIntegrator]
+    generic_integrators = [(DDIMIntegrator, integrator_params) for _, integrator_params in integrators if _ == DDIMIntegrator] + [
+        (DPMpp2sIntegrator, integrator_params) for _, integrator_params in integrators if _ == DPMpp2sIntegrator
+    ]
 
     for model in models:
         if model == "SDE":
@@ -616,9 +617,7 @@ def get_conditional_configs() -> List[pytest.param]:
                                 "denoiser_class": denoiser_class,
                             }
 
-                            test_id = (
-                                f"{denoiser_class.__name__}_{integrator_class.__name__}_{timer}_{model}_{schedule}"
-                            )
+                            test_id = f"{denoiser_class.__name__}_{integrator_class.__name__}_{timer}_{model}_{schedule}"
                             configs.append(pytest.param(config_dict, id=test_id))
         else:
             # Flow only works with generic integrators

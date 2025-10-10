@@ -1,5 +1,7 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 from dataclasses import dataclass
-from typing import Callable
 
 import jax
 import jax.numpy as jnp
@@ -13,49 +15,56 @@ __all__ = ["EulerMaruyamaIntegrator"]
 
 @dataclass
 class EulerMaruyamaIntegrator(Integrator):
-    """Euler-Maruyama stochastic integrator for Stochastic Differential Equations (SDEs).
+    r"""Euler-Maruyama stochastic integrator for Stochastic Differential Equations (SDEs).
 
     Implements the Euler-Maruyama method for numerical integration of SDEs of the form:
-    dX(t) = μ(X,t)dt + σ(X,t)dW(t)
+
+    .. math::
+        dX(t) = \mu(X,t)dt + \sigma(X,t)dW(t)
 
     where:
-    - μ(X,t) is the drift term: β(t) * (0.5 * X + score(X,t))
-    - σ(X,t) is the diffusion term: sqrt(β(t))
-    - dW(t) is the Wiener process increment
-    - β(t) is the noise schedule
+
+    - :math:`\mu(X,t)` is the drift term: :math:`\beta(t) \cdot (0.5 X + \nabla_x \log p(x|t))`
+    - :math:`\sigma(X,t)` is the diffusion term: :math:`\sqrt{\beta(t)}`
+    - :math:`dW(t)` is the Wiener process increment
+    - :math:`\beta(t)` is the noise schedule
 
     The method advances the solution using the discrete approximation:
-    X(t + dt) = X(t) + μ(X,t)dt + σ(X,t)√dt * N(0,1)
+
+    .. math::
+        X(t + dt) = X(t) + \mu(X,t)dt + \sigma(X,t)\sqrt{dt} \cdot \mathcal{N}(0,1)
 
     This is the simplest stochastic integration scheme with strong order 0.5
     convergence for general SDEs.
+
+    Args:
+        model: Diffusion model defining the diffusion process
+        timer: Timer object managing the discretization of the time interval
     """
 
     model: DiffusionModel
 
     def __call__(self, integrator_state: IntegratorState, predictor: Predictor) -> IntegratorState:
-        """Perform one Euler-Maruyama integration step.
+        r"""Perform one Euler-Maruyama integration step.
 
         Args:
-            integrator_state: Current state containing:
-                - position: Current position X(t)
-                - rng_key: JAX random number generator key
-                - step: Current integration step
-            score: Score function that approximates ∇ₓ log p(x|t)
+            integrator_state: Current state containing (position, rng_key, step)
+            predictor: Predictor providing score function :math:`\nabla_x \log p(x|t)`
 
         Returns:
-            Updated IntegratorState containing:
-                - New position X(t + dt)
-                - Updated RNG key
-                - Incremented step count
+            Updated IntegratorState with the next position
 
         Notes:
             The integration step implements:
-            dx = drift*dt + diffusion*√dt*ε
+
+            .. math::
+                dx = \text{drift} \cdot dt + \text{diffusion} \cdot \sqrt{dt} \cdot \varepsilon
+
             where:
-            - drift = β(t) * (0.5 * position + score(position, t))
-            - diffusion = √β(t)
-            - ε ~ N(0,1)
+
+            - :math:`\text{drift} = \beta(t) \cdot (0.5 \cdot x + \nabla_x \log p(x|t))`
+            - :math:`\text{diffusion} = \sqrt{\beta(t)}`
+            - :math:`\varepsilon \sim \mathcal{N}(0,1)`
         """
         position, rng_key, step = integrator_state
         t, t_next = self.timer(step), self.timer(step + 1)

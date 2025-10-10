@@ -1,12 +1,15 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 from dataclasses import dataclass
-from typing import Callable, Tuple, Union, Optional, Any
+from typing import Tuple, Union, Optional, Any
 
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray
 
 from diffuse.integrator.base import Integrator
-from diffuse.diffusion.sde import SDE
+from diffuse.diffusion.sde import DiffusionModel
 from diffuse.predictor import Predictor
 
 from diffuse.denoisers.base import DenoiserState, BaseDenoiser
@@ -14,10 +17,18 @@ from diffuse.denoisers.base import DenoiserState, BaseDenoiser
 
 @dataclass
 class Denoiser(BaseDenoiser):
-    """Denoiser"""
+    """
+    Denoiser for generating samples using reverse diffusion.
+
+    Args:
+        integrator: The integrator to use for solving the reverse SDE
+        model: The diffusion model (SDE) defining the forward process
+        predictor: The predictor for computing the score/denoised estimate
+        x0_shape: Shape of the data samples (excluding batch dimension)
+    """
 
     integrator: Integrator
-    sde: SDE
+    model: DiffusionModel
     predictor: Predictor
     x0_shape: Tuple[int, ...]
 
@@ -30,7 +41,15 @@ class Denoiser(BaseDenoiser):
         state: DenoiserState,
     ) -> DenoiserState:
         r"""
-        sample p(\theta_t-1 | \theta_t)
+        Perform one denoising step.
+
+        Sample :math:`x_{t-1} \sim p(x_{t-1} | x_t)`
+
+        Args:
+            state: Current denoiser state
+
+        Returns:
+            Updated denoiser state at the previous time step
         """
         integrator_state = state.integrator_state
         integrator_state_next = self.integrator(integrator_state, self.predictor)
@@ -45,7 +64,19 @@ class Denoiser(BaseDenoiser):
         keep_history: bool = False,
         data_sharding: Optional[Any] = None,
     ) -> Tuple[DenoiserState, Union[Array, None]]:
-        r"""Generate denoised samples \theta_0"""
+        r"""
+        Generate denoised samples :math:`x_0`.
+
+        Args:
+            rng_key: Random key for initialization
+            n_steps: Number of denoising steps to perform
+            n_particles: Number of samples to generate (batch size)
+            keep_history: If True, return the full trajectory of samples
+            data_sharding: Optional JAX sharding specification for distributed computation
+
+        Returns:
+            Tuple of (final_state, history), where history is None if keep_history=False
+        """
         rng_key, rng_key_start = jax.random.split(rng_key)
 
         rndm_start = jax.random.normal(rng_key_start, shape=(n_particles, *self.x0_shape))

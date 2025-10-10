@@ -1,3 +1,6 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 # Configuration file for the Sphinx documentation builder.
 # Based on Flax documentation configuration
 
@@ -31,6 +34,7 @@ extensions = [
     "sphinx_copybutton",
     "sphinx_togglebutton",
     "sphinxcontrib.tikz",
+    "sphinxcontrib.bibtex",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -79,6 +83,10 @@ html_static_path = ["_static"]
 
 # -- Extension configuration -------------------------------------------------
 
+# Autosectionlabel settings
+autosectionlabel_prefix_document = True
+autosectionlabel_maxdepth = 3
+
 # Napoleon settings
 napoleon_google_docstring = True
 napoleon_numpy_docstring = True
@@ -86,7 +94,7 @@ napoleon_include_init_with_doc = False
 napoleon_include_private_with_doc = False
 
 # Autodoc settings
-autodoc_typehints = "none"
+autodoc_typehints = "signature"
 autosummary_generate = True
 
 # Intersphinx mapping
@@ -112,6 +120,9 @@ myst_enable_extensions = [
     "tasklist",
 ]
 
+# Enable footnote references for citations
+myst_footnote_transition = True
+
 # Notebook execution
 nb_execution_mode = "off"
 nb_execution_timeout = 100
@@ -130,3 +141,8 @@ copybutton_prompt_is_regexp = True
 # TikZ configuration
 tikz_proc_suite = "GhostScript"  # Works well for most systems
 tikz_transparent = True
+
+# BibTeX configuration
+bibtex_bibfiles = ["references.bib"]
+bibtex_default_style = "plain"
+bibtex_reference_style = "author_year"

@@ -1,3 +1,6 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Callable, NamedTuple, Union
@@ -26,14 +29,18 @@ class Schedule(ABC):
 
 @dataclass
 class LinearSchedule:
-    """
-    A class representing a linear schedule.
+    r"""Linear noise schedule for diffusion processes.
 
-    Attributes:
-        b_min (float): The minimum value.
-        b_max (float): The maximum value.
-        t0 (float): The starting time.
-        T (float): The ending time.
+    Implements a linear interpolation between minimum and maximum noise levels:
+
+    .. math::
+        \beta(t) = \beta_{\min} + \frac{\beta_{\max} - \beta_{\min}}{T - t_0}(t - t_0)
+
+    Args:
+        b_min: The minimum noise value :math:`\beta_{\min}`
+        b_max: The maximum noise value :math:`\beta_{\max}`
+        t0: The starting time :math:`t_0`
+        T: The ending time :math:`T`
     """
 
     b_min: float
@@ -42,19 +49,27 @@ class LinearSchedule:
     T: float
 
     def __call__(self, t: Array) -> Array:
-        """
-        Calculates the value of the linear schedule at a given time.
+        r"""Evaluate the linear schedule at time t.
 
         Args:
-            t (Array): The time at which to evaluate the schedule.
+            t: Time at which to evaluate the schedule
 
         Returns:
-            Array: The value of the linear schedule at time t.
+            Schedule value :math:`\beta(t)`
         """
         b_min, b_max, t0, T = self.b_min, self.b_max, self.t0, self.T
         return (b_max - b_min) / (T - t0) * t + (b_min * T - b_max * t0) / (T - t0)
 
     def integrate(self, t: Array, s: Array) -> Array:
+        r"""Compute integral :math:`\int_s^t \beta(\tau) d\tau`.
+
+        Args:
+            t: Upper integration bound
+            s: Lower integration bound
+
+        Returns:
+            Integral value
+        """
         b_min, b_max, t0, T = self.b_min, self.b_max, self.t0, self.T
         slope = (b_max - b_min) / (T - t0)
         intercept = (b_min * T - b_max * t0) / (T - t0)
@@ -63,16 +78,25 @@ class LinearSchedule:
 
 @dataclass
 class CosineSchedule(Schedule):
-    """
-    A class representing a cosine schedule as described in
-    'Improved Denoising Diffusion Probabilistic Models'
+    r"""Cosine noise schedule for improved denoising.
 
-    Attributes:
-        b_min (float): The minimum beta value
-        b_max (float): The maximum beta value
-        t0 (float): The starting time
-        T (float): The ending time
-        s (float): Offset parameter (default: 0.008)
+    Implements the cosine schedule from Nichol & Dhariwal (2021) which provides
+    better signal-to-noise ratio properties than linear schedules. The schedule is
+    based on:
+
+    .. math::
+        \bar{\alpha}(t) = \frac{\cos\left(\frac{t/T + s}{1+s} \cdot \frac{\pi}{2}\right)^2}{\cos\left(\frac{s}{1+s} \cdot \frac{\pi}{2}\right)^2}
+
+    Args:
+        b_min: The minimum beta value :math:`\beta_{\min}`
+        b_max: The maximum beta value :math:`\beta_{\max}`
+        t0: The starting time :math:`t_0`
+        T: The ending time :math:`T`
+        s: Offset parameter for numerical stability (default: 0.008)
+
+    References:
+        Nichol, A., & Dhariwal, P. (2021). Improved Denoising Diffusion Probabilistic Models.
+        arXiv:2102.09672
     """
 
     b_min: float
@@ -82,8 +106,13 @@ class CosineSchedule(Schedule):
     s: float = 0.008
 
     def __call__(self, t: Array) -> Array:
-        """
-        Calculates the value of the cosine schedule at a given time.
+        r"""Evaluate the cosine schedule at time t.
+
+        Args:
+            t: Time at which to evaluate the schedule
+
+        Returns:
+            Schedule value :math:`\beta(t)` clipped to [:math:`\beta_{\min}`, :math:`\beta_{\max}`]
         """
         t_normalized = (t - self.t0) / (self.T - self.t0)
 
@@ -93,6 +122,17 @@ class CosineSchedule(Schedule):
         return beta_t
 
     def integrate(self, t: Array, s: Array) -> Array:
+        r"""Compute integral :math:`\int_s^t \beta(\tau) d\tau` using :math:`\bar{\alpha}` values.
+
+        Returns :math:`\log(\bar{\alpha}(s) / \bar{\alpha}(t))`
+
+        Args:
+            t: Upper integration bound
+            s: Lower integration bound
+
+        Returns:
+            Integral value
+        """
         time_scale = self.T - self.t0
         offset_scale = 1 + self.s
 
@@ -141,7 +181,7 @@ class DiffusionModel(ABC):
         From docs: ∇log p_t(x_t|x_0) = -1/σ_t² (x_t - α_t x_0)
         """
         x, t = state.position, state.t
-        x0, t0 = state_0.position, state_0.t
+        x0, _t0 = state_0.position, state_0.t
         sigma_t = self.noise_level(t)
         signal_level_t = self.signal_level(t)
 
@@ -158,9 +198,7 @@ class DiffusionModel(ABC):
         signal_level_t = self.signal_level(t)
         return SDEState((x + sigma_t * sigma_t * score_fn(x, t)) / signal_level_t, jnp.zeros_like(t))
 
-    def path(
-        self, key: PRNGKeyArray, state: SDEState, ts: Array, return_noise: bool = False
-    ) -> Union[SDEState, tuple[SDEState, Array]]:
+    def path(self, key: PRNGKeyArray, state: SDEState, ts: Array, return_noise: bool = False) -> Union[SDEState, tuple[SDEState, Array]]:
         """
         Samples from the general interpolation: x_t = α_t x_0 + σ_t ε
         """
@@ -175,9 +213,20 @@ class DiffusionModel(ABC):
 
 @dataclass
 class SDE(DiffusionModel):
-    r"""
-    dX(t) = -0.5 \beta(t) X(t) dt + \sqrt{\beta(t)} dW(t)
-    dx_t = f(t)x_t dt + g(t) dW(t)
+    r"""Variance Preserving (VP) SDE for diffusion models.
+
+    Implements the forward SDE:
+
+    .. math::
+        dX(t) = -\frac{1}{2}\beta(t) X(t) dt + \sqrt{\beta(t)} dW(t)
+
+    where :math:`\beta(t)` is the noise schedule and :math:`dW(t)` is the Wiener process.
+
+    This formulation preserves the variance of the data distribution and is the
+    standard choice for diffusion probabilistic models.
+
+    Args:
+        beta: Noise schedule (LinearSchedule or CosineSchedule)
     """
 
     beta: Schedule
@@ -186,23 +235,32 @@ class SDE(DiffusionModel):
         self.tf = self.beta.T
 
     def sde_coefficients(self, t: Array) -> tuple[Array, Array]:
-        """SDE coefficients for dX(t) = -0.5 β(t) X(t) dt + √β(t) dW(t)."""
+        r"""Compute SDE coefficients :math:`f(t)` and :math:`g(t)`.
+
+        For the VP-SDE: :math:`dX(t) = -\frac{1}{2}\beta(t) X(t) dt + \sqrt{\beta(t)} dW(t)`
+
+        Returns:
+            Tuple of drift coefficient :math:`f(t) = -\frac{1}{2}\beta(t)` and
+            diffusion coefficient :math:`g(t) = \sqrt{\beta(t)}`
+        """
         beta_t = self.beta(t)
         f_t = -0.5 * beta_t
         g_t = jnp.sqrt(beta_t)
         return f_t, g_t
 
     def noise_level(self, t: Array) -> Array:
-        """Compute noise level for diffusion process.
+        r"""Compute noise level :math:`\sigma(t)` for diffusion process.
 
-        For a diffusion process dX(t) = -0.5 β(t)X(t)dt + √β(t)dW(t):
-        - α(t) = exp(-∫β(s)ds) is the signal preservation ratio
-        - noise_level = 1 - α(t) is the noise variance
+        The solution to the VP-SDE is:
 
-        Solution: X(t) = √α(t) * X₀ + √(1-α(t)) * ε, where ε ~ N(0,I)
+        .. math::
+            X(t) = \alpha(t) X_0 + \sigma(t) \varepsilon, \quad \varepsilon \sim \mathcal{N}(0, I)
+
+        where :math:`\alpha(t) = \exp\left(-\frac{1}{2}\int_0^t \beta(s) ds\right)` and
+        :math:`\sigma(t) = \sqrt{1 - \alpha^2(t)}`
 
         Returns:
-            Noise level (1 - α(t)) clipped for numerical stability
+            Noise level :math:`\sigma(t)` clipped for numerical stability
         """
         alpha = jnp.exp(-self.beta.integrate(t, jnp.zeros_like(t)))
         sigma = jnp.sqrt(1 - alpha)
@@ -210,6 +268,11 @@ class SDE(DiffusionModel):
         return sigma
 
     def signal_level(self, t: Array) -> Array:
+        r"""Compute signal level :math:`\alpha(t) = \exp\left(-\frac{1}{2}\int_0^t \beta(s) ds\right)`.
+
+        Returns:
+            Signal level clipped for numerical stability
+        """
         alpha = jnp.sqrt(jnp.exp(-self.beta.integrate(t, jnp.zeros_like(t))))
         alpha = jnp.clip(alpha, 0.001, 0.9999)
         return alpha
@@ -217,14 +280,22 @@ class SDE(DiffusionModel):
 
 @dataclass
 class Flow(DiffusionModel):
-    """Rectified Flow diffusion model with straight-line interpolation paths.
+    r"""Rectified Flow diffusion model with straight-line interpolation paths.
 
-    Implements the rectified flow formulation from Liu et al. (2022) using:
-    - α(t) = 1 - t (signal level decreases linearly)
-    - σ(t) = t (noise level increases linearly)
+    Implements the rectified flow formulation from Liu et al. (2022) with linear schedules:
 
-    This creates straight-line paths in the interpolation x_t = (1-t)x_0 + t*ε,
+    .. math::
+        \alpha(t) = 1 - t, \quad \sigma(t) = t
+
+    This creates straight-line interpolation paths:
+
+    .. math::
+        x_t = (1-t)x_0 + t\varepsilon, \quad \varepsilon \sim \mathcal{N}(0, I)
+
     which are more amenable to ODE-based sampling with fewer discretization steps.
+
+    Args:
+        tf: Final time for the diffusion process (default: 1.0)
 
     References:
         Liu, X., Gong, C., & Liu, Q. (2022). Flow straight and fast: Learning to
@@ -234,15 +305,29 @@ class Flow(DiffusionModel):
     tf: float = 1.0
 
     def noise_level(self, t: Array) -> Array:
-        """Compute noise level σ(t) = t."""
+        r"""Compute noise level :math:`\sigma(t) = t`.
+
+        Returns:
+            Noise level clipped for numerical stability
+        """
         return jnp.clip(t / self.tf, 0.001, 0.999)
 
     def signal_level(self, t: Array) -> Array:
-        """Compute signal level α(t) = 1 - t."""
+        r"""Compute signal level :math:`\alpha(t) = 1 - t`.
+
+        Returns:
+            Signal level clipped for numerical stability
+        """
         return jnp.clip(1 - t / self.tf, 0.001, 0.999)
 
     def sde_coefficients(self, t: Array) -> tuple[Array, Array]:
-        """SDE coefficients for rectified flow: f(t) = -1/(1-t), g(t) = √(2t/(1-t))."""
+        r"""Compute SDE coefficients for rectified flow.
+
+        Returns drift :math:`f(t) = -\frac{1}{1-t}` and diffusion :math:`g(t) = \sqrt{\frac{2t}{1-t}}`
+
+        Returns:
+            Tuple of drift and diffusion coefficients
+        """
         t_safe = jnp.clip(t / self.tf, 0.001, 0.999)
         f_t = -1.0 / (1 - t_safe)
         g_t = jnp.sqrt(2 * t_safe / (1 - t_safe))
@@ -251,14 +336,23 @@ class Flow(DiffusionModel):
 
 @dataclass
 class EDM(DiffusionModel):
-    """Efficient Diffusion Model (EDM) from Karras et al. (2022).
+    r"""Efficient Diffusion Model (EDM) from Karras et al. (2022).
 
-    Implements the EDM formulation using:
-    - α(t) = 1 (signal level remains constant)
-    - σ(t) = t (noise level increases linearly)
+    Implements the EDM formulation with constant signal and increasing noise:
 
-    This creates the interpolation x_t = x_0 + t*ε, which simplifies the
-    probability-flow ODE and is solved using Heun's method.
+    .. math::
+        \alpha(t) = 1, \quad \sigma(t) = t
+
+    This creates the simple interpolation:
+
+    .. math::
+        x_t = x_0 + t\varepsilon, \quad \varepsilon \sim \mathcal{N}(0, I)
+
+    which simplifies the probability-flow ODE and is particularly effective
+    with Heun's integration method.
+
+    Args:
+        tf: Final time for the diffusion process (default: 1.0)
 
     References:
         Karras, T., Aittala, M., Aila, T., & Laine, S. (2022). Elucidating the
@@ -268,15 +362,29 @@ class EDM(DiffusionModel):
     tf: float = 1.0
 
     def noise_level(self, t: Array) -> Array:
-        """Compute noise level σ(t) = t."""
+        r"""Compute noise level :math:`\sigma(t) = t`.
+
+        Returns:
+            Noise level clipped for numerical stability
+        """
         return jnp.clip(t, 0.001, 0.999)
 
     def signal_level(self, t: Array) -> Array:
-        """Compute signal level α(t) = 1."""
+        r"""Compute signal level :math:`\alpha(t) = 1`.
+
+        Returns:
+            Constant signal level of 1
+        """
         return jnp.ones_like(t)
 
     def sde_coefficients(self, t: Array) -> tuple[Array, Array]:
-        """SDE coefficients for EDM: f(t) = 0, g(t) = 1."""
+        r"""Compute SDE coefficients for EDM.
+
+        Returns drift :math:`f(t) = 0` and diffusion :math:`g(t) = 1`
+
+        Returns:
+            Tuple of zero drift and unit diffusion coefficients
+        """
         f_t = jnp.zeros_like(t)
         g_t = jnp.ones_like(t)
         return f_t, g_t

@@ -1,3 +1,6 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 """Network adapter providing all prediction types (score, noise, velocity, x0) from any trained network.
 
 This module implements general conversions between different diffusion model parameterizations:
@@ -21,7 +24,6 @@ u_t(x) = f(t) x - g(t)²/2 ∇log p_t(x)
 from typing import Callable, Dict
 from dataclasses import dataclass
 
-import jax.numpy as jnp
 from jaxtyping import Array
 
 from diffuse.diffusion.sde import DiffusionModel
@@ -199,7 +201,20 @@ CONVERSIONS: Dict[str, Dict[str, Callable]] = {
 
 @dataclass
 class Predictor:
-    """Learned network that provides all prediction types (score, noise, velocity, x0)."""
+    """Network adapter providing all prediction types (score, noise, velocity, x0).
+
+    Automatically converts between different diffusion model parameterizations:
+
+    - **Score**: Predicts :math:`\\nabla \\log p_t(x)`
+    - **Noise**: Predicts :math:`\\varepsilon` added during forward process
+    - **Velocity**: Predicts velocity field :math:`u_t(x)` for probability flow ODEs
+    - **x0**: Predicts denoised data :math:`\\hat{x}_0`
+
+    Args:
+        model: Diffusion model defining the diffusion process
+        network: The trained neural network (e.g., UNet)
+        prediction_type: Type of prediction the network outputs ("score", "noise", "velocity", or "x0")
+    """
 
     model: DiffusionModel
     network: Callable
@@ -217,17 +232,49 @@ class Predictor:
         self._x0_fn = CONVERSIONS[self.prediction_type]["x0"](self.network, self.model)
 
     def score(self, x: Array, t: Array) -> Array:
-        """Get score function ∇log p_t(x)."""
+        r"""Get score function :math:`\nabla \log p_t(x)`.
+
+        Args:
+            x: Current state
+            t: Current time
+
+        Returns:
+            Score prediction
+        """
         return self._score_fn(x, t)
 
     def noise(self, x: Array, t: Array) -> Array:
-        """Get noise prediction function ε_θ(x,t)."""
+        r"""Get noise prediction :math:`\varepsilon_\theta(x,t)`.
+
+        Args:
+            x: Current state
+            t: Current time
+
+        Returns:
+            Noise prediction
+        """
         return self._noise_fn(x, t)
 
     def velocity(self, x: Array, t: Array) -> Array:
-        """Get velocity field function u_t(x)."""
+        r"""Get velocity field :math:`u_t(x)`.
+
+        Args:
+            x: Current state
+            t: Current time
+
+        Returns:
+            Velocity prediction
+        """
         return self._velocity_fn(x, t)
 
     def x0(self, x: Array, t: Array) -> Array:
-        """Get denoised prediction function x̂_0(x,t)."""
+        r"""Get denoised prediction :math:`\hat{x}_0(x,t)`.
+
+        Args:
+            x: Current state
+            t: Current time
+
+        Returns:
+            Denoised data prediction
+        """
         return self._x0_fn(x, t)
