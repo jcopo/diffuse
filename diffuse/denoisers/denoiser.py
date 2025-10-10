@@ -1,12 +1,12 @@
 from dataclasses import dataclass
-from typing import Callable, Tuple, Union, Optional, Any
+from typing import Tuple, Union, Optional, Any
 
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray
 
 from diffuse.integrator.base import Integrator
-from diffuse.diffusion.sde import SDE, DiffusionModel
+from diffuse.diffusion.sde import DiffusionModel
 from diffuse.predictor import Predictor
 
 from diffuse.denoisers.base import DenoiserState, BaseDenoiser

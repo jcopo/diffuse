@@ -12,8 +12,10 @@ from diffuse.base_forward_model import MeasurementState
 @dataclass
 class DPSDenoiser(CondDenoiser):
     """Conditional denoiser using Diffusion Posterior Sampling with Tweedie's formula"""
+
     epsilon: float = 1e-3
     zeta: float = 1e-2
+
     def step(
         self,
         rng_key: PRNGKeyArray,
@@ -37,7 +39,7 @@ class DPSDenoiser(CondDenoiser):
             denoised = self.model.tweedie(SDEState(x, t_current), self.predictor.score).position
             # Measurement consistency loss: ||y - A(x̂_0)||²
             residual = y_meas - self.forward_model.apply(denoised, measurement_state)
-            return jnp.sum(residual ** 2)
+            return jnp.sum(residual**2)
 
         loss_val, gradient = jax.value_and_grad(measurement_loss)(position_current)
         zeta = self.zeta / (jnp.sqrt(loss_val) + self.epsilon)

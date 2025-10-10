@@ -1,5 +1,5 @@
 from typing import Protocol, NamedTuple
-from jaxtyping import Array, PRNGKeyArray
+from jaxtyping import Array
 
 
 class MeasurementState(NamedTuple):

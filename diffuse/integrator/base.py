@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from functools import partial
 from jaxtyping import Array, PRNGKeyArray
-from typing import Callable, NamedTuple, Tuple
+from typing import NamedTuple, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -193,9 +193,8 @@ def apply_stochastic_churn(
     sigma_churned = model.noise_level(t_churned)
     alpha_churned = model.signal_level(t_churned)
 
-    delta_sigma = jnp.sqrt(jnp.maximum(0.0, sigma_churned**2 - (alpha_churned * sigma / alpha)**2))
+    delta_sigma = jnp.sqrt(jnp.maximum(0.0, sigma_churned**2 - (alpha_churned * sigma / alpha) ** 2))
 
-    new_position = (alpha_churned / alpha) * position \
-                + jax.random.normal(rng_key, position.shape) * delta_sigma * noise_inflation_factor
+    new_position = (alpha_churned / alpha) * position + jax.random.normal(rng_key, position.shape) * delta_sigma * noise_inflation_factor
 
     return new_position, t_churned

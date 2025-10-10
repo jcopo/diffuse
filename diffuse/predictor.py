@@ -21,7 +21,6 @@ u_t(x) = f(t) x - g(t)²/2 ∇log p_t(x)
 from typing import Callable, Dict
 from dataclasses import dataclass
 
-import jax.numpy as jnp
 from jaxtyping import Array
 
 from diffuse.diffusion.sde import DiffusionModel

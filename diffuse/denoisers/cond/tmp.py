@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 import jax
-import jax.numpy as jnp
 from jaxtyping import Array, PRNGKeyArray
 
 from diffuse.diffusion.sde import SDEState

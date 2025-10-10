@@ -113,12 +113,7 @@ def test_image(model_components):
 
         timer = VpTimer(eps=1e-3, tf=1.0, n_steps=50)
         integrator = DDIMIntegrator(model=flow, timer=timer)
-        denoiser = Denoiser(
-            integrator=integrator,
-            model=flow,
-            predictor=predictor,
-            x0_shape=img_shape
-        )
+        denoiser = Denoiser(integrator=integrator, model=flow, predictor=predictor, x0_shape=img_shape)
 
         state, _ = denoiser.generate(key, 50, 1, keep_history=False)
         return jnp.clip(state.integrator_state.position[0], 0, 1)
@@ -272,7 +267,7 @@ def plot_inpainting_comparison(original, masked, reconstructions, title, figsize
     for idx in range(n_samples):
         img = jnp.clip(reconstructions[idx].squeeze(), 0, 1)
         axes[idx + 2].imshow(img, cmap="gray", vmin=0, vmax=1)
-        axes[idx + 2].set_title(f"Sample {idx+1}")
+        axes[idx + 2].set_title(f"Sample {idx + 1}")
         axes[idx + 2].axis("off")
 
     plt.tight_layout()
@@ -317,12 +312,7 @@ def test_unconditional_generation(model_components, integrator_class, plot_if_en
     integrator = integrator_class(model=flow, timer=timer)
 
     # Create denoiser
-    denoiser = Denoiser(
-        integrator=integrator,
-        model=flow,
-        predictor=predictor,
-        x0_shape=img_shape
-    )
+    denoiser = Denoiser(integrator=integrator, model=flow, predictor=predictor, x0_shape=img_shape)
 
     # Generate samples
     state, history = denoiser.generate(key, n_steps, n_samples, keep_history=True)
@@ -339,14 +329,8 @@ def test_unconditional_generation(model_components, integrator_class, plot_if_en
     integrator_name = integrator_class.__name__.replace("Integrator", "")
 
     # Plot results
-    plot_if_enabled(
-        lambda: plot_image_grid(samples, f"Unconditional Generation - {integrator_name}", n_rows=2, n_cols=8)
-    )
-    plot_if_enabled(
-        lambda: plot_denoising_trajectory(
-            history, f"Denoising Trajectory - {integrator_name}", n_timesteps=6, sample_idx=0
-        )
-    )
+    plot_if_enabled(lambda: plot_image_grid(samples, f"Unconditional Generation - {integrator_name}", n_rows=2, n_cols=8))
+    plot_if_enabled(lambda: plot_denoising_trajectory(history, f"Denoising Trajectory - {integrator_name}", n_timesteps=6, sample_idx=0))
 
     print(f"✓ Unconditional generation with {integrator_name}: {samples.shape}")
 
@@ -403,9 +387,7 @@ def test_conditional_inpainting(model_components, test_image, denoiser_class, in
     cond_denoiser = make_conditional_denoiser(denoiser_class, integrator, mask_model)
 
     # Generate conditional samples
-    state, history = cond_denoiser.generate(
-        key, measurement_state, n_steps, n_samples, keep_history=True
-    )
+    state, history = cond_denoiser.generate(key, measurement_state, n_steps, n_samples, keep_history=True)
     samples = state.integrator_state.position
 
     # Validate output shape
@@ -417,15 +399,9 @@ def test_conditional_inpainting(model_components, test_image, denoiser_class, in
     integrator_name = integrator_class.__name__.replace("Integrator", "")
 
     # Plot results
+    plot_if_enabled(lambda: plot_inpainting_comparison(test_image, masked_image, samples, f"Inpainting - {denoiser_name} + {integrator_name}"))
     plot_if_enabled(
-        lambda: plot_inpainting_comparison(
-            test_image, masked_image, samples, f"Inpainting - {denoiser_name} + {integrator_name}"
-        )
-    )
-    plot_if_enabled(
-        lambda: plot_denoising_trajectory(
-            history, f"Inpainting Trajectory - {denoiser_name} + {integrator_name}", n_timesteps=6, sample_idx=0
-        )
+        lambda: plot_denoising_trajectory(history, f"Inpainting Trajectory - {denoiser_name} + {integrator_name}", n_timesteps=6, sample_idx=0)
     )
 
     # Validate that visible region (inside mask) is preserved
@@ -479,9 +455,7 @@ def test_restore_with_zero_measured(model_components, make_conditional_denoiser,
     cond_denoiser = make_conditional_denoiser(DPSDenoiser, integrator, mask_model)
 
     # Generate samples
-    state, history = cond_denoiser.generate(
-        key, measurement_state, n_steps, n_samples, keep_history=True
-    )
+    state, history = cond_denoiser.generate(key, measurement_state, n_steps, n_samples, keep_history=True)
     samples = state.integrator_state.position
 
     # Validate output shape
@@ -494,12 +468,8 @@ def test_restore_with_zero_measured(model_components, make_conditional_denoiser,
     assert 0.1 < std_val < 1.0, f"Std {std_val} is outside expected range"
 
     # Plot results
-    plot_if_enabled(
-        lambda: plot_image_grid(samples, "Restoration from Zero Measurement (DPS + DDIM)", n_rows=2, n_cols=4)
-    )
-    plot_if_enabled(
-        lambda: plot_denoising_trajectory(history, "Zero Measurement Trajectory", n_timesteps=6, sample_idx=0)
-    )
+    plot_if_enabled(lambda: plot_image_grid(samples, "Restoration from Zero Measurement (DPS + DDIM)", n_rows=2, n_cols=4))
+    plot_if_enabled(lambda: plot_denoising_trajectory(history, "Zero Measurement Trajectory", n_timesteps=6, sample_idx=0))
 
     print(f"✓ Restoration from zero measurement: mean={mean_val:.3f}, std={std_val:.3f}")
 
@@ -560,9 +530,7 @@ def test_visual_comparison_all_methods(model_components, test_image, make_condit
             integrator = int_class(model=flow, timer=timer)
             denoiser = make_conditional_denoiser(method_class, integrator, mask_model)
 
-            state, history = denoiser.generate(
-                keys[key_idx], measurement_state, n_steps, n_samples, keep_history=True
-            )
+            state, history = denoiser.generate(keys[key_idx], measurement_state, n_steps, n_samples, keep_history=True)
 
             combo_name = f"{method_name}_{int_name}"
             results[combo_name] = {
@@ -581,26 +549,20 @@ def test_visual_comparison_all_methods(model_components, test_image, make_condit
         n_show = min(n_samples, 6)
 
         # Main comparison plot: rows = method × integrator, cols = samples
-        fig, axes = plt.subplots(
-            n_methods * n_integrators + 2,
-            n_show,
-            figsize=(14, 2.5 * (n_methods * n_integrators + 2))
-        )
+        fig, axes = plt.subplots(n_methods * n_integrators + 2, n_show, figsize=(14, 2.5 * (n_methods * n_integrators + 2)))
         fig.suptitle("Conditional Generation: All Methods × Integrators", fontsize=16, y=0.995)
 
         # Row 0: Original image
         for col in range(n_show):
             axes[0, col].imshow(test_image.squeeze(), cmap="gray", vmin=0, vmax=1)
             axes[0, col].axis("off")
-        axes[0, 0].text(-0.15, 0.5, "Original", transform=axes[0, 0].transAxes,
-                        fontsize=13, fontweight='bold', va='center', ha='right')
+        axes[0, 0].text(-0.15, 0.5, "Original", transform=axes[0, 0].transAxes, fontsize=13, fontweight="bold", va="center", ha="right")
 
         # Row 1: Masked measurement
         for col in range(n_show):
             axes[1, col].imshow(masked_image.squeeze(), cmap="gray", vmin=0, vmax=1)
             axes[1, col].axis("off")
-        axes[1, 0].text(-0.15, 0.5, "Masked", transform=axes[1, 0].transAxes,
-                        fontsize=13, fontweight='bold', va='center', ha='right')
+        axes[1, 0].text(-0.15, 0.5, "Masked", transform=axes[1, 0].transAxes, fontsize=13, fontweight="bold", va="center", ha="right")
 
         # Rows 2+: Reconstructions
         row_idx = 2
@@ -614,8 +576,9 @@ def test_visual_comparison_all_methods(model_components, test_image, make_condit
                     axes[row_idx, col].axis("off")
 
                 label = f"{method_name}\n{int_name}"
-                axes[row_idx, 0].text(-0.15, 0.5, label, transform=axes[row_idx, 0].transAxes,
-                                      fontsize=12, fontweight='bold', va='center', ha='right')
+                axes[row_idx, 0].text(
+                    -0.15, 0.5, label, transform=axes[row_idx, 0].transAxes, fontsize=12, fontweight="bold", va="center", ha="right"
+                )
                 row_idx += 1
 
         plt.tight_layout()
@@ -629,11 +592,7 @@ def test_visual_comparison_all_methods(model_components, test_image, make_condit
         timestep_indices = jnp.linspace(0, n_steps - 1, n_timesteps, dtype=int)
         sample_idx = 0
 
-        fig, axes = plt.subplots(
-            n_methods * n_integrators,
-            n_timesteps,
-            figsize=(18, 2.5 * n_methods * n_integrators)
-        )
+        fig, axes = plt.subplots(n_methods * n_integrators, n_timesteps, figsize=(18, 2.5 * n_methods * n_integrators))
         fig.suptitle("Denoising Trajectories: All Methods × Integrators", fontsize=16, y=0.995)
 
         row_idx = 0
@@ -649,8 +608,9 @@ def test_visual_comparison_all_methods(model_components, test_image, make_condit
                         axes[row_idx, col].set_title(f"Step {t_idx}", fontsize=10)
 
                 label = f"{method_name}\n{int_name}"
-                axes[row_idx, 0].text(-0.08, 0.5, label, transform=axes[row_idx, 0].transAxes,
-                                      fontsize=12, fontweight='bold', va='center', ha='right')
+                axes[row_idx, 0].text(
+                    -0.08, 0.5, label, transform=axes[row_idx, 0].transAxes, fontsize=12, fontweight="bold", va="center", ha="right"
+                )
                 row_idx += 1
 
         plt.tight_layout()
@@ -663,11 +623,7 @@ def test_visual_comparison_all_methods(model_components, test_image, make_condit
         n_integrators = len(integrator_configs)
         n_show = min(n_samples, 6)
 
-        fig, axes = plt.subplots(
-            n_methods * n_integrators,
-            n_show,
-            figsize=(14, 2 * n_methods * n_integrators)
-        )
+        fig, axes = plt.subplots(n_methods * n_integrators, n_show, figsize=(14, 2 * n_methods * n_integrators))
         fig.suptitle("Reconstructed Regions Only (Masked Area)", fontsize=16, y=0.995)
 
         row_idx = 0
@@ -682,8 +638,9 @@ def test_visual_comparison_all_methods(model_components, test_image, make_condit
                     axes[row_idx, col].axis("off")
 
                 label = f"{method_name}\n{int_name}"
-                axes[row_idx, 0].text(-0.15, 0.5, label, transform=axes[row_idx, 0].transAxes,
-                                      fontsize=12, fontweight='bold', va='center', ha='right')
+                axes[row_idx, 0].text(
+                    -0.15, 0.5, label, transform=axes[row_idx, 0].transAxes, fontsize=12, fontweight="bold", va="center", ha="right"
+                )
                 row_idx += 1
 
         plt.tight_layout()
@@ -713,5 +670,4 @@ def test_visual_comparison_all_methods(model_components, test_image, make_condit
 
     # Validate reconstruction quality
     img_shape = model_components["img_shape"]
-    assert all(results[combo]["samples"].shape == (n_samples, *img_shape)
-               for combo in results.keys()), "All samples should have correct shape"
+    assert all(results[combo]["samples"].shape == (n_samples, *img_shape) for combo in results.keys()), "All samples should have correct shape"

@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Callable, Optional, NamedTuple
+from typing import Optional, NamedTuple
 from jaxtyping import Array, PRNGKeyArray
 from diffuse.integrator.base import IntegratorState
 import jax.numpy as jnp
@@ -75,9 +75,7 @@ class CondDenoiser(BaseDenoiser):
         return jax.lax.scan(body_fun, state, keys)
 
     @abstractmethod
-    def step(
-        self, rng_key: PRNGKeyArray, state: CondDenoiserState, measurement_state: MeasurementState
-    ) -> CondDenoiserState:
+    def step(self, rng_key: PRNGKeyArray, state: CondDenoiserState, measurement_state: MeasurementState) -> CondDenoiserState:
         """
         Abstract method to perform a single step of conditional denoising.
 

@@ -406,9 +406,7 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
 
     # Compute adaptive percentiles based on noise schedule
     if config.adaptive_percentiles:
-        config.perct = compute_adaptive_percentiles(
-            config.model, n_points=config.n_percentile_points, strategy=config.percentile_strategy
-        )
+        config.perct = compute_adaptive_percentiles(config.model, n_points=config.n_percentile_points, strategy=config.percentile_strategy)
     else:
         config.perct = PERCENTILES
 
@@ -528,12 +526,12 @@ def get_parametrized_configs() -> List[pytest.param]:
     integrators = INTEGRATOR_CONFIGS
 
     # Integrators that work with all model types (use generic DiffusionModel interface)
-    generic_integrators = [
-        (DDIMIntegrator, integrator_params) for _, integrator_params in integrators if _ == DDIMIntegrator
-    ] + [(DPMpp2sIntegrator, integrator_params) for _, integrator_params in integrators if _ == DPMpp2sIntegrator]
+    generic_integrators = [(DDIMIntegrator, integrator_params) for _, integrator_params in integrators if _ == DDIMIntegrator] + [
+        (DPMpp2sIntegrator, integrator_params) for _, integrator_params in integrators if _ == DPMpp2sIntegrator
+    ]
 
     # Integrators that only work with SDE models (need beta schedule)
-    sde_only_integrators = [
+    [
         (integrator_class, integrator_params)
         for integrator_class, integrator_params in integrators
         if integrator_class not in [DDIMIntegrator, DPMpp2sIntegrator]
@@ -596,9 +594,9 @@ def get_conditional_configs() -> List[pytest.param]:
     denoisers = DENOISER_CLASSES
 
     # Integrators that work with all model types (use generic DiffusionModel interface)
-    generic_integrators = [
-        (DDIMIntegrator, integrator_params) for _, integrator_params in integrators if _ == DDIMIntegrator
-    ] + [(DPMpp2sIntegrator, integrator_params) for _, integrator_params in integrators if _ == DPMpp2sIntegrator]
+    generic_integrators = [(DDIMIntegrator, integrator_params) for _, integrator_params in integrators if _ == DDIMIntegrator] + [
+        (DPMpp2sIntegrator, integrator_params) for _, integrator_params in integrators if _ == DPMpp2sIntegrator
+    ]
 
     for model in models:
         if model == "SDE":
@@ -616,9 +614,7 @@ def get_conditional_configs() -> List[pytest.param]:
                                 "denoiser_class": denoiser_class,
                             }
 
-                            test_id = (
-                                f"{denoiser_class.__name__}_{integrator_class.__name__}_{timer}_{model}_{schedule}"
-                            )
+                            test_id = f"{denoiser_class.__name__}_{integrator_class.__name__}_{timer}_{model}_{schedule}"
                             configs.append(pytest.param(config_dict, id=test_id))
         else:
             # Flow only works with generic integrators

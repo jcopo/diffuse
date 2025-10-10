@@ -180,12 +180,14 @@ def compute_mmd(samples_x, samples_y, kernel="rbf", gamma=None, **kernel_kwargs)
 
     # Select kernel function
     if kernel == "rbf":
-        kernel_func = lambda x, y: rbf_kernel(x, y, gamma)
+        def kernel_func(x, y):
+            return rbf_kernel(x, y, gamma)
     elif kernel == "poly" or kernel == "polynomial":
         degree = kernel_kwargs.get("degree", 3)
         gamma = gamma or 1.0
         coef0 = kernel_kwargs.get("coef0", 1.0)
-        kernel_func = lambda x, y: polynomial_kernel(x, y, degree, gamma, coef0)
+        def kernel_func(x, y):
+            return polynomial_kernel(x, y, degree, gamma, coef0)
     elif kernel == "linear":
         kernel_func = linear_kernel
     else:
@@ -215,9 +217,7 @@ def compute_mmd(samples_x, samples_y, kernel="rbf", gamma=None, **kernel_kwargs)
     return jnp.sqrt(jnp.maximum(mmd_squared, 0.0))
 
 
-def compute_and_store_mmd(
-    test_config, state, reference_data, result_key_parts: List[str], print_result: bool = False, kernel: str = "rbf"
-) -> float:
+def compute_and_store_mmd(test_config, state, reference_data, result_key_parts: List[str], print_result: bool = False, kernel: str = "rbf") -> float:
     """Compute Maximum Mean Discrepancy (MMD) and store results.
 
     Args:

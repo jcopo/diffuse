@@ -18,7 +18,7 @@ def display_histogram(samples, ax):
     percentiles = jnp.array([75, 25])
     q75, q25 = jnp.percentile(flat_samples, percentiles)
     iqr = q75 - q25
-    bin_width = 2 * iqr * (nb ** (-1 / 3))
+    2 * iqr * (nb ** (-1 / 3))
 
     h0, b = jnp.histogram(flat_samples, bins=nbins, range=[-xmax, xmax])
     h0 = h0 / nb * nbins / (2 * xmax)
@@ -39,9 +39,9 @@ def display_trajectories(Y, m, title=None):
     N, P = Y.shape
     idxs = jnp.round(jnp.linspace(0, P - 1, m)).astype(jnp.int32)
     sorted_idx = jnp.argsort(Y[-1, :])
-    I = sorted_idx[idxs]
+    selected_indices = sorted_idx[idxs]
 
-    for i, idx in enumerate(I):
+    for i, idx in enumerate(selected_indices):
         color_marker = i / (m - 1)
         plt.plot(Y[:, idx], c=[color_marker, 0, 1 - color_marker], alpha=0.3, linewidth=0.5)
     if title:
@@ -148,9 +148,7 @@ def plot_2d_mixture_and_samples(mixture_state, final_samples, title, ax=None, sa
         print(f"Plot saved to: {filepath}")
 
 
-def display_2d_trajectories_at_times(
-    particles, timer, n_steps, perct, pdf, title=None, score=None, sde=None, save_plot=False
-):
+def display_2d_trajectories_at_times(particles, timer, n_steps, perct, pdf, title=None, score=None, sde=None, save_plot=False):
     """
     Display 2D particle evolution at different time points in a single horizontal line.
     Shows samples as scatter plots overlaid on theoretical PDF contours and score field.

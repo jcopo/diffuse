@@ -177,11 +177,11 @@ def compute_posterior(mix_state: MixState, y: Array, A: Array, sigma_y=0.05):
         MixState: Posterior GMM parameters
     """
     means, covs, weights = mix_state
-    d = means.shape[-1]
+    means.shape[-1]
 
     # Step 1: Compute posterior covariance matrix for each component
     # Correct formula: Σ̄ᵢ = (Σᵢ⁻¹ + (1/σ_y²) A^T A)^(-1)
-    AAT = A @ A.T  # Shape: (m, m) - for scalar measurements this is (1, 1)
+    A @ A.T  # Shape: (m, m) - for scalar measurements this is (1, 1)
     measurement_precision = (1 / sigma_y**2) * (A.T @ A)  # Shape: (d, d)
 
     # Compute posterior covariance for each component

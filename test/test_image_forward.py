@@ -1,7 +1,7 @@
 import pytest
 import jax
 import jax.numpy as jnp
-from diffuse.examples.mnist.forward_model import SquareMask, MaskState
+from diffuse.examples.mnist.forward_model import SquareMask
 import matplotlib.pyplot as plt
 from diffuse.base_forward_model import MeasurementState
 
@@ -106,7 +106,7 @@ def test_mask_positioning_and_sizes(plot_if_enabled):
             # Test positioning
             y, x = int(pos[1]), int(pos[0])
             if 0 <= y < 28 and 0 <= x < 28:
-                assert mask[y, x, 0] > 0.8, f"Peak should be at specified position"
+                assert mask[y, x, 0] > 0.8, "Peak should be at specified position"
 
     # Visualization - show a subset
     plot_if_enabled(
@@ -116,7 +116,6 @@ def test_mask_positioning_and_sizes(plot_if_enabled):
             figsize=(18, 6),
         )
     )
-
 
 
 @pytest.mark.parametrize("mask_size", [5, 10, 15])

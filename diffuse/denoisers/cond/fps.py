@@ -3,14 +3,12 @@ from dataclasses import dataclass
 from einops import reduce
 import jax
 import jax.numpy as jnp
-from jaxtyping import Array, PRNGKeyArray
+from jaxtyping import PRNGKeyArray
 
 from diffuse.diffusion.sde import SDEState
 from diffuse.base_forward_model import MeasurementState
 from diffuse.denoisers.cond import CondDenoiser, CondDenoiserState
 from diffuse.denoisers.utils import resample_particles, normalize_log_weights
-from diffuse.predictor import Predictor
-from diffuse.integrator.base import IntegratorState
 
 
 @dataclass
@@ -111,16 +109,14 @@ class FPSDenoiser(CondDenoiser):
         f_x_t = jax.vmap(self.forward_model.apply, in_axes=(0, None))(x_t, measurement_state)
 
         # Compute ||y_t - A(x_t)||² for each particle (shape: n_particles)
-        residual_squared = reduce((y_t - f_x_t)**2, 'b ... -> b', 'sum')
+        residual_squared = reduce((y_t - f_x_t) ** 2, "b ... -> b", "sum")
 
         # Compute log weights from measurement likelihood: log p(y_t|x_t)
         # For Gaussian noise: log p(y|x) = -||y - Ax||² / (2σ²)
         # Note: Compute fresh weights at each step (no accumulation) to prevent degeneracy
         log_weights = -residual_squared / (2 * self.forward_model.std**2)
         log_weights = normalize_log_weights(log_weights)
-        position, log_weights = resample_particles(
-            integrator_state.position, log_weights, rng_key_resample, self.ess_low, self.ess_high
-        )
+        position, log_weights = resample_particles(integrator_state.position, log_weights, rng_key_resample, self.ess_low, self.ess_high)
 
         integrator_state_next = state_next.integrator_state._replace(position=position)
         return CondDenoiserState(integrator_state_next, log_weights)

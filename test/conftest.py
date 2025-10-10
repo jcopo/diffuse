@@ -23,7 +23,7 @@ def pytest_addoption(parser):
 def plot_if_enabled(request):
     def _plot_if_enabled(plot_func):
         if request.config.getoption("--plot"):
-            fig = plot_func()
+            plot_func()
             if request.config.getoption("--plot-wait"):
                 plt.show()
             else:

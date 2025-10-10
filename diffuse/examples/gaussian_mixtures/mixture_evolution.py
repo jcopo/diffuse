@@ -54,7 +54,8 @@ def make_mixture():
 def run_forward_evolution_animation(sde, init_mix_state, num_frames=100, interval=200):
     key = jax.random.PRNGKey(666)
     pdf = partial(rho_t, init_mix_state=init_mix_state, sde=sde)
-    score = lambda x, t: jax.grad(pdf)(x, t) / pdf(x, t)
+    def score(x, t):
+        return jax.grad(pdf)(x, t) / pdf(x, t)
 
     # sample mixture
     num_samples = 100
@@ -67,10 +68,10 @@ def run_forward_evolution_animation(sde, init_mix_state, num_frames=100, interva
 
     # Set up the figure and axis
     fig, ax = plt.subplots(figsize=(8, 8))
-    contour = ax.contourf(x, y, jnp.zeros_like(x))
+    ax.contourf(x, y, jnp.zeros_like(x))
     ax.set_xlim(-4, 4)
     ax.set_ylim(-4, 4)
-    time_text = ax.text(0.02, 0.98, "", transform=ax.transAxes, va="top", fontsize=12)
+    ax.text(0.02, 0.98, "", transform=ax.transAxes, va="top", fontsize=12)
 
     state = SDEState(position=samples, t=jnp.zeros((num_samples, 1)))
 
@@ -116,7 +117,8 @@ def run_forward_evolution_animation(sde, init_mix_state, num_frames=100, interva
 def run_backward_evolution_animation(sde, init_mix_state, num_frames=100, interval=200):
     key = jax.random.PRNGKey(666)
     pdf = partial(rho_t, init_mix_state=init_mix_state, sde=sde)
-    score = lambda x, t: jax.grad(pdf)(x, t) / pdf(x, t)
+    def score(x, t):
+        return jax.grad(pdf)(x, t) / pdf(x, t)
 
     # Sample from standard normal distribution
     num_samples = 100
@@ -130,10 +132,10 @@ def run_backward_evolution_animation(sde, init_mix_state, num_frames=100, interv
 
     # Set up the figure and axis
     fig, ax = plt.subplots(figsize=(8, 8))
-    contour = ax.contourf(x, y, jnp.zeros_like(x))
+    ax.contourf(x, y, jnp.zeros_like(x))
     ax.set_xlim(-4, 4)
     ax.set_ylim(-4, 4)
-    time_text = ax.text(0.02, 0.98, "", transform=ax.transAxes, va="top", fontsize=12)
+    ax.text(0.02, 0.98, "", transform=ax.transAxes, va="top", fontsize=12)
 
     state = SDEState(position=init_samples, t=T * jnp.ones((num_samples, 1)))
 

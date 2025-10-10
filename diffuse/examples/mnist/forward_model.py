@@ -1,9 +1,7 @@
 import jax
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
-import einops
 from dataclasses import dataclass
-from jaxtyping import Array, PRNGKeyArray
+from jaxtyping import Array
 from diffuse.base_forward_model import MeasurementState, ForwardModel
 
 
@@ -47,4 +45,3 @@ class SquareMask(ForwardModel):
         mask = measurement_state.mask_history
         inv_mask = 1 - mask
         return img * inv_mask
-

@@ -3,6 +3,10 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 from jaxtyping import Array
 from typing import Tuple
+import einops
+
+from diffuse.base_forward_model import MeasurementState
+from diffuse.utils.mapping import pmapper
 
 
 def stratified_resampling(key, w):
@@ -11,11 +15,6 @@ def stratified_resampling(key, w):
     bins = jnp.cumsum(w)
     idx = jnp.digitize(u, bins)
     return idx
-
-
-from diffuse.base_forward_model import MeasurementState
-import einops
-from diffuse.utils.mapping import pmapper
 
 
 def ess(log_weights: Array) -> float:
@@ -60,9 +59,7 @@ def weights_tweedie(
     state_forward = state_next.integrator_state._replace(t=forward_time)
 
     denoised_state = pmapper(sde.tweedie, state_forward, score=score_fn, batch_size=16)
-    diff = (
-        forward_model.measure_from_mask(measurement_state.mask_history, denoised_state.position) - measurement_state.y
-    )
+    diff = forward_model.measure_from_mask(measurement_state.mask_history, denoised_state.position) - measurement_state.y
     abs_diff = jnp.abs(diff[..., 0] + 1j * diff[..., 1])
     log_weights = jax.scipy.stats.norm.logpdf(abs_diff, 0, forward_model.std)
     log_weights = einops.einsum(measurement_state.mask_history, log_weights, "..., b ... -> b")
@@ -72,9 +69,7 @@ def weights_tweedie(
     return resample_particles(state_next.integrator_state.position, log_weights, rng_key, ess_low, ess_high)
 
 
-def resample_particles(
-    position: Array, log_weights: Array, rng_key: Array, ess_low: float = 0.2, ess_high: float = 0.5
-) -> Tuple[Array, Array]:
+def resample_particles(position: Array, log_weights: Array, rng_key: Array, ess_low: float = 0.2, ess_high: float = 0.5) -> Tuple[Array, Array]:
     """
     Internal function to perform the actual resampling given the weights.
 
