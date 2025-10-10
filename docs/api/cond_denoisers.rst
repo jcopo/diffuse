@@ -1,31 +1,32 @@
 Conditional Denoisers
 =====================
 
-.. currentmodule:: diffuse.denoisers.cond
-
 DPS (Diffusion Posterior Sampling)
 -----------------------------------
 
-.. autoclass:: diffuse.denoisers.cond.dps.DPSDenoiser
+.. currentmodule:: diffuse.denoisers.cond.dps
+
+.. autoclass:: DPSDenoiser
    :members:
-   :undoc-members:
    :show-inheritance:
-   :special-members: __init__
+   :exclude-members: integrator, model, predictor, forward_model, epsilon, zeta
 
 FPS (Filtered Posterior Sampling)
 ----------------------------------
 
-.. autoclass:: diffuse.denoisers.cond.fps.FPSDenoiser
+.. currentmodule:: diffuse.denoisers.cond.fps
+
+.. autoclass:: FPSDenoiser
    :members:
-   :undoc-members:
    :show-inheritance:
-   :special-members: __init__
+   :exclude-members: integrator, model, predictor, forward_model, resample, ess_low, ess_high
 
 TMP (Tweedie Moment Projection)
 --------------------------------
 
-.. autoclass:: diffuse.denoisers.cond.tmp.TMPDenoiser
+.. currentmodule:: diffuse.denoisers.cond.tmp
+
+.. autoclass:: TMPDenoiser
    :members:
-   :undoc-members:
    :show-inheritance:
-   :special-members: __init__
+   :exclude-members: integrator, model, predictor, forward_model

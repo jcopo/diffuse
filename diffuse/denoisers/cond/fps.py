@@ -33,7 +33,8 @@ class FPSDenoiser(CondDenoiser):
         ess_high: High threshold for effective sample size (0.6)
 
     References:
-        Dou, Z., & Song, Y. (2024). Reflected Diffusion Models. arXiv:2304.04740
+        Dou, Z., & Song, Y. (2024). Diffusion Posterior Sampling for Linear Inverse
+        Problem Solving: A Filtering Perspective. arXiv:2407.03981
     """
 
     def __post_init__(self):
@@ -95,8 +96,17 @@ class FPSDenoiser(CondDenoiser):
         return state_next
 
     def y_noiser(self, key: PRNGKeyArray, t: float, measurement_state: MeasurementState) -> SDEState:
-        r"""
-        Generate y^{(t)} = \sqrt{\bar{\alpha}_t} y + \sqrt{1-\bar{\alpha}_t} A_\xi \epsilon
+        r"""Generate noisy measurement at time t.
+
+        Computes :math:`y^{(t)} = \sqrt{\bar{\alpha}_t} y + \sqrt{1-\bar{\alpha}_t} A_\xi \epsilon`
+
+        Args:
+            key: Random number generator key
+            t: Current time
+            measurement_state: Measurement information
+
+        Returns:
+            SDEState containing the noised measurement
         """
         y_0 = measurement_state.y
         alpha_t = self.model.signal_level(t)

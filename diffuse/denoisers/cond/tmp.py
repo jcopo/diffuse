@@ -25,9 +25,8 @@ class TMPDenoiser(CondDenoiser):
         forward_model: Forward measurement operator
 
     References:
-        Song, Y., Sohl-Dickstein, J., Kingma, D. P., Kumar, A., Ermon, S., & Poole, B. (2023).
-        Score-Based Generative Modeling through Stochastic Differential Equations with Tweedie Moments.
-        arXiv:2310.06721
+        Boys, B., Girolami, M., Pidstrigach, J., Reich, S., Mosca, A., & Akyildiz, Ö. D. (2023).
+        Tweedie moment projected diffusions for inverse problems. arXiv:2310.06721
     """
 
     def step(

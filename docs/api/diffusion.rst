@@ -1,31 +1,35 @@
 Diffusion Models
 ================
 
-.. currentmodule:: diffuse.diffusion
+.. currentmodule:: diffuse.diffusion.sde
 
-SDE (Stochastic Differential Equations)
-----------------------------------------
+Diffusion Model Types
+----------------------
 
 .. autoclass:: SDE
-   :members: noise_level, signal_level, sde_coefficients, snr, score, tweedie, path
+   :members:
    :show-inheritance:
    :exclude-members: beta, tf
+
+.. autoclass:: Flow
+   :members:
+   :show-inheritance:
+   :exclude-members: tf
+
+.. autoclass:: EDM
+   :members:
+   :show-inheritance:
+   :exclude-members: tf
 
 Noise Schedules
 ---------------
 
-Linear Schedule
-~~~~~~~~~~~~~~~
-
-.. autoclass:: diffuse.diffusion.sde.LinearSchedule
-   :members: __call__, integrate
+.. autoclass:: LinearSchedule
+   :members:
    :show-inheritance:
    :exclude-members: b_min, b_max, t0, T
 
-Cosine Schedule
-~~~~~~~~~~~~~~~
-
-.. autoclass:: diffuse.diffusion.sde.CosineSchedule
-   :members: __call__, integrate
+.. autoclass:: CosineSchedule
+   :members:
    :show-inheritance:
    :exclude-members: b_min, b_max, t0, T, s

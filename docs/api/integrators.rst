@@ -6,69 +6,45 @@ Integrators
 Deterministic Integrators
 --------------------------
 
-Euler Integrator
-~~~~~~~~~~~~~~~~
-
 .. autoclass:: EulerIntegrator
-   :members: init, __call__
+   :members:
    :show-inheritance:
-
-Heun Integrator
-~~~~~~~~~~~~~~~
+   :exclude-members: model, timer, stochastic_churn_rate, churn_min, churn_max, noise_inflation_factor
 
 .. autoclass:: HeunIntegrator
-   :members: init, __call__
+   :members:
    :show-inheritance:
-
-DPM++ 2S Integrator
-~~~~~~~~~~~~~~~~~~~
+   :exclude-members: model, timer, stochastic_churn_rate, churn_min, churn_max, noise_inflation_factor
 
 .. autoclass:: DPMpp2sIntegrator
-   :members: init, __call__
+   :members:
    :show-inheritance:
-
-DDIM Integrator
-~~~~~~~~~~~~~~~
+   :exclude-members: model, timer, stochastic_churn_rate, churn_min, churn_max, noise_inflation_factor
 
 .. autoclass:: DDIMIntegrator
-   :members: init, __call__
+   :members:
    :show-inheritance:
+   :exclude-members: model, timer, stochastic_churn_rate, churn_min, churn_max, noise_inflation_factor
 
 Stochastic Integrators
 -----------------------
 
-Euler-Maruyama Integrator
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
 .. autoclass:: EulerMaruyamaIntegrator
-   :members: init, __call__
+   :members:
    :show-inheritance:
+   :exclude-members: model, timer, stochastic_churn_rate, churn_min, churn_max, noise_inflation_factor
 
 Base Classes
 ------------
 
-IntegratorState
-~~~~~~~~~~~~~~~
-
 .. autoclass:: IntegratorState
-   :show-inheritance:
-
-Integrator
-~~~~~~~~~~
 
 .. autoclass:: Integrator
-   :members: init, __call__
+   :members:
    :show-inheritance:
    :exclude-members: model, timer
 
-   Base class for all numerical integrators.
-
-ChurnedIntegrator
-~~~~~~~~~~~~~~~~~
-
 .. autoclass:: ChurnedIntegrator
-   :members: init, __call__
+   :members:
    :show-inheritance:
    :exclude-members: model, timer, stochastic_churn_rate, churn_min, churn_max, noise_inflation_factor
-
-   Base class for integrators with optional stochastic churning.

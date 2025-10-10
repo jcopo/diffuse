@@ -1,11 +1,9 @@
 Denoiser
 ========
 
-.. currentmodule:: diffuse.denoisers
+.. currentmodule:: diffuse.denoisers.denoiser
 
-Denoiser Class
---------------
-
-.. autoclass:: diffuse.denoisers.denoiser.Denoiser
-   :members: init, step, generate
+.. autoclass:: Denoiser
+   :members:
    :show-inheritance:
+   :exclude-members: integrator, model, predictor, x0_shape

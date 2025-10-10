@@ -1,23 +1,25 @@
 Neural Networks
 ===============
 
-.. currentmodule:: diffuse.neural_network
-
 Models
 ------
 
 Conditional UNet
 ~~~~~~~~~~~~~~~~
 
-.. autoclass:: diffuse.neural_network.nn.condUNet.CondUNet2D
-   :members: __call__
+.. currentmodule:: diffuse.neural_network.nn.condUNet
+
+.. autoclass:: CondUNet2D
+   :members:
    :show-inheritance:
 
 VAE (Variational Autoencoder)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. autoclass:: diffuse.neural_network.nn.sdVae.SDVae
-   :members: encode, decode, __call__
+.. currentmodule:: diffuse.neural_network.nn.sdVae
+
+.. autoclass:: SDVae
+   :members:
    :show-inheritance:
 
 Network Parameters
