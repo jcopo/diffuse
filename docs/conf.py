@@ -112,6 +112,9 @@ myst_enable_extensions = [
     "tasklist",
 ]
 
+# Enable footnote references for citations
+myst_footnote_transition = True
+
 # Notebook execution
 nb_execution_mode = "off"
 nb_execution_timeout = 100

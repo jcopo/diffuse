@@ -6,7 +6,7 @@ from typing import Callable, NamedTuple, Tuple
 import jax
 import jax.numpy as jnp
 
-from diffuse.diffusion.sde import SDE, DiffusionModel
+from diffuse.diffusion.sde import DiffusionModel
 from diffuse.timer.base import Timer
 from diffuse.predictor import Predictor
 

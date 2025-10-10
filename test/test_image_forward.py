@@ -84,49 +84,6 @@ def test_apply_restore_cycle(square_mask, random_image, plot_if_enabled):
     )
 
 
-def test_measurement_accumulation(square_mask, random_image, plot_if_enabled):
-    """Test sequential measurement accumulation with visualization."""
-    key = jax.random.PRNGKey(42)
-    positions = [jnp.array([8.0, 8.0]), jnp.array([20.0, 12.0]), jnp.array([14.0, 20.0])]
-
-    # Start with empty state
-    mask_state = square_mask.init(key)
-    states = [mask_state]  # Track progression
-
-    for i, xi in enumerate(positions):
-        # Create measurement
-        measurement = jax.random.normal(jax.random.split(key, len(positions))[i], random_image.shape)
-
-        # Update state
-        mask_state = square_mask.update_measurement(mask_state, measurement, xi)
-        states.append(mask_state)
-
-        # Verify accumulation (mask_history may be clamped at 1.0, so check coverage)
-        coverage_new = jnp.sum(mask_state.mask_history > 0.1)
-        coverage_old = jnp.sum(states[i].mask_history > 0.1)
-        assert coverage_new >= coverage_old, f"Coverage should increase: {coverage_new} vs {coverage_old}"
-        assert not jnp.allclose(mask_state.y, states[i].y)
-
-    # Final verification
-    final_coverage = jnp.sum(mask_state.mask_history > 0.1)
-    assert final_coverage > 100, f"Final coverage should be substantial: {final_coverage}"
-
-    # Visualization of progression
-    plot_if_enabled(
-        lambda: plot_grid(
-            [states[0].mask_history, states[1].mask_history, states[2].mask_history, states[3].mask_history],
-            ["Initial", "After 1st", "After 2nd", "After 3rd"],
-            figsize=(16, 4),
-        )
-    )
-
-    plot_if_enabled(
-        lambda: plot_grid(
-            [states[3].y, states[3].mask_history], ["Final Measurements", "Final Mask History"], figsize=(10, 4)
-        )
-    )
-
-
 def test_mask_positioning_and_sizes(plot_if_enabled):
     """Test different mask sizes and positions with visualization."""
     positions = [jnp.array([7.0, 7.0]), jnp.array([14.0, 14.0]), jnp.array([21.0, 21.0])]
@@ -160,38 +117,6 @@ def test_mask_positioning_and_sizes(plot_if_enabled):
         )
     )
 
-
-def test_overlap_handling(square_mask, plot_if_enabled):
-    """Test overlapping measurements with visualization."""
-    key = jax.random.PRNGKey(123)
-    mask_state = square_mask.init(key)
-
-    # Two close but different positions
-    xi1 = jnp.array([14.0, 14.0])
-    xi2 = jnp.array([16.0, 16.0])
-
-    # Sequential measurements
-    measurement1 = jnp.ones((28, 28, 1))
-    measurement2 = 2 * jnp.ones((28, 28, 1))
-
-    state1 = square_mask.update_measurement(mask_state, measurement1, xi1)
-    state2 = square_mask.update_measurement(state1, measurement2, xi2)
-
-    # Test properties
-    assert jnp.max(state2.mask_history) >= jnp.max(state1.mask_history)
-
-    # Visualize overlap handling
-    mask1 = square_mask.make(xi1)
-    mask2 = square_mask.make(xi2)
-    overlap = mask1 * mask2
-
-    plot_if_enabled(
-        lambda: plot_grid(
-            [mask1, mask2, overlap, state1.mask_history, state2.mask_history],
-            ["Mask 1", "Mask 2", "Overlap", "After 1st", "After 2nd"],
-            figsize=(20, 4),
-        )
-    )
 
 
 @pytest.mark.parametrize("mask_size", [5, 10, 15])

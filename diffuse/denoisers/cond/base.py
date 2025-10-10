@@ -5,7 +5,7 @@ from diffuse.integrator.base import IntegratorState
 import jax.numpy as jnp
 from dataclasses import dataclass
 import jax
-from diffuse.diffusion.sde import SDE
+from diffuse.diffusion.sde import DiffusionModel
 from diffuse.integrator.base import Integrator
 from diffuse.base_forward_model import ForwardModel, MeasurementState
 from diffuse.utils.mapping import pmapper
@@ -24,7 +24,7 @@ class CondDenoiserState(NamedTuple):
 @dataclass
 class CondDenoiser(BaseDenoiser):
     integrator: Integrator
-    model: SDE
+    model: DiffusionModel
     predictor: Predictor
     forward_model: ForwardModel
     x0_shape: Tuple[int, ...]

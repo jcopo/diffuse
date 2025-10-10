@@ -4,7 +4,7 @@ from typing import Callable
 import jax
 import jax.numpy as jnp
 
-from diffuse.diffusion.sde import SDEState, SDE, DiffusionModel
+from diffuse.diffusion.sde import SDEState, DiffusionModel
 from diffuse.integrator.base import IntegratorState, ChurnedIntegrator
 from diffuse.predictor import Predictor
 
