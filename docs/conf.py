@@ -34,6 +34,7 @@ extensions = [
     "sphinx_copybutton",
     "sphinx_togglebutton",
     "sphinxcontrib.tikz",
+    "sphinxcontrib.bibtex",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -140,3 +141,8 @@ copybutton_prompt_is_regexp = True
 # TikZ configuration
 tikz_proc_suite = "GhostScript"  # Works well for most systems
 tikz_transparent = True
+
+# BibTeX configuration
+bibtex_bibfiles = ["references.bib"]
+bibtex_default_style = "plain"
+bibtex_reference_style = "author_year"
