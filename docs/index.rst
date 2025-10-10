@@ -89,13 +89,24 @@ See the :doc:`quickstart` guide for a complete tutorial.
 .. toctree::
    :maxdepth: 2
    :caption: Getting Started
-   :hidden:
 
    quickstart
    diffusion_crash_course
    diffusion_tutorial
    new_mixtures
    mnist_tutorial
+
+.. toctree::
+   :maxdepth: 2
+   :caption: API Reference
+
+   api/diffusion
+   api/integrators
+   api/denoiser
+   api/cond_denoisers
+   api/neural_networks
+   api/timer
+   api/forward_models
 
 
 

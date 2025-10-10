@@ -1,3 +1,6 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 from dataclasses import dataclass
 from functools import partial
 from jaxtyping import Array, PRNGKeyArray
@@ -34,7 +37,7 @@ class Integrator:
     Provides the basic interface for implementing various numerical integration
     schemes for both deterministic and stochastic differential equations.
 
-    Attributes:
+    Args:
         model: Diffusion model defining the diffusion process
         timer: Timer object managing the discretization of the time interval
     """
@@ -74,11 +77,13 @@ class ChurnedIntegrator(Integrator):
     Implements the stochastic churning mechanism that can help improve sampling
     quality by occasionally injecting controlled noise into the process.
 
-    Attributes:
-        stochastic_churn_rate: Rate of applying stochastic churning (default: 1.0)
-        churn_min: Minimum time threshold for churning (default: 0.5)
-        churn_max: Maximum time threshold for churning (default: 1.0)
-        noise_inflation_factor: Factor to scale injected noise (default: 1.0001)
+    Args:
+        model: Diffusion model defining the diffusion process
+        timer: Timer object managing the discretization of the time interval
+        stochastic_churn_rate: Rate of applying stochastic churning (default: 0.0)
+        churn_min: Minimum time threshold for churning (default: 0.0)
+        churn_max: Maximum time threshold for churning (default: 0.0)
+        noise_inflation_factor: Factor to scale injected noise (default: 1.0)
     """
 
     stochastic_churn_rate: float = 0.0

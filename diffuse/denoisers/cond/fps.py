@@ -1,3 +1,6 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 from dataclasses import dataclass
 
 from einops import reduce
@@ -13,7 +16,25 @@ from diffuse.denoisers.utils import resample_particles, normalize_log_weights
 
 @dataclass
 class FPSDenoiser(CondDenoiser):
-    """Filtering Posterior Sampling Denoiser implementing continuous-time SDE version."""
+    """Filtering Posterior Sampling (FPS) Denoiser.
+
+    Implements continuous-time SDE version of FPS for conditional generation
+    with particle filtering and resampling.
+
+    Args:
+        integrator: Numerical integrator for solving the reverse SDE
+        model: Diffusion model defining the forward process
+        predictor: Predictor for computing score/noise/velocity
+        forward_model: Forward measurement operator
+
+    Attributes:
+        resample: Whether to use particle resampling (set in __post_init__)
+        ess_low: Low threshold for effective sample size (0.2)
+        ess_high: High threshold for effective sample size (0.6)
+
+    References:
+        Dou, Z., & Song, Y. (2024). Reflected Diffusion Models. arXiv:2304.04740
+    """
 
     def __post_init__(self):
         self.resample = True
@@ -35,6 +56,14 @@ class FPSDenoiser(CondDenoiser):
 
         This approach works correctly with second-order integrators (Heun, DPM++, etc.)
         because the integrator sees the true unconditional score/velocity.
+
+        Args:
+            rng_key: Random number generator key
+            state: Current conditional denoiser state
+            measurement_state: Measurement information
+
+        Returns:
+            Updated conditional denoiser state
         """
         position_current = state.integrator_state.position
         t_current = self.integrator.timer(state.integrator_state.step)

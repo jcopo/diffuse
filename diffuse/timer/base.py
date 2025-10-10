@@ -1,3 +1,6 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 from dataclasses import dataclass
 
 import jax
@@ -9,7 +12,7 @@ class Timer:
     """Base Timer class for scheduling time steps in diffusion processes.
 
     Args:
-        n_steps (int): Number of discrete time steps.
+        n_steps: Number of discrete time steps
     """
 
     n_steps: int
@@ -22,9 +25,9 @@ class VpTimer(Timer):
     """Variance Preserving Timer that implements linear interpolation between final and initial time.
 
     Args:
-        n_steps (int): Number of discrete time steps
-        eps (float): Initial time value
-        tf (float): Final time value
+        n_steps: Number of discrete time steps
+        eps: Initial time value
+        tf: Final time value
     """
 
     eps: float
@@ -52,10 +55,10 @@ class HeunTimer(Timer):
     Space of Diffusion-Based Generative Models) rather than time-based approaches.
 
     Args:
-        n_steps (int): Number of discrete time steps
-        rho (float, optional): Power scaling factor. Defaults to 7.0
-        sigma_min (float, optional): Minimum noise level. Defaults to 0.002
-        sigma_max (float, optional): Maximum noise level. Defaults to 80.0
+        n_steps: Number of discrete time steps
+        rho: Power scaling factor (default: 7.0)
+        sigma_min: Minimum noise level (default: 0.002)
+        sigma_max: Maximum noise level (default: 0.002)
     """
 
     rho: float = 7.0

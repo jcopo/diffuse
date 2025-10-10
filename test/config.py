@@ -1,3 +1,6 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 """Test configuration system for diffusion tests.
 
 This module provides a centralized configuration system for tests, similar to

@@ -1,3 +1,6 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 """Tests for image diffusion models using pretrained MNIST model.
 
 This module tests unconditional and conditional image generation using a pretrained

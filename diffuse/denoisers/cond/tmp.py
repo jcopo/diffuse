@@ -1,3 +1,6 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 from dataclasses import dataclass
 import jax
 from jaxtyping import Array, PRNGKeyArray
@@ -10,7 +13,22 @@ from diffuse.predictor import Predictor
 
 @dataclass
 class TMPDenoiser(CondDenoiser):
-    """Conditional denoiser using Tweedie's Moments from https://arxiv.org/pdf/2310.06721v3"""
+    """Conditional denoiser using Tweedie's Moment Projection (TMP).
+
+    Implements TMP which modifies the score function to incorporate measurement
+    information through Tweedie's formula and moment matching.
+
+    Args:
+        integrator: Numerical integrator for solving the reverse SDE
+        model: Diffusion model defining the forward process
+        predictor: Predictor for computing score/noise/velocity
+        forward_model: Forward measurement operator
+
+    References:
+        Song, Y., Sohl-Dickstein, J., Kingma, D. P., Kumar, A., Ermon, S., & Poole, B. (2023).
+        Score-Based Generative Modeling through Stochastic Differential Equations with Tweedie Moments.
+        arXiv:2310.06721
+    """
 
     def step(
         self,
@@ -21,6 +39,14 @@ class TMPDenoiser(CondDenoiser):
         """Single step of TMP sampling.
 
         Modifies the score to include measurement term and uses integrator for the update.
+
+        Args:
+            rng_key: Random number generator key
+            state: Current conditional denoiser state
+            measurement_state: Measurement information
+
+        Returns:
+            Updated conditional denoiser state
         """
         y_meas = measurement_state.y
 

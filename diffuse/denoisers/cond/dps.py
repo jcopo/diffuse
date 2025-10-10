@@ -1,3 +1,6 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 from dataclasses import dataclass
 
 import jax
@@ -11,7 +14,23 @@ from diffuse.base_forward_model import MeasurementState
 
 @dataclass
 class DPSDenoiser(CondDenoiser):
-    """Conditional denoiser using Diffusion Posterior Sampling with Tweedie's formula"""
+    """Conditional denoiser using Diffusion Posterior Sampling (DPS).
+
+    Implements DPS which uses Tweedie's formula for denoising and applies
+    measurement-consistency gradient corrections at each sampling step.
+
+    Args:
+        integrator: Numerical integrator for solving the reverse SDE
+        model: Diffusion model defining the forward process
+        predictor: Predictor for computing score/noise/velocity
+        forward_model: Forward measurement operator
+        epsilon: Numerical stability parameter (default: 1e-3)
+        zeta: Gradient step size parameter (default: 1e-2)
+
+    References:
+        Chung, H., Kim, J., Mccann, M. T., Klasky, M. L., & Ye, J. C. (2022).
+        Diffusion posterior sampling for general noisy inverse problems. arXiv:2209.14687
+    """
 
     epsilon: float = 1e-3
     zeta: float = 1e-2
@@ -30,6 +49,14 @@ class DPSDenoiser(CondDenoiser):
         3. Apply measurement-consistency gradient correction
 
         This approach works correctly with second-order integrators (Heun, DPM++, etc.)
+
+        Args:
+            rng_key: Random number generator key
+            state: Current conditional denoiser state
+            measurement_state: Measurement information
+
+        Returns:
+            Updated conditional denoiser state
         """
         y_meas = measurement_state.y
         position_current = state.integrator_state.position

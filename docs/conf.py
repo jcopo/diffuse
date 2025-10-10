@@ -1,3 +1,6 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 # Configuration file for the Sphinx documentation builder.
 # Based on Flax documentation configuration
 
@@ -79,6 +82,10 @@ html_static_path = ["_static"]
 
 # -- Extension configuration -------------------------------------------------
 
+# Autosectionlabel settings
+autosectionlabel_prefix_document = True
+autosectionlabel_maxdepth = 3
+
 # Napoleon settings
 napoleon_google_docstring = True
 napoleon_numpy_docstring = True
@@ -86,7 +93,7 @@ napoleon_include_init_with_doc = False
 napoleon_include_private_with_doc = False
 
 # Autodoc settings
-autodoc_typehints = "none"
+autodoc_typehints = "signature"
 autosummary_generate = True
 
 # Intersphinx mapping

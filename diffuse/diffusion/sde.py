@@ -1,3 +1,6 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Callable, NamedTuple, Union
@@ -26,14 +29,15 @@ class Schedule(ABC):
 
 @dataclass
 class LinearSchedule:
-    """
-    A class representing a linear schedule.
+    """Linear noise schedule for diffusion processes.
 
-    Attributes:
-        b_min (float): The minimum value.
-        b_max (float): The maximum value.
-        t0 (float): The starting time.
-        T (float): The ending time.
+    Implements a linear interpolation between minimum and maximum noise levels.
+
+    Args:
+        b_min: The minimum noise value
+        b_max: The maximum noise value
+        t0: The starting time
+        T: The ending time
     """
 
     b_min: float
@@ -63,16 +67,21 @@ class LinearSchedule:
 
 @dataclass
 class CosineSchedule(Schedule):
-    """
-    A class representing a cosine schedule as described in
-    'Improved Denoising Diffusion Probabilistic Models'
+    """Cosine noise schedule for improved denoising.
 
-    Attributes:
-        b_min (float): The minimum beta value
-        b_max (float): The maximum beta value
-        t0 (float): The starting time
-        T (float): The ending time
-        s (float): Offset parameter (default: 0.008)
+    Implements the cosine schedule from 'Improved Denoising Diffusion Probabilistic Models'
+    which provides better signal-to-noise ratio properties than linear schedules.
+
+    Args:
+        b_min: The minimum beta value
+        b_max: The maximum beta value
+        t0: The starting time
+        T: The ending time
+        s: Offset parameter (default: 0.008)
+
+    References:
+        Nichol, A., & Dhariwal, P. (2021). Improved Denoising Diffusion Probabilistic Models.
+        arXiv:2102.09672
     """
 
     b_min: float
@@ -173,9 +182,20 @@ class DiffusionModel(ABC):
 
 @dataclass
 class SDE(DiffusionModel):
-    r"""
-    dX(t) = -0.5 \beta(t) X(t) dt + \sqrt{\beta(t)} dW(t)
-    dx_t = f(t)x_t dt + g(t) dW(t)
+    r"""Variance Preserving (VP) SDE for diffusion models.
+
+    Implements the forward SDE:
+
+    .. math::
+        dX(t) = -\frac{1}{2}\beta(t) X(t) dt + \sqrt{\beta(t)} dW(t)
+
+    where :math:`\beta(t)` is the noise schedule and :math:`dW(t)` is the Wiener process.
+
+    This formulation preserves the variance of the data distribution and is the
+    standard choice for diffusion probabilistic models.
+
+    Args:
+        beta: Noise schedule (LinearSchedule or CosineSchedule)
     """
 
     beta: Schedule

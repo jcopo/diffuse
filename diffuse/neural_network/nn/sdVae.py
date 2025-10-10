@@ -1,3 +1,6 @@
+# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
+# Licensed under the Apache License, Version 2.0 (the "License");
+# http://www.apache.org/licenses/LICENSE-2.0
 from typing import Tuple, Union
 
 import jax
@@ -36,6 +39,27 @@ class DiagonalGaussian(nnx.Module):
 
 
 class SDVae(nnx.Module):
+    """Stable Diffusion Variational Autoencoder (VAE).
+
+    A VAE architecture for encoding images into latent representations and decoding
+    them back. Uses an encoder-decoder structure with diagonal Gaussian posterior,
+    commonly used in latent diffusion models for compression.
+
+    Args:
+        in_channels: Number of input image channels
+        ch: Base number of channels in the network
+        out_ch: Number of output channels
+        ch_mult: Channel multipliers for each resolution level
+        num_res_blocks: Number of ResNet blocks at each resolution
+        z_channels: Number of latent space channels
+        scale_factor: Scaling factor applied to latent codes (default: 0.18215 for SD)
+        shift_factor: Shift applied to latent codes before scaling
+        activation: Activation function used throughout the network
+        param_dtype: Data type for parameters
+        dtype: Data type for computation
+        rngs: Random number generators for parameter initialization
+    """
+
     def __init__(
         self,
         in_channels: int = 3,
@@ -85,6 +109,15 @@ class SDVae(nnx.Module):
         self.shift_factor = shift_factor
 
     def encode(self, x: ArrayLike) -> Union[Array, Tuple[Array, Array]]:
+        """Encode image into latent representation.
+
+        Args:
+            x: Input image tensor of shape (batch, channels, height, width)
+
+        Returns:
+            Tuple of (latent_code, mean, logvar) where latent_code is the sampled
+            latent representation and mean/logvar define the diagonal Gaussian posterior
+        """
         x = rearrange(x, "b c h w -> b h w c")
 
         z = self.encoder(x)
@@ -98,6 +131,14 @@ class SDVae(nnx.Module):
         return z, mean, logvar
 
     def decode(self, z: ArrayLike) -> Array:
+        """Decode latent representation back to image space.
+
+        Args:
+            z: Latent code tensor of shape (batch, z_channels, latent_h, latent_w)
+
+        Returns:
+            Reconstructed image tensor of shape (batch, out_ch, height, width)
+        """
         z = rearrange(z, "b c h w -> b h w c")
 
         z = z / self.scale_factor + self.shift_factor
@@ -107,6 +148,14 @@ class SDVae(nnx.Module):
         return z
 
     def __call__(self, x: ArrayLike) -> SDVaeOutput:
+        """Full forward pass: encode and decode.
+
+        Args:
+            x: Input image tensor of shape (batch, channels, height, width)
+
+        Returns:
+            SDVaeOutput containing reconstructed image, mean, and log variance
+        """
         z, mean, logvar = self.encode(x)
         x_recon = self.decode(z)
         return SDVaeOutput(output=x_recon, mean=mean, logvar=logvar)
