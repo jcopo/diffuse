@@ -95,6 +95,7 @@ See the :doc:`quickstart` guide for a complete tutorial.
    diffusion_tutorial
    new_mixtures
    mnist_tutorial
+   flux_tutorial
 
 .. toctree::
    :maxdepth: 2

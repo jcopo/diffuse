@@ -41,14 +41,26 @@ class ForwardModel(Protocol):
         """
         ...
 
+    def adjoint(self, meas: Array, measurement_state: MeasurementState) -> Array:
+        """Apply the adjoint of the measurement operator.
+
+        Args:
+            meas: Array in the measurement space
+            measurement_state: Current measurement state
+
+        Returns:
+            Array in the original image/data space corresponding to Aᵀ meas
+        """
+        ...
+
     def restore(self, img: Array, measurement_state: MeasurementState) -> Array:
-        """Apply the adjoint operator.
+        """Apply the restoration operator associated with the measurement.
 
         Args:
             img: Data to apply adjoint to
             measurement_state: Current measurement state
 
         Returns:
-            Output of adjoint operator
+            Restored output in the original data space
         """
         ...

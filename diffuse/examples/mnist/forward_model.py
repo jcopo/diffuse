@@ -44,6 +44,10 @@ class SquareMask(ForwardModel):
         hist_mask = measurement_state.mask_history
         return img * hist_mask
 
+    def adjoint(self, meas: Array, measurement_state: MeasurementState):
+        hist_mask = measurement_state.mask_history
+        return meas * hist_mask
+
     def restore(self, img: Array, measurement_state: MeasurementState):
         mask = measurement_state.mask_history
         inv_mask = 1 - mask
