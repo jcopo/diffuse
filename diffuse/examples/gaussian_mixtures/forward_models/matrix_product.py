@@ -48,14 +48,5 @@ class MatrixProduct:
         return self.A @ x
 
     def adjoint(self, measured: Array, *args) -> Array:
-        """
-        Apply the adjoint operator: x = A^T y
-
-        Args:
-            measured: Measured output.
-            *args: Additional arguments (not used in this implementation).
-
-        Returns:
-            Array: Result of applying the adjoint operator to the measurement.
-        """
+        """Apply the adjoint operator: x = A^T y"""
         return self.A.T @ measured
