@@ -7,6 +7,8 @@ import argparse
 import gc
 import json
 import sys
+import tempfile
+from contextlib import contextmanager
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +20,7 @@ import numpy as np
 import sentencepiece as spm
 from einops import rearrange
 from flax import nnx
+from huggingface_hub import snapshot_download
 from PIL import Image
 from tokenizers import Tokenizer
 from tokenizers.decoders import ByteLevel as ByteLevelDecoder
@@ -40,6 +43,31 @@ from .utils.flux_timer import FluxTimer
 # -----------------------------------------------------------------------------
 # Helper structures
 # -----------------------------------------------------------------------------
+def _download_flux_from_hf(repo_id: str, cache_dir: Path | None = None) -> Path:
+    """Download FLUX checkpoint from HuggingFace Hub.
+
+    Args:
+        repo_id: HuggingFace repository ID (e.g., "jcopo/flux_jax")
+        cache_dir: Optional cache directory. If None, uses HF default cache.
+
+    Returns:
+        Path to downloaded checkpoint directory
+    """
+    print(f"[flux-loader] Downloading checkpoint from HuggingFace Hub: {repo_id}")
+
+    checkpoint_dir = snapshot_download(
+        repo_id=repo_id,
+        repo_type="model",
+        cache_dir=cache_dir,
+        local_dir=None,  # Use HF cache system
+    )
+
+    checkpoint_path = Path(checkpoint_dir)
+    print(f"[flux-loader] Checkpoint downloaded to: {checkpoint_path}")
+
+    return checkpoint_path
+
+
 def _patchify_latents(latents: jax.Array) -> jax.Array:
     """Convert (B, H, W, 16) VAE latents into transformer patches (B, H/2, W/2, 64)."""
     batch, h, w, c = latents.shape
@@ -512,7 +540,35 @@ class FluxModelLoader:
         decoded = vae.decode(vae_latents)
         images = jnp.clip((decoded + 1.0) / 2.0, 0.0, 1.0)
         self.release_vae()
+        return images
         return np.array(jax.device_get(images))
+
+    @contextmanager
+    def borrow_vae_decoder(self) -> Callable[[jax.Array], jax.Array]:
+        """Yield a differentiable VAE decode function for use inside JAX loops.
+
+        The returned function expects transformer latents shaped (batch, h, w, c)
+        and keeps the VAE module resident on the accelerator until the context
+        exits, ensuring JIT tracing does not try to restore checkpoints.
+        """
+
+        vae = self._get_component("vae")
+        scale = self.vae_scaling_factor
+        shift = self.vae_shift_factor
+
+        def decode(latents: jax.Array) -> jax.Array:
+            vae_latents = _unpatchify_latents(latents)
+            if scale != 0.0:
+                vae_latents = vae_latents / scale
+            if shift != 0.0:
+                vae_latents = vae_latents + shift
+            decoded = vae.decode(vae_latents)
+            return jnp.clip((decoded + 1.0) / 2.0, 0.0, 1.0)
+
+        try:
+            yield decode
+        finally:
+            self.release_vae()
 
 
 def _latent_shapes(height: int, width: int) -> tuple[tuple[int, int], tuple[int, int]]:
@@ -591,11 +647,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run FLUX inference using Diffuse and an Orbax checkpoint bundle.",
     )
-    parser.add_argument(
+    # Checkpoint source (either HF or local)
+    source_group = parser.add_mutually_exclusive_group()
+    source_group.add_argument(
+        "--hf-repo",
+        type=str,
+        default="jcopo/flux_jax",
+        help="HuggingFace repository ID to download FLUX checkpoint from (default: jcopo/flux_jax).",
+    )
+    source_group.add_argument(
         "--checkpoint-dir",
         type=Path,
-        required=True,
-        help="Directory containing transformer/vae/clip_text/t5_text and tokenizer/tokenizer_2 directories.",
+        default=None,
+        help="Local directory containing transformer/vae/clip_text/t5_text and tokenizer/tokenizer_2 directories. If provided, --hf-repo is ignored.",
     )
     parser.add_argument("--prompt", type=str, required=True, help="Positive prompt text.")
     parser.add_argument("--negative-prompt", type=str, default=None, help="Optional negative prompt.")
@@ -631,8 +695,16 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 
+    # Determine checkpoint source
+    if args.checkpoint_dir is not None:
+        checkpoint_dir = args.checkpoint_dir
+        print(f"Using local checkpoint: {checkpoint_dir}")
+    else:
+        # Download from HuggingFace
+        checkpoint_dir = _download_flux_from_hf(args.hf_repo)
+
     loader = FluxModelLoader(
-        checkpoint_dir=args.checkpoint_dir,
+        checkpoint_dir=checkpoint_dir,
         verbose=args.verbose_loading,
     )
     conditioned = loader.prepare_conditioned_network(
