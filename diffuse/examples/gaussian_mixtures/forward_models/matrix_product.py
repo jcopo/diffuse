@@ -47,15 +47,6 @@ class MatrixProduct:
         """
         return self.A @ x
 
-    def restore(self, measured: Array, *args) -> Array:
-        """
-        Restore the input from the measured output x = A^T y
-
-        Args:
-            measured: Measured output.
-            *args: Additional arguments (not used in this implementation).
-
-        Returns:
-            Array: Result of restoring the input from the measured output.
-        """
+    def adjoint(self, measured: Array, *args) -> Array:
+        """Apply the adjoint operator: x = A^T y"""
         return self.A.T @ measured

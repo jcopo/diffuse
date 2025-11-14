@@ -36,11 +36,18 @@ dependencies = [
     "flax>=0.8.5",
     "chex>=0.1.86",
     "jaxtyping>=0.2.24",
+    "Pillow>=10.0.0",
+    "huggingface-hub>=0.20.0",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=6.0", "pytest-cov"]
 docs = ["sphinx", "sphinx-rtd-theme"]
+flux = [
+    "sentencepiece>=0.1.99",
+    "tokenizers>=0.15.0",
+    "orbax-checkpoint>=0.5.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/jcopo/diffuse"

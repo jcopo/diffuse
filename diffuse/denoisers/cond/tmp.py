@@ -59,7 +59,7 @@ class TMPDenoiser(CondDenoiser):
                 return self.model.tweedie(SDEState(x_, t), self.predictor.score).position
 
             def efficient(v):
-                restored_v = self.forward_model.restore(v, measurement_state)
+                restored_v = self.forward_model.adjoint(v, measurement_state)
                 _, tangents = jax.jvp(tweedie_fn, (x,), (restored_v,))
                 measured_tangents = self.forward_model.apply(tangents, measurement_state)
                 return scale * measured_tangents + self.forward_model.std**2 * v
@@ -68,7 +68,7 @@ class TMPDenoiser(CondDenoiser):
             b = y_meas - self.forward_model.apply(denoised, measurement_state)
 
             res, _ = jax.scipy.sparse.linalg.cg(efficient, b, maxiter=3)
-            restored_res = self.forward_model.restore(res, measurement_state)
+            restored_res = self.forward_model.adjoint(res, measurement_state)
             _, guidance = jax.jvp(tweedie_fn, (x,), (restored_res,))
             score_val = self.predictor.score(x, t)
 

@@ -76,7 +76,7 @@ class FPSDenoiser(CondDenoiser):
         sigma_t = self.model.noise_level(t_current)
         y_pred = self.forward_model.apply(position_current, measurement_state)
         residual = y_t - y_pred
-        guidance_score = self.forward_model.restore(residual, measurement_state) / (self.forward_model.std * sigma_t)
+        guidance_score = self.forward_model.adjoint(residual, measurement_state) / (self.forward_model.std * sigma_t)
 
         # Take unconditional integrator step (works with any integrator)
         integrator_state_uncond = self.integrator(state.integrator_state, self.predictor)
