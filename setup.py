@@ -9,5 +9,5 @@ setup(
     description="A package for diffusion models",
     long_description=open("README.md").read(),
     packages=find_packages(include=["diffuse", "diffuse.*"]),
-    python_requires=">=3.6",
+    python_requires=">=3.12",
 )
