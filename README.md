@@ -8,47 +8,105 @@ A Python package designed for research in diffusion-based generative modeling wi
 
 ## Quick Start
 
+### Unconditional Generation
+
 ```python
-from diffuse.diffusion.sde import SDE, LinearSchedule
-from diffuse.timer import VpTimer, HeunTimer
-from diffuse.integrator import EulerIntegrator, DDIMIntegrator
-from diffuse.denoisers.cond import DPSDenoiser
+import jax
+from diffuse import Flow, Predictor, Denoiser
+from diffuse.integrators import EulerIntegrator
+from diffuse.timer import VpTimer
 
-# Define SDE with noise schedule
-sde = SDE(beta=LinearSchedule(b_min=0.1, b_max=20.0, T=1.0))
-n_steps = 100
+# Define flow matching model
+flow = Flow(tf=1.0)
 
-# Choose timer
-timer = VpTimer(n_steps=n_steps, eps=0.001, tf=1.0)
-# timer = HeunTimer(n_steps=n_steps, rho=7.0, sigma_min=0.002, sigma_max=1.0)
+# Create predictor with your neural network
+predictor = Predictor(
+    model=flow,
+    network=network_fn,
+    prediction_type="velocity",  # or "noise", "sample"
+)
 
-# Timer-aware integrator
-#integrator = EulerIntegrator(sde=sde, timer=timer)
-integrator = DDIMIntegrator(sde=sde, timer=timer)
+# Setup timer and integrator
+timer = VpTimer(n_steps=100, eps=0.001, tf=1.0)
+integrator = EulerIntegrator(model=flow, timer=timer)
 
-# DPS with timer
-dps = DPSDenoiser(
-    sde=sde,
-    score=score_fn,
+# Create denoiser
+denoiser = Denoiser(
     integrator=integrator,
-    forward_model=forward_model
+    model=flow,
+    predictor=predictor,
+    x0_shape=(height, width, channels),
+)
+
+# Generate samples
+key = jax.random.PRNGKey(42)
+state, trajectory = denoiser.generate(
+    rng_key=key,
+    n_steps=100,
+    n_particles=10,
+    keep_history=False,
+)
+
+# Single denoising step
+next_state = denoiser.step(rng_key, state)  # x_t -> x_{t-1}
+```
+
+### Conditional Generation with DPS
+
+```python
+import jax
+from diffuse import Flow, Predictor
+from diffuse.integrators import EulerIntegrator
+from diffuse.denoisers import DPSDenoiser
+from diffuse.timer import VpTimer
+
+# Define flow matching model
+flow = Flow(tf=1.0)
+
+# Create predictor
+predictor = Predictor(
+    model=flow,
+    network=network_fn,
+    prediction_type="velocity",
+)
+
+# Setup timer and integrator
+timer = VpTimer(n_steps=100, eps=0.001, tf=1.0)
+integrator = EulerIntegrator(model=flow, timer=timer)
+
+# DPS denoiser for conditional sampling
+dps = DPSDenoiser(
+    integrator=integrator,
+    model=flow,
+    predictor=predictor,
+    forward_model=forward_model,
+    x0_shape=(height, width, channels),
 )
 
 # Generate conditional samples
-state, trajectory = dps.generate(key, measurement_state, n_steps, n_samples=10)
+key = jax.random.PRNGKey(42)
+state, trajectory = dps.generate(
+    rng_key=key,
+    measurement_state=measurement_state,
+    n_steps=100,
+    n_particles=10,
+)
 
-# Single step
-next_state = dps.step(rng_key, state, measurement_state) # x_t -> x_{t-1}
+# Single conditional step
+next_state = dps.step(rng_key, state, measurement_state)  # x_t -> x_{t-1}
 ```
 
 ## Features
 
-- **Flexible Noising process**: Support for various noise schedules and diffusion processes
-- **Timer-aware integration**: Advanced timing schemes for improved sampling
-- **Conditional sampling**: DPS (Diffusion Posterior Sampling) and other conditional methods
-- **Modular design**: Mix and match denoisers, integrators, timers, and forward models
-- **Research-focused**: Built for experimentation with new diffusion techniques
-- **Examples**: MNIST, Gaussian mixtures, and other applications
+- **Flow Matching & Diffusion**: Support for both flow-based models and SDE-based diffusion processes
+- **Flexible Prediction Types**: Velocity, noise, and sample prediction for different model architectures
+- **Timer-aware Integration**: Advanced timing schemes (VpTimer, HeunTimer, FluxTimer) for improved sampling
+- **Multiple Integrators**: EulerIntegrator, DDIMIntegrator, DPM++, Heun, and more
+- **Conditional Sampling**: DPS (Diffusion Posterior Sampling) for inverse problems and conditioning
+- **Modular Design**: Mix and match models, predictors, denoisers, integrators, and timers
+- **JAX-Powered**: Efficient computation with automatic differentiation and JIT compilation
+- **Research-Focused**: Built for experimentation with new diffusion and flow matching techniques
+- **Examples**: MNIST, Gaussian mixtures, text-to-image generation, and more
 
 ## Installation
 
