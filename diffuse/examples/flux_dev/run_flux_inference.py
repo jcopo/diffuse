@@ -131,12 +131,17 @@ class FluxModelLoader:
             self.device = device
         else:
             # Try GPU first, then TPU, then fall back to CPU
-            gpu_devices = jax.devices("gpu")
-            if gpu_devices:
+            try:
+                gpu_devices = jax.devices("gpu")
                 self.device = gpu_devices[0]
-            else:
-                tpu_devices = jax.devices("tpu")
-                self.device = tpu_devices[0] if tpu_devices else self.cpu_device
+            except RuntimeError:
+                # GPU not available, try TPU
+                try:
+                    tpu_devices = jax.devices("tpu")
+                    self.device = tpu_devices[0]
+                except RuntimeError:
+                    # TPU not available, fall back to CPU
+                    self.device = self.cpu_device
 
         self._log(f"[flux-loader] Host CPU device: {self.cpu_device.platform}:{self.cpu_device.id}")
         self._log(f"[flux-loader] Active compute device: {self.device.platform}:{self.device.id}")
