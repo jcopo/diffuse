@@ -111,7 +111,12 @@ next_state = dps.step(rng_key, state, measurement_state)  # x_t -> x_{t-1}
 ## Installation
 
 ```bash
-pip install -e .
+pip install diffuse-jax
+```
+or with uv
+
+```bash
+uv add diffuse-jax
 ```
 
 ## Examples
