@@ -130,8 +130,13 @@ class FluxModelLoader:
         if device is not None:
             self.device = device
         else:
+            # Try GPU first, then TPU, then fall back to CPU
             gpu_devices = jax.devices("gpu")
-            self.device = gpu_devices[0] if gpu_devices else self.cpu_device
+            if gpu_devices:
+                self.device = gpu_devices[0]
+            else:
+                tpu_devices = jax.devices("tpu")
+                self.device = tpu_devices[0] if tpu_devices else self.cpu_device
 
         self._log(f"[flux-loader] Host CPU device: {self.cpu_device.platform}:{self.cpu_device.id}")
         self._log(f"[flux-loader] Active compute device: {self.device.platform}:{self.device.id}")
@@ -189,6 +194,10 @@ class FluxModelLoader:
         dtype_name = config.get("dtype") or config.get("param_dtype") or "float32"
         self.transformer_dtype = jnp.dtype(dtype_name)
         self.transformer_in_channels = int(config.get("in_channels", 64))
+
+        # TPU optimization hint
+        if self.device.platform == "tpu" and self.transformer_dtype == jnp.float32:
+            self._log("[flux-loader] TPU detected with float32 - consider using bfloat16 for better performance")
 
         self._image_id_cache: dict[tuple[int, int], jax.Array] = {}
 
