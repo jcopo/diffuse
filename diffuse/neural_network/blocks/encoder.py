@@ -51,10 +51,10 @@ class Encoder(nnx.Module):
         )
 
         in_ch_mult = (1,) + tuple(self.ch_mult)
-        blocks_down = []
+        blocks_down = nnx.List([])
         block_in = self.ch
         for i_level in range(num_resolutions):
-            block = []
+            block = nnx.List([])
             block_in = self.ch * in_ch_mult[i_level]
             block_out = self.ch * self.ch_mult[i_level]
             for _ in range(self.num_res_blocks):
@@ -80,7 +80,7 @@ class Encoder(nnx.Module):
                         rngs=rngs,
                     )
                 )
-            blocks_down += block
+            blocks_down.extend(block)
 
         self.down = nnx.Sequential(*blocks_down)
 

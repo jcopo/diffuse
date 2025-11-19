@@ -11,7 +11,7 @@ authors = [
 description = "A research-oriented package for diffusion-based generative modeling with modular components"
 readme = "README.md"
 license = {text = "Apache-2.0"}
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -21,6 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 keywords = ["diffusion", "generative-models", "machine-learning", "jax", "research"]
@@ -41,7 +42,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=6.0", "pytest-cov"]
+dev = [
+    "pytest>=6.0",
+    "pytest-cov",
+    "pytest-xdist",
+    "nbmake>=1.5.0",
+]
 docs = [
     "sphinx>=7.1.0",
     "sphinx-book-theme>=1.0.0",

@@ -69,9 +69,9 @@ class Decoder(nnx.Module):
 
         self.mid = nnx.Sequential(conv_z_in, res_block_mid_in, mid_attn, res_block_mid_out)
 
-        blocks_up = []
+        blocks_up = nnx.List([])
         for i_level in reversed(range(num_resolutions)):
-            block = []
+            block = nnx.List([])
             block_out = ch * ch_mult[i_level]
             for _ in range(num_res_blocks + 1):
                 block.append(
@@ -98,7 +98,7 @@ class Decoder(nnx.Module):
                         rngs=rngs,
                     )
                 )
-            blocks_up += block
+            blocks_up.extend(block)
 
         self.up = nnx.Sequential(*blocks_up)
 

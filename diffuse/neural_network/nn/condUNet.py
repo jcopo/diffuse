@@ -87,7 +87,7 @@ class CondUNet2D(nnx.Module):
             dtype=dtype,
             rngs=rngs,
         )
-        blocks_down = [TimestepEmbedSequential(conv_in)]
+        blocks_down = nnx.List([TimestepEmbedSequential(conv_in)])
 
         input_block_channels = [current_ch]
         ds = 1
@@ -171,7 +171,7 @@ class CondUNet2D(nnx.Module):
         )
 
         # up
-        blocks_up = []
+        blocks_up = nnx.List([])
         for level, mult in reversed(list(enumerate(ch_mult))):
             for i in range(num_res_blocks + 1):
                 ich = input_block_channels.pop()
