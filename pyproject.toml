@@ -44,15 +44,17 @@ dependencies = [
 dev = ["pytest>=6.0", "pytest-cov"]
 docs = [
     "sphinx>=7.1.0",
-    "sphinx-rtd-theme>=1.3.0",
+    "sphinx-book-theme>=1.0.0",
     "sphinx-autodoc-typehints>=1.24.0",
     "sphinx-copybutton>=0.5.2",
-    "myst-parser>=2.0.0",
-    "nbsphinx>=0.9.0",
-    "ipython>=8.0.0",
-    "pandoc>=2.0",
-    "sphinxext-opengraph>=0.8.2",
     "sphinx-design>=0.5.0",
+    "sphinx-togglebutton>=0.3.0",
+    "myst-parser>=2.0.0",
+    "myst-nb>=1.0.0",
+    "ipython>=8.0.0",
+    "sphinxcontrib-tikz>=0.4.0",
+    "sphinxcontrib-bibtex>=2.6.0",
+    "sphinxext-opengraph>=0.8.2",
 ]
 flux = [
     "sentencepiece>=0.1.99",
