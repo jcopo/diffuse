@@ -32,7 +32,7 @@ def run_command(cmd, check=True):
 def install_deps():
     """Install documentation dependencies."""
     print("Installing documentation dependencies...")
-    return run_command([sys.executable, "-m", "pip", "install", "-r", "requirements-docs.txt"])
+    return run_command([sys.executable, "-m", "pip", "install", "-e", "..[docs]"])
 
 
 def clean():

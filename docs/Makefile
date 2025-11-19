@@ -27,7 +27,7 @@ linkcheck:
 	@$(SPHINXBUILD) -b linkcheck "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 
 install-deps:
-	pip install -r requirements-docs.txt
+	pip install -e "..[docs]"
 
 # Catch-all target: route all unknown targets to Sphinx-build using the -M option
 %: Makefile
