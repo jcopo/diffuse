@@ -125,3 +125,16 @@ See the `examples/` directory for implementations including:
 - MNIST digit generation
 - Gaussian mixture modeling
 - Conditional sampling demonstrations
+
+## Citation
+
+If you use Diffuse in your research, please cite the library:
+
+```bibtex
+@software{diffuse2024,
+  title = {Diffuse: A modular diffusion model library},
+  author = {Iollo, J., Oudoumanessah G.},
+  year = {2025},
+  url = {https://github.com/jcopo/diffuse}
+}
+```

@@ -97,17 +97,19 @@ See the :doc:`quickstart` guide for a complete tutorial.
    mnist_tutorial
    flux_tutorial
 
-.. toctree::
-   :maxdepth: 2
-   :caption: API Reference
+Citation
+--------
 
-   api/diffusion
-   api/integrators
-   api/denoiser
-   api/cond_denoisers
-   api/neural_networks
-   api/timer
-   api/forward_models
+If you use Diffuse in your research, please cite the library:
+
+.. code-block:: bibtex
+
+   @software{diffuse2024,
+     title = {Diffuse: A modular diffusion model library},
+     author = {Iollo, J., Oudoumanessah G.},
+     year = {2025},
+     url = {https://github.com/jcopo/diffuse}
+   }
 
 
 
