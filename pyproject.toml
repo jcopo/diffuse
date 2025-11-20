@@ -3,7 +3,7 @@ requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "diffuz"
+name = "diffuse-jax"
 version = "0.1.0"
 authors = [
     {name = "Jacopo Iollo", email = "jacopo.iollo@inria.fr"},
@@ -39,6 +39,7 @@ dependencies = [
     "jaxtyping>=0.2.24",
     "Pillow>=10.0.0",
     "huggingface-hub>=0.20.0",
+    "myst-nb>=1.3.0",
 ]
 
 [project.optional-dependencies]
@@ -80,3 +81,8 @@ include = ["diffuse*"]
 
 [tool.setuptools.package-data]
 diffuse = ["*.py"]
+
+[dependency-groups]
+dev = [
+    "ty>=0.0.1a27",
+]
