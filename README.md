@@ -6,6 +6,10 @@
 
 A Python package designed for research in diffusion-based generative modeling with modular components that can be easily swapped and combined for experimentation.
 
+### 🎉 New Update
+We now have **complete support for the whole FLUX pipeline**. 
+Check out the [Flux Tutorial](https://diffuse.readthedocs.io/en/latest/flux_tutorial.html) to see how to run FLUX.1-dev with 4 different integrators (DDIM, Euler, Heun, DPM++2S) in under 50 lines of code.
+
 ## Quick Start
 
 ### Unconditional Generation
