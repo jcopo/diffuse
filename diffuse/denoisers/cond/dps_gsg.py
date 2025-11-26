@@ -18,25 +18,15 @@ from diffuse.base_forward_model import MeasurementState
 class DPSGSGDenoiser(CondDenoiser):
     """Zero-order DPS using Gaussian Smoothed Gradient (GSG) estimation.
 
-    Derivative-free variant of DPS that estimates gradients via finite differences
-    with Gaussian perturbations. Useful for black-box or non-differentiable forward models.
-
-    Gradient estimation:
-        Central:  ∇L ≈ (1/(2Nμ)) Σᵢ uᵢ (L(x + μuᵢ) - L(x - μuᵢ))
-        Forward:  ∇L ≈ (1/(Nμ)) Σᵢ uᵢ (L(x + μuᵢ) - L(x))
-
-    where uᵢ ~ N(0, I) are random perturbation directions.
+    Derivative-free DPS for black-box or non-differentiable forward models.
+    Estimates gradients via finite differences with Gaussian perturbations.
 
     Args:
-        integrator: Numerical integrator for the reverse SDE
-        model: Diffusion model defining the forward process
-        predictor: Score/noise/velocity predictor
-        forward_model: Forward measurement operator
         num_queries: Number of perturbation samples for gradient estimation
         mu: Perturbation scale (smoothing factor)
         zeta: Gradient step size
         epsilon: Numerical stability constant
-        central_diff: Use central differences if True, else forward differences
+        central_diff: Use central differences (True) or forward differences (False)
     """
 
     num_queries: int = 64
@@ -59,7 +49,6 @@ class DPSGSGDenoiser(CondDenoiser):
         x0_hat: Array,
         measurement_state: MeasurementState,
     ) -> tuple[Array, Array]:
-        """Central difference gradient estimate."""
         y_meas = measurement_state.y
         perturbations = jax.random.normal(rng_key, (self.num_queries, *x0_hat.shape))
 
@@ -83,7 +72,6 @@ class DPSGSGDenoiser(CondDenoiser):
         x0_hat: Array,
         measurement_state: MeasurementState,
     ) -> tuple[Array, Array]:
-        """Forward difference gradient estimate."""
         y_meas = measurement_state.y
         perturbations = jax.random.normal(rng_key, (self.num_queries, *x0_hat.shape))
 
@@ -111,6 +99,7 @@ class DPSGSGDenoiser(CondDenoiser):
         position_current = state.integrator_state.position
         t_current = self.integrator.timer(state.integrator_state.step)
 
+        # estimate gradient via GSG
         x0_hat = self.model.tweedie(SDEState(position_current, t_current), self.predictor.score).position
 
         if self.central_diff:
@@ -118,13 +107,14 @@ class DPSGSGDenoiser(CondDenoiser):
         else:
             gradient, loss_val = self._estimate_gradient_forward(key_gsg, x0_hat, measurement_state)
 
-        # Scale gradient from x0 to xt space (Tweedie Jacobian ≈ 1/α_t)
+        # scale gradient from x0 to xt space
         alpha_t = self.model.signal_level(t_current)
-        alpha_t_clipped = jnp.maximum(alpha_t, 0.1)  # prevent explosion at t≈1
+        alpha_t_clipped = jnp.maximum(alpha_t, 0.1)
         gradient_xt = gradient / alpha_t_clipped
 
         zeta = self.zeta / (jnp.sqrt(loss_val) + self.epsilon)
 
+        # apply correction
         integrator_state_uncond = self.integrator(state.integrator_state, self.predictor)
         position_corrected = integrator_state_uncond.position - zeta * gradient_xt
 

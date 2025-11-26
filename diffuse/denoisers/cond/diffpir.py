@@ -20,24 +20,14 @@ from diffuse.integrator.base import IntegratorState
 class DiffPIRDenoiser(CondDenoiser):
     """Plug-and-Play Diffusion for Image Restoration (DiffPIR).
 
-    Alternates between diffusion denoising and data-fidelity steps:
-    1. Denoise to get x̂₀
-    2. Data-fidelity step (proximal for linear, gradient for nonlinear)
-    3. Add noise for next step
-
-    Data-fidelity regularization: ρ = 2λσₙ² / σₜ²
-    - Linear:    x̂₀ = (AᵀA + ρI)⁻¹(Aᵀy + ρx̂₀_diffusion)
-    - Nonlinear: x̂₀ = x̂₀_diffusion - (1/ρ)∇||Ax̂₀ - y||²
+    Alternates: denoise → data-fidelity → add noise.
+    Regularization: ρ = 2λσₙ² / σₜ²
 
     Args:
-        integrator: Numerical integrator for the reverse SDE
-        model: Diffusion model defining the forward process
-        predictor: Score/noise/velocity predictor
-        forward_model: Forward measurement operator
         sigma_n: Measurement noise std
         lamb: Regularization strength (prior vs likelihood balance)
         xi: Noise injection ratio (0=deterministic, 1=stochastic)
-        linear: Use proximal step (linear operator) or gradient step
+        linear: Use proximal step (True) or gradient step (False)
         cg_tol: CG solver tolerance (linear mode)
         cg_maxiter: CG max iterations (linear mode)
     """
@@ -58,7 +48,6 @@ class DiffPIRDenoiser(CondDenoiser):
             raise ValueError("xi must be in [0, 1].")
 
     def _compute_rho(self, sigma_t: Array) -> Array:
-        """ρ = 2λσₙ² / σₜ², clamped to [0.01, 100] for stability."""
         rho = 2.0 * self.lamb * (self.sigma_n**2) / (sigma_t**2 + 1e-8)
         return jnp.clip(rho, 0.01, 100.0)
 
@@ -68,7 +57,7 @@ class DiffPIRDenoiser(CondDenoiser):
         measurement_state: MeasurementState,
         rho: Array,
     ) -> Array:
-        """Solve (AᵀA + ρI)x = Aᵀy + ρx̂₀_diffusion via CG."""
+        # solve (AᵀA + ρI)x = Aᵀy + ρx̂₀
         y = measurement_state.y
         Aty = self.forward_model.adjoint(y, measurement_state)
         rhs = Aty + rho * x0_diffusion
@@ -80,7 +69,7 @@ class DiffPIRDenoiser(CondDenoiser):
 
         sol, info = cg(matvec, rhs, x0=x0_diffusion, tol=self.cg_tol, maxiter=self.cg_maxiter)
 
-        # Fallback if CG fails
+        # fallback if CG fails
         sol = jnp.where(jnp.isfinite(sol), sol, x0_diffusion)
         sol = jax.lax.cond(info == 0, lambda _: sol, lambda _: x0_diffusion, operand=None)
         return sol
@@ -91,7 +80,6 @@ class DiffPIRDenoiser(CondDenoiser):
         measurement_state: MeasurementState,
         rho: Array,
     ) -> Array:
-        """x̂₀ = x̂₀_diffusion - (1/ρ)∇||Ax̂₀ - y||²."""
         y = measurement_state.y
 
         def data_fidelity_loss(x: Array) -> Array:
@@ -101,7 +89,7 @@ class DiffPIRDenoiser(CondDenoiser):
         gradient = jax.grad(data_fidelity_loss)(x0_diffusion)
         update = gradient / rho
 
-        # Clip update to at most 2x signal magnitude
+        # clip update for stability
         update_norm = jnp.linalg.norm(update) + 1e-8
         x0_norm = jnp.linalg.norm(x0_diffusion) + 1e-8
         update = update * jnp.minimum(1.0, 2.0 * x0_norm / update_norm)
@@ -124,22 +112,22 @@ class DiffPIRDenoiser(CondDenoiser):
         alpha_next = self.model.signal_level(t_next)
         sigma_next = self.model.noise_level(t_next)
 
+        # 1. denoise
         x_t_normalized = x_t / (alpha_t + 1e-8)
         x0_diffusion = self.model.tweedie(SDEState(x_t, t_current), self.predictor.score).position
 
-        # Data-fidelity with rho based on effective noise level
+        # 2. data-fidelity step
         rho = self._compute_rho(sigma_t * alpha_t)
         if self.linear:
             x0_hat = self._linear_proximal_step(x0_diffusion, measurement_state, rho)
         else:
             x0_hat = self._nonlinear_gradient_step(x0_diffusion, measurement_state, rho)
 
-        # DiffPIR update: x_next = x̂₀ + σ_next * (√ξ * noise + √(1-ξ) * effect)
+        # 3. add noise for next step
         effect = (x_t_normalized - x0_hat) / (sigma_t + 1e-8)
         noise = jax.random.normal(rng_key, x0_hat.shape, dtype=x0_hat.dtype)
         x_next = x0_hat + sigma_next * (jnp.sqrt(self.xi) * noise + jnp.sqrt(1.0 - self.xi) * effect)
 
-        # Scale by α_next except at final step
         is_final_step = sigma_next < 1e-4
         x_next = jnp.where(is_final_step, x_next, x_next * alpha_next)
 

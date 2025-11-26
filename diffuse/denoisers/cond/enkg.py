@@ -18,31 +18,20 @@ from diffuse.base_forward_model import MeasurementState
 class EnKGDenoiser(CondDenoiser):
     """Ensemble Kalman Guidance (EnKG) conditional denoiser.
 
-    Derivative-free method for diffusion-based inverse problems using ensemble
-    Kalman updates. At each diffusion step:
-
-    1. Estimate x̂₀ for each particle via multi-step ODE denoising
-    2. Compute predicted measurements ŷ = A(x̂₀)
-    3. Apply Kalman update: x ← x - lr · C · δx where C captures measurement correlations
-    4. Take diffusion step with integrator
-
-    Does NOT require gradients of the forward model.
+    Derivative-free method using ensemble Kalman updates. Does NOT require
+    gradients of the forward model.
 
     Args:
-        integrator: Numerical integrator for the reverse SDE
-        model: Diffusion model defining the forward process
-        predictor: Predictor for score/noise/velocity
-        forward_model: Forward measurement operator
         guidance_scale: Base learning rate (γ) for Kalman updates
-        lr_min_ratio: Min LR ratio (r) for decay schedule: γ(1-r)(N-i)/N + r
-        denoising_steps: Euler ODE steps for x̂₀ estimation. Set equal to 1 for tweedie denoising.
+        lr_min_ratio: Min LR ratio (r) for decay: γ(1-r)(N-i)/N + r
+        denoising_steps: Euler ODE steps for x̂₀ estimation (1 = Tweedie)
 
     Reference: https://github.com/devzhk/enkg-pytorch
     """
 
-    guidance_scale: float = 0.5  # base LR (γ)
-    lr_min_ratio: float = 0.0  # min LR ratio (r) for decay: γ(1-r)(N-i)/N + r
-    denoising_steps: int = 15  # Euler steps for x̂₀ estimation
+    guidance_scale: float = 0.5
+    lr_min_ratio: float = 0.0
+    denoising_steps: int = 15
 
     def __post_init__(self):
         self.resample = False
@@ -50,7 +39,6 @@ class EnKGDenoiser(CondDenoiser):
             raise ValueError("guidance_scale must be strictly positive.")
 
     def _denoise_to_x0(self, x_t: Array, t_start: float) -> Array:
-        """Denoise x_t to x̂₀ via Euler ODE integration."""
         eps = 1e-3
         n = self.denoising_steps
 
@@ -69,14 +57,13 @@ class EnKGDenoiser(CondDenoiser):
         observation: Array,
         lr: float,
     ) -> Array:
-        """Apply ensemble Kalman update to particles."""
         N = particles.shape[0]
 
         # deviations from ensemble mean
         x_diff = particles - jnp.mean(particles, axis=0, keepdims=True)
         y_diff = measurements - jnp.mean(measurements, axis=0, keepdims=True)
 
-        # measurement error: gradient of 0.5 * ||ŷ - y||²
+        # measurement error: ∇ (0.5 ||ŷ - y||²)
         y_err = measurements - observation
 
         # coef[i,j] = <y_err[i], y_diff[j]> / N
@@ -94,7 +81,6 @@ class EnKGDenoiser(CondDenoiser):
         state: CondDenoiserState,
         measurement_state: MeasurementState,
     ) -> CondDenoiserState:
-        """Single unconditional diffusion step."""
         integrator_state_next = self.integrator(state.integrator_state, self.predictor)
         return state._replace(integrator_state=integrator_state_next)
 
@@ -106,7 +92,6 @@ class EnKGDenoiser(CondDenoiser):
         n_particles: int,
         keep_history: bool = False,
     ):
-        """Generate samples: Kalman guidance BEFORE each diffusion step."""
         rng_key, rng_key_start = jax.random.split(rng_key)
         rndm_start = jax.random.normal(rng_key_start, (n_particles, *self.x0_shape))
 
@@ -114,6 +99,7 @@ class EnKGDenoiser(CondDenoiser):
         state = jax.vmap(self.init, in_axes=(0, 0, None))(rndm_start, keys, n_particles)
 
         def body_fun(state: CondDenoiserState, key: PRNGKeyArray):
+            # kalman guidance → diffusion step
             state_guided = self._apply_kalman_guidance(state, measurement_state, n_steps)
             keys = jax.random.split(key, state_guided.integrator_state.position.shape[0])
             state_next = jax.vmap(self.step, in_axes=(0, 0, None))(keys, state_guided, measurement_state)
@@ -131,15 +117,15 @@ class EnKGDenoiser(CondDenoiser):
         measurement_state: MeasurementState,
         n_steps: int,
     ) -> CondDenoiserState:
-        """Apply Kalman guidance to all particles."""
         particles = state.integrator_state.position
         step_idx = state.integrator_state.step[0]
         t_current = self.integrator.timer(step_idx)
 
-        # denoise → measure → update
+        # denoise → measure → kalman update
         x0_estimates = jax.vmap(lambda x: self._denoise_to_x0(x, t_current))(particles)
         measurements = jax.vmap(lambda x: self.forward_model.apply(x, measurement_state))(x0_estimates)
-        # decaying LR: γ(1-r)(N-i)/N + r
+
+        # decaying LR schedule
         r = self.lr_min_ratio
         lr = self.guidance_scale * (1 - r) * (n_steps - step_idx) / n_steps + r
         particles_updated = self._ensemble_kalman_update(particles, measurements, measurement_state.y, lr)
