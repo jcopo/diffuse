@@ -52,8 +52,10 @@ def pmap_unshaping(x: PyTree):
 
 def pmapper(fn, x: T, batch_size: int = None, **kwargs) -> T:
     fn = partial(fn, **kwargs)
+
     def mapped_fn(x_):
         return jax.lax.map(f=fn, xs=x_, batch_size=batch_size)
+
     in_axes = jax.tree_util.tree_map(lambda _: 0, x)
 
     in_axes = (in_axes,)

@@ -5,6 +5,9 @@ from diffuse.denoisers.cond.base import CondDenoiser, CondDenoiserState
 from diffuse.denoisers.cond.dps import DPSDenoiser
 from diffuse.denoisers.cond.tmp import TMPDenoiser
 from diffuse.denoisers.cond.fps import FPSDenoiser
+from diffuse.denoisers.cond.dps_gsg import DPSGSGDenoiser
+from diffuse.denoisers.cond.diffpir import DiffPIRDenoiser
+from diffuse.denoisers.cond.enkg import EnKGDenoiser
 
 __all__ = [
     "CondDenoiser",
@@ -12,4 +15,7 @@ __all__ = [
     "DPSDenoiser",
     "TMPDenoiser",
     "FPSDenoiser",
+    "DPSGSGDenoiser",
+    "DiffPIRDenoiser",
+    "EnKGDenoiser",
 ]

@@ -183,12 +183,14 @@ def compute_mmd(samples_x, samples_y, kernel="rbf", gamma=None, **kernel_kwargs)
 
     # Select kernel function
     if kernel == "rbf":
+
         def kernel_func(x, y):
             return rbf_kernel(x, y, gamma)
     elif kernel == "poly" or kernel == "polynomial":
         degree = kernel_kwargs.get("degree", 3)
         gamma = gamma or 1.0
         coef0 = kernel_kwargs.get("coef0", 1.0)
+
         def kernel_func(x, y):
             return polynomial_kernel(x, y, degree, gamma, coef0)
     elif kernel == "linear":

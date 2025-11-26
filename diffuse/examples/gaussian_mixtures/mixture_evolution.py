@@ -57,6 +57,7 @@ def make_mixture():
 def run_forward_evolution_animation(sde, init_mix_state, num_frames=100, interval=200):
     key = jax.random.PRNGKey(666)
     pdf = partial(rho_t, init_mix_state=init_mix_state, sde=sde)
+
     def score(x, t):
         return jax.grad(pdf)(x, t) / pdf(x, t)
 
@@ -120,6 +121,7 @@ def run_forward_evolution_animation(sde, init_mix_state, num_frames=100, interva
 def run_backward_evolution_animation(sde, init_mix_state, num_frames=100, interval=200):
     key = jax.random.PRNGKey(666)
     pdf = partial(rho_t, init_mix_state=init_mix_state, sde=sde)
+
     def score(x, t):
         return jax.grad(pdf)(x, t) / pdf(x, t)
 

@@ -7,7 +7,6 @@ import argparse
 import gc
 import json
 import sys
-import tempfile
 from contextlib import contextmanager
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -684,9 +683,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--sigma-shift",
         type=float,
         default=None,
-        help=(
-            "Flux Möbius shift parameter. Leave unset to use the resolution-dependent schedule (≈0.5 @ 256 tokens → 1.15 @ 4096 tokens)."
-        ),
+        help=("Flux Möbius shift parameter. Leave unset to use the resolution-dependent schedule (≈0.5 @ 256 tokens → 1.15 @ 4096 tokens)."),
     )
     parser.add_argument("--guidance-scale", type=float, default=4.0, help="Classifier-free guidance scale.")
     parser.add_argument("--seed", type=int, default=0, help="PRNG seed.")

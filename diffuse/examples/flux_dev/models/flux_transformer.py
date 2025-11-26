@@ -18,6 +18,7 @@ from .flux_blocks import FluxDoubleBlock, FluxFinalLayer, FluxSingleBlock, FluxT
 @dataclass
 class FluxTransformerOutput:
     """Output of the FLUX Transformer model."""
+
     output: Array
 
 
