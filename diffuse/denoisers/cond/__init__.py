@@ -9,6 +9,8 @@ from diffuse.denoisers.cond.dps_gsg import DPSGSGDenoiser
 from diffuse.denoisers.cond.diffpir import DiffPIRDenoiser
 from diffuse.denoisers.cond.enkg import EnKGDenoiser
 from diffuse.denoisers.cond.pnpdm import PnPDMDenoiser
+from diffuse.denoisers.cond.daps import DAPSDenoiser
+from diffuse.denoisers.cond.pigdm import PiGDMDenoiser
 
 __all__ = [
     "CondDenoiser",
@@ -20,4 +22,6 @@ __all__ = [
     "DiffPIRDenoiser",
     "EnKGDenoiser",
     "PnPDMDenoiser",
+    "DAPSDenoiser",
+    "PiGDMDenoiser",
 ]
