@@ -252,7 +252,7 @@ In order to generate new samples :math:`x_0` from pure noise :math:`x_T`, diffus
 
 Most ``Integrator`` defined in the literature necessitate :math:`f` and :math:`g` or :math:`\alpha` and :math:`\sigma` to be defined. These attributes are defined in a ``DiffusionModel`` class.
 
-The time discretization used in the ``Denoiser`` is defined in the ``Timer`` class. Possible choices of ``Timer`` are: ``LinearTimer`` or ``CosineTimer``.
+The time discretization used in the ``Denoiser`` is defined in the ``Timer`` class. Possible choices of ``Timer`` are: ``VpTimer``, ``HeunTimer``, or ``DDIMTimer``.
 
 We also provide a ``CondDenoiser`` class to sample conditionally on a measurement :math:`y` to generate samples :math:`x_0 \sim p(x_0|y)`.
 

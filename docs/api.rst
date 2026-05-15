@@ -16,7 +16,7 @@ Core Components
   Unconditional denoising algorithms for sampling
 
 **Conditional Denoisers**
-  Conditional sampling methods (DPS, FPS, TMP)
+  Conditional sampling methods (DPS, FPS, TMP, DAPS, PiGDM, PnPDM, DPS-GSG, EnKG, DiffPIR)
 
 Supporting Components
 ---------------------

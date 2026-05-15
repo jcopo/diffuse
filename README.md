@@ -16,8 +16,10 @@ Check out the [Flux Tutorial](https://diffuse.readthedocs.io/en/latest/flux_tuto
 
 ```python
 import jax
-from diffuse import Flow, Predictor, Denoiser
-from diffuse.integrators import EulerIntegrator
+from diffuse.diffusion.sde import Flow
+from diffuse.predictor import Predictor
+from diffuse.denoisers.denoiser import Denoiser
+from diffuse.integrator.deterministic import EulerIntegrator
 from diffuse.timer import VpTimer
 
 # Define flow matching model
@@ -27,7 +29,7 @@ flow = Flow(tf=1.0)
 predictor = Predictor(
     model=flow,
     network=network_fn,
-    prediction_type="velocity",  # or "noise", "sample"
+    prediction_type="velocity",  # or "noise", "score", "x0"
 )
 
 # Setup timer and integrator
@@ -52,16 +54,17 @@ state, trajectory = denoiser.generate(
 )
 
 # Single denoising step
-next_state = denoiser.step(rng_key, state)  # x_t -> x_{t-1}
+next_state = denoiser.step(state)  # x_t -> x_{t-1}
 ```
 
 ### Conditional Generation with DPS
 
 ```python
 import jax
-from diffuse import Flow, Predictor
-from diffuse.integrators import EulerIntegrator
-from diffuse.denoisers import DPSDenoiser
+from diffuse.diffusion.sde import Flow
+from diffuse.predictor import Predictor
+from diffuse.integrator.deterministic import EulerIntegrator
+from diffuse.denoisers.cond import DPSDenoiser
 from diffuse.timer import VpTimer
 
 # Define flow matching model
@@ -104,9 +107,9 @@ next_state = dps.step(rng_key, state, measurement_state)  # x_t -> x_{t-1}
 
 - **Flow Matching & Diffusion**: Support for both flow-based models and SDE-based diffusion processes
 - **Flexible Prediction Types**: Velocity, noise, and sample prediction for different model architectures
-- **Timer-aware Integration**: Advanced timing schemes (VpTimer, HeunTimer, FluxTimer) for improved sampling
+- **Timer-aware Integration**: Advanced timing schemes (VpTimer, HeunTimer, DDIMTimer) for improved sampling
 - **Multiple Integrators**: EulerIntegrator, DDIMIntegrator, DPM++, Heun, and more
-- **Conditional Sampling**: DPS (Diffusion Posterior Sampling) for inverse problems and conditioning
+- **Conditional Sampling**: DPS, FPS, TMP, DAPS, PiGDM, PnPDM, DPS-GSG, EnKG, and DiffPIR for inverse problems and conditioning
 - **Modular Design**: Mix and match models, predictors, denoisers, integrators, and timers
 - **JAX-Powered**: Efficient computation with automatic differentiation and JIT compilation
 - **Research-Focused**: Built for experimentation with new diffusion and flow matching techniques

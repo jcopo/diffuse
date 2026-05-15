@@ -36,7 +36,8 @@ experimenting with diffusion models.
     .. grid-item-card:: 🎯 Conditional Generation
         :text-align: center
 
-        Built-in support for DPS, FPS, and other guided generation methods.
+        Built-in support for DPS, FPS, TMP, DAPS, PiGDM, PnPDM,
+        DPS-GSG, EnKG, and DiffPIR.
 
 Quick Installation
 ------------------
@@ -61,25 +62,27 @@ Here's a minimal pipeline example:
    from diffuse.diffusion.sde import LinearSchedule, SDE
    from diffuse.timer import VpTimer
    from diffuse.integrator.deterministic import DDIMIntegrator
+   from diffuse.predictor import Predictor
    from diffuse.denoisers.denoiser import Denoiser
 
    # 1. Define components
    beta = LinearSchedule(b_min=0.02, b_max=7.0, t0=0.0, T=1.0)
    sde = SDE(beta=beta)
    timer = VpTimer(eps=1e-5, tf=1.0, n_steps=50)
-   integrator = DDIMIntegrator(sde=sde, timer=timer)
+   integrator = DDIMIntegrator(model=sde, timer=timer)
+   predictor = Predictor(model=sde, network=network_fn, prediction_type="score")
 
    # 2. Create pipeline
    denoiser = Denoiser(
        integrator=integrator,
-       sde=sde,
-       score=score_function,  # Learned score function
-       x0_shape=data_dim      # Shape of data samples
+       model=sde,
+       predictor=predictor,
+       x0_shape=data_dim,   # Shape of data samples
    )
 
    # 3. Generate samples
    key = jax.random.PRNGKey(0)
-   final_state, _ = denoiser.generate(key, n_steps=50, n_samples=100)
+   final_state, _ = denoiser.generate(key, n_steps=50, n_particles=100)
    samples = final_state.integrator_state.position
 
    print(f"✓ Generated {samples.shape} samples")
@@ -93,7 +96,6 @@ See the :doc:`quickstart` guide for a complete tutorial.
    quickstart
    diffusion_crash_course
    diffusion_tutorial
-   new_mixtures
    mnist_tutorial
    flux_tutorial
 

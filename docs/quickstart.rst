@@ -122,26 +122,36 @@ Different integrators offer trade-offs between speed and quality:
    from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
 
    # Fast but lower quality
-   euler = EulerIntegrator(sde=sde, timer=timer)
+   euler = EulerIntegrator(model=sde, timer=timer)
 
    # Good balance of speed and quality
-   ddim = DDIMIntegrator(sde=sde, timer=timer)
+   ddim = DDIMIntegrator(model=sde, timer=timer)
 
    # High quality, slower
-   dpm = DPMpp2sIntegrator(sde=sde, timer=timer)
+   dpm = DPMpp2sIntegrator(model=sde, timer=timer)
 
    # Stochastic (adds randomness)
-   euler_maruyama = EulerMaruyamaIntegrator(sde=sde, timer=timer)
+   euler_maruyama = EulerMaruyamaIntegrator(model=sde, timer=timer)
 
-Score Function
---------------
+Predictor and Network
+---------------------
 
-The score function :math:`\nabla_x\log p_t(x)` predicts the gradient of the log-density of the noisy data distribution at time :math:`t`. This is the key component that enables the reverse diffusion process. In practice, this is learned by a neural network and can be loaded using the nnx library the following way:
+The score function :math:`\nabla_x\log p_t(x)` predicts the gradient of the log-density of the noisy data distribution at time :math:`t`. This is the key component that enables the reverse diffusion process. In practice, a neural network is trained to predict one of several equivalent quantities — score, noise :math:`\varepsilon`, velocity, or :math:`x_0`. The ``Predictor`` wraps the network with the chosen ``prediction_type`` and converts between targets internally:
+
+.. code-block:: python
+
+   from diffuse.predictor import Predictor
+
+   # Wrap a learned network. prediction_type is one of:
+   # "score", "noise", "velocity", "x0"
+   predictor = Predictor(model=sde, network=network_fn, prediction_type="score")
+
+The network itself can be loaded from a Flax ``nnx`` module:
 
 .. code-block:: python
 
    graphdef, state = nnx.split(model)
-   def nn_score(x, t):
+   def network_fn(x, t):
       model = nnx.merge(graphdef, state)
       return model(x, t).output
 
@@ -157,18 +167,18 @@ To generate new samples :math:`x_0` from pure noise :math:`x_T`, we integrate th
    # Create denoiser pipeline
    denoiser = Denoiser(
        integrator=ddim,
-       sde=sde,
-       score=score_function,
-       x0_shape=(data_dim,)  # Shape of data samples
+       model=sde,
+       predictor=predictor,
+       x0_shape=(data_dim,),  # Shape of data samples
    )
 
    # Generate samples
    key = jax.random.PRNGKey(42)
-   n_samples = 100
+   n_particles = 100
    n_steps = 50
 
    final_state, history = denoiser.generate(
-       key, n_steps, n_samples, keep_history=True
+       key, n_steps, n_particles, keep_history=True
    )
 
    samples = final_state.integrator_state.position
@@ -181,7 +191,11 @@ For conditional sampling :math:`x_0 \sim p(x_0|y)` given measurements :math:`y`,
 
 .. code-block:: python
 
-   from diffuse.denoisers.cond import FPSDenoiser, TMPDenoiser
+   from diffuse.denoisers.cond import (
+       DPSDenoiser, FPSDenoiser, TMPDenoiser,
+       DAPSDenoiser, PiGDMDenoiser, PnPDMDenoiser,
+       DPSGSGDenoiser, EnKGDenoiser, DiffPIRDenoiser,
+   )
    from diffuse.base_forward_model import MeasurementState
    from diffuse.examples.gaussian_mixtures.forward_models.matrix_product import MatrixProduct
 
@@ -195,15 +209,15 @@ For conditional sampling :math:`x_0 \sim p(x_0|y)` given measurements :math:`y`,
    # Create conditional denoiser
    fps_denoiser = FPSDenoiser(
        integrator=ddim,
-       sde=sde,
-       score=score_function,
+       model=sde,
+       predictor=predictor,
        forward_model=forward_model,
-       x0_shape=(data_dim,)
+       x0_shape=(data_dim,),
    )
 
    # Generate conditional samples
    cond_state, cond_history = fps_denoiser.generate(
-       key, measurement_state, n_steps, n_samples, keep_history=True
+       key, measurement_state, n_steps, n_particles, keep_history=True
    )
 
    conditional_samples = cond_state.integrator_state.position
@@ -220,25 +234,27 @@ Here's a minimal working example:
    from diffuse.diffusion.sde import LinearSchedule, SDE
    from diffuse.timer import VpTimer
    from diffuse.integrator.deterministic import DDIMIntegrator
+   from diffuse.predictor import Predictor
    from diffuse.denoisers.denoiser import Denoiser
 
    # 1. Define components
    beta = LinearSchedule(b_min=0.02, b_max=7.0, t0=0.0, T=1.0)
    sde = SDE(beta=beta)
    timer = VpTimer(eps=1e-5, tf=1.0, n_steps=50)
-   integrator = DDIMIntegrator(sde=sde, timer=timer)
+   integrator = DDIMIntegrator(model=sde, timer=timer)
+   predictor = Predictor(model=sde, network=network_fn, prediction_type="score")
 
    # 2. Create pipeline
    denoiser = Denoiser(
        integrator=integrator,
-       sde=sde,
-       score=score_function, # Learned score function
-       x0_shape=data_dim  # Shape of data samples
+       model=sde,
+       predictor=predictor,
+       x0_shape=(data_dim,),  # Shape of data samples
    )
 
    # 3. Generate samples
    key = jax.random.PRNGKey(0)
-   final_state, _ = denoiser.generate(key, n_steps=50, n_samples=100)
+   final_state, _ = denoiser.generate(key, n_steps=50, n_particles=100)
    samples = final_state.integrator_state.position
 
    print(f"✓ Generated {samples.shape} samples")

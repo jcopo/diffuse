@@ -9,7 +9,7 @@ Predictor
 .. autoclass:: Predictor
    :members:
    :show-inheritance:
-   :exclude-members: model, network, prediction_type
+   :exclude-members: model, network, prediction_type, conditional
 
 Forward Model Protocol
 ----------------------
