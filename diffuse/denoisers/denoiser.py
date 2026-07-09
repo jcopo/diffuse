@@ -32,6 +32,18 @@ class Denoiser(BaseDenoiser):
     predictor: Predictor
     x0_shape: Tuple[int, ...]
 
+    def __post_init__(self):
+        # Scan bodies hoisted per instance: a fresh closure per generate()
+        # call defeats JAX's trace cache, re-tracing and re-compiling the
+        # full network on every call.
+        def make_body(keep_history):
+            def body_fun(state, _):
+                state_next = jax.vmap(self.step)(state)
+                return state_next, state_next.integrator_state.position if keep_history else None
+            return body_fun
+
+        self._scan_body = {kh: make_body(kh) for kh in (False, True)}
+
     def init(self, position: Array, rng_key: PRNGKeyArray) -> DenoiserState:
         integrator_state = self.integrator.init(position, rng_key)
         return DenoiserState(integrator_state)
@@ -93,8 +105,4 @@ class Denoiser(BaseDenoiser):
 
         state = jax.vmap(self.init, in_axes=(0, 0))(rndm_start, keys)
 
-        def body_fun(state, _):
-            state_next = jax.vmap(self.step)(state)
-            return state_next, state_next.integrator_state.position if keep_history else None
-
-        return jax.lax.scan(body_fun, state, jnp.arange(n_steps))
+        return jax.lax.scan(self._scan_body[keep_history], state, jnp.arange(n_steps))
