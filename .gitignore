@@ -174,3 +174,9 @@ examples/mri/sandbox_local.ipynb
 examples/mri/sandbox_mri.ipynb
 script_continuous_training.batch
 script_continuous_exp.batch
+
+# Downloaded example model weights (20+ GB) — re-fetchable, never commit
+diffuse/examples/flux2_klein/
+diffuse/examples/flux2_klein.zip
+diffuse/examples/hunyuan3d/
+diffuse/examples/meshflow/
