@@ -528,8 +528,8 @@ def get_parametrized_configs() -> List[pytest.param]:
     - Integrators: EulerMaruyama, DDIM, Heun, Euler (compatible with model types)
 
     Note: Some integrators require specific model types:
-    - EulerMaruyama, Heun, Euler: Only work with SDE (need beta schedule)
-    - DDIM, DPMpp2s: Work with all model types (use generic DiffusionModel interface)
+    - Heun, Euler: Only work with SDE (need beta schedule)
+    - DDIM, DPMpp2s, EulerMaruyama: Work with all model types (use generic DiffusionModel interface)
     """
     configs = []
 
@@ -539,9 +539,7 @@ def get_parametrized_configs() -> List[pytest.param]:
     integrators = INTEGRATOR_CONFIGS
 
     # Integrators that work with all model types (use generic DiffusionModel interface)
-    generic_integrators = [(DDIMIntegrator, integrator_params) for _, integrator_params in integrators if _ == DDIMIntegrator] + [
-        (DPMpp2sIntegrator, integrator_params) for _, integrator_params in integrators if _ == DPMpp2sIntegrator
-    ]
+    generic_integrators = [(cls, params) for cls, params in integrators if cls in (DDIMIntegrator, DPMpp2sIntegrator, EulerMaruyamaIntegrator)]
 
     # Integrators that only work with SDE models (need beta schedule)
     [

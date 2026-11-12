@@ -18,8 +18,12 @@ import pytest
 import einops
 
 from diffuse.examples.gaussian_mixtures.mixture import sampler_mixtr
-from diffuse.diffusion.sde import SDEState
+from diffuse.diffusion.sde import SDEState, SDE, Flow, LinearSchedule
 from diffuse.denoisers.denoiser import Denoiser
+from diffuse.integrator.deterministic import DDIMIntegrator
+from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
+from diffuse.predictor import Predictor
+from diffuse.timer.base import VpTimer
 
 from .config import get_parametrized_configs, get_conditional_configs, get_test_config
 from .test_utils import (
@@ -240,3 +244,35 @@ def test_backward_conditional_denoisers(cond_denoiser_config, plot_if_enabled):
     mmd_distance = compute_and_store_mmd(cond_denoiser_config, state, samples_from_posterior, result_key_parts, print_result=True)
 
     assert_mmd_threshold(mmd_distance, 0.1)
+
+
+# === Exact-score Gaussian check ===
+
+
+@pytest.mark.parametrize("model", [SDE(beta=LinearSchedule(b_min=0.1, b_max=20.0, t0=0.0, T=1.0)), Flow()], ids=["SDE", "Flow"])
+@pytest.mark.parametrize(
+    "make_integrator",
+    [
+        lambda model, timer: DDIMIntegrator(model=model, timer=timer),
+        lambda model, timer: EulerMaruyamaIntegrator(model=model, timer=timer),
+        lambda model, timer: EulerMaruyamaIntegrator(model=model, timer=timer, scale=0.5),
+    ],
+    ids=["DDIM", "EulerMaruyama", "EulerMaruyama_scale0.5"],
+)
+def test_backward_keeps_gaussian_marginal(model, make_integrator):
+    """Data N(0, s^2) has the exact score -x / (alpha_t^2 s^2 + sigma_t^2) at every t, so a correct sampler ends at std s.
+
+    The partial noise scale checks that the whole reverse-SDE family, not only a = 1, keeps the probability-flow marginals.
+    """
+    s, n_steps = 0.5, 500
+    timer = VpTimer(n_steps=n_steps, eps=0.001, tf=1.0)
+
+    def score(x, t):
+        return -x / (model.signal_level(t) ** 2 * s**2 + model.noise_level(t) ** 2)
+
+    predictor = Predictor(model=model, network=score, prediction_type="score")
+    denoiser = Denoiser(integrator=make_integrator(model, timer), model=model, predictor=predictor, x0_shape=(1,))
+    state, _ = denoiser.generate(jax.random.PRNGKey(0), n_steps, 20000)
+    x = state.integrator_state.position
+    assert abs(float(jnp.std(x)) - s) < 0.02
+    assert abs(float(jnp.mean(x))) < 0.02

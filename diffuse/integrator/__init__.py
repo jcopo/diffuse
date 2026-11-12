@@ -4,7 +4,7 @@
 from . import base, deterministic, stochastic
 from .base import Integrator, IntegratorState, ChurnedIntegrator
 from .deterministic import EulerIntegrator, HeunIntegrator, DPMpp2sIntegrator, DDIMIntegrator
-from .stochastic import EulerMaruyamaIntegrator
+from .stochastic import EulerMaruyamaIntegrator, euler_maruyama_transition
 
 __all__ = [
     # Modules
@@ -22,4 +22,5 @@ __all__ = [
     "DDIMIntegrator",
     # Stochastic integrators
     "EulerMaruyamaIntegrator",
+    "euler_maruyama_transition",
 ]
