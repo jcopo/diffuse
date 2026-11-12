@@ -200,6 +200,8 @@ def apply_stochastic_churn(
 
     delta_sigma = jnp.sqrt(jnp.maximum(0.0, sigma_churned**2 - (alpha_churned * sigma / alpha) ** 2))
 
-    new_position = (alpha_churned / alpha) * position + jax.random.normal(rng_key, position.shape) * delta_sigma * noise_inflation_factor
+    new_position = (alpha_churned / alpha) * position + jax.random.normal(
+        rng_key, position.shape
+    ) * delta_sigma * noise_inflation_factor
 
     return new_position, t_churned

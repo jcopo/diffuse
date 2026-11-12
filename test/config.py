@@ -25,6 +25,15 @@ from diffuse.denoisers.cond import (
     PnPDMDenoiser,
     DAPSDenoiser,
     PiGDMDenoiser,
+    MCGDiffDenoiser,
+    DiffusionProjectionDenoiser,
+    TweedieProjectionDenoiser,
+    IPDenoiser,
+    RDPSDenoiser,
+    IntegratedRDPSDenoiser,
+    AdaptiveMALADenoiser,
+    StochasticMALADenoiser,
+    UWMDPSDenoiser,
 )
 from diffuse.diffusion.sde import SDE, Flow, LinearSchedule, CosineSchedule
 from diffuse.integrator.deterministic import (
@@ -119,7 +128,26 @@ TIMER_CONFIGS = {
     # "heun": lambda n_steps, t_final: HeunTimer(n_steps=n_steps, rho=7.0, sigma_min=0.002, sigma_max=1.0), # HeunTimer should be used only with sampling methods that are defined on noise levels
 }
 
-DENOISER_CLASSES = [DPSDenoiser, TMPDenoiser, FPSDenoiser, DPSGSGDenoiser, DiffPIRDenoiser, EnKGDenoiser, PnPDMDenoiser, DAPSDenoiser, PiGDMDenoiser]
+DENOISER_CLASSES = [
+    DPSDenoiser,
+    TMPDenoiser,
+    FPSDenoiser,
+    DPSGSGDenoiser,
+    DiffPIRDenoiser,
+    EnKGDenoiser,
+    PnPDMDenoiser,
+    DAPSDenoiser,
+    PiGDMDenoiser,
+    MCGDiffDenoiser,
+    DiffusionProjectionDenoiser,
+    TweedieProjectionDenoiser,
+    IPDenoiser,
+    RDPSDenoiser,
+    IntegratedRDPSDenoiser,
+    AdaptiveMALADenoiser,
+    StochasticMALADenoiser,
+    UWMDPSDenoiser,
+]
 
 PERCENTILES = [0.0, 0.1, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.95, 0.98, 1.0]
 
@@ -419,7 +447,9 @@ def get_test_config(conditional: bool = False, **kwargs) -> TestConfig:
 
     # Compute adaptive percentiles based on noise schedule
     if config.adaptive_percentiles:
-        config.perct = compute_adaptive_percentiles(config.model, n_points=config.n_percentile_points, strategy=config.percentile_strategy)
+        config.perct = compute_adaptive_percentiles(
+            config.model, n_points=config.n_percentile_points, strategy=config.percentile_strategy
+        )
     else:
         config.perct = PERCENTILES
 

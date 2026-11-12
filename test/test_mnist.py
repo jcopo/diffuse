@@ -24,7 +24,14 @@ import os
 
 from diffuse.diffusion.sde import Flow
 from diffuse.denoisers.denoiser import Denoiser
-from diffuse.denoisers.cond import DPSDenoiser, FPSDenoiser, TMPDenoiser
+from diffuse.denoisers.cond import (
+    DPSDenoiser,
+    FPSDenoiser,
+    TMPDenoiser,
+    DiffusionProjectionDenoiser,
+    TweedieProjectionDenoiser,
+    IPDenoiser,
+)
 from diffuse.integrator.deterministic import DDIMIntegrator, DPMpp2sIntegrator, HeunIntegrator
 from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
 from diffuse.timer import VpTimer
@@ -333,18 +340,23 @@ def test_unconditional_generation(model_components, integrator_class, plot_if_en
 
     # Plot results
     plot_if_enabled(lambda: plot_image_grid(samples, f"Unconditional Generation - {integrator_name}", n_rows=2, n_cols=8))
-    plot_if_enabled(lambda: plot_denoising_trajectory(history, f"Denoising Trajectory - {integrator_name}", n_timesteps=6, sample_idx=0))
+    plot_if_enabled(
+        lambda: plot_denoising_trajectory(history, f"Denoising Trajectory - {integrator_name}", n_timesteps=6, sample_idx=0)
+    )
 
     print(f"✓ Unconditional generation with {integrator_name}: {samples.shape}")
 
 
-@pytest.mark.skip(reason="Temporarily disabled")
+# @pytest.mark.skip(reason="Temporarily disabled")
 @pytest.mark.parametrize(
     "denoiser_class",
     [
         pytest.param(DPSDenoiser, id="DPS"),
         pytest.param(FPSDenoiser, id="FPS"),
         pytest.param(TMPDenoiser, id="TMP"),
+        pytest.param(DiffusionProjectionDenoiser, id="DP"),
+        pytest.param(TweedieProjectionDenoiser, id="TP"),
+        pytest.param(IPDenoiser, id="IP"),
     ],
 )
 @pytest.mark.parametrize(
@@ -356,7 +368,9 @@ def test_unconditional_generation(model_components, integrator_class, plot_if_en
         pytest.param(EulerMaruyamaIntegrator, id="EM"),
     ],
 )
-def test_conditional_inpainting(model_components, test_image, denoiser_class, integrator_class, make_conditional_denoiser, plot_if_enabled):
+def test_conditional_inpainting(
+    model_components, test_image, denoiser_class, integrator_class, make_conditional_denoiser, plot_if_enabled
+):
     """Test conditional MNIST inpainting with different denoisers and integrators.
 
     Validates that conditional denoisers can restore masked regions of MNIST digits
@@ -380,7 +394,7 @@ def test_conditional_inpainting(model_components, test_image, denoiser_class, in
 
     # Create mask and measurement
     mask_model = SquareMask(size=12, img_shape=test_image.shape, std=0.1)
-    xi_center = jnp.array([14.0, 14.0])  # Center of 28x28 image
+    xi_center = jnp.array([8.0, 8.0])  # Center of 28x28 image
     mask = mask_model.make(xi_center)
     masked_image = test_image * mask
     measurement_state = MeasurementState(y=masked_image, mask_history=mask)
@@ -402,9 +416,13 @@ def test_conditional_inpainting(model_components, test_image, denoiser_class, in
     integrator_name = integrator_class.__name__.replace("Integrator", "")
 
     # Plot results
-    plot_if_enabled(lambda: plot_inpainting_comparison(test_image, masked_image, samples, f"Inpainting - {denoiser_name} + {integrator_name}"))
     plot_if_enabled(
-        lambda: plot_denoising_trajectory(history, f"Inpainting Trajectory - {denoiser_name} + {integrator_name}", n_timesteps=6, sample_idx=0)
+        lambda: plot_inpainting_comparison(test_image, masked_image, samples, f"Inpainting - {denoiser_name} + {integrator_name}")
+    )
+    plot_if_enabled(
+        lambda: plot_denoising_trajectory(
+            history, f"Inpainting Trajectory - {denoiser_name} + {integrator_name}", n_timesteps=6, sample_idx=0
+        )
     )
 
     # Validate that visible region (inside mask) is preserved
@@ -512,6 +530,9 @@ def test_visual_comparison_all_methods(model_components, test_image, make_condit
         "DPS": DPSDenoiser,
         "FPS": FPSDenoiser,
         "TMP": TMPDenoiser,
+        "DP": DiffusionProjectionDenoiser,
+        "TP": TweedieProjectionDenoiser,
+        "IP": IPDenoiser,
     }
 
     integrator_configs = {
@@ -559,13 +580,17 @@ def test_visual_comparison_all_methods(model_components, test_image, make_condit
         for col in range(n_show):
             axes[0, col].imshow(test_image.squeeze(), cmap="gray", vmin=0, vmax=1)
             axes[0, col].axis("off")
-        axes[0, 0].text(-0.15, 0.5, "Original", transform=axes[0, 0].transAxes, fontsize=13, fontweight="bold", va="center", ha="right")
+        axes[0, 0].text(
+            -0.15, 0.5, "Original", transform=axes[0, 0].transAxes, fontsize=13, fontweight="bold", va="center", ha="right"
+        )
 
         # Row 1: Masked measurement
         for col in range(n_show):
             axes[1, col].imshow(masked_image.squeeze(), cmap="gray", vmin=0, vmax=1)
             axes[1, col].axis("off")
-        axes[1, 0].text(-0.15, 0.5, "Masked", transform=axes[1, 0].transAxes, fontsize=13, fontweight="bold", va="center", ha="right")
+        axes[1, 0].text(
+            -0.15, 0.5, "Masked", transform=axes[1, 0].transAxes, fontsize=13, fontweight="bold", va="center", ha="right"
+        )
 
         # Rows 2+: Reconstructions
         row_idx = 2
@@ -580,7 +605,14 @@ def test_visual_comparison_all_methods(model_components, test_image, make_condit
 
                 label = f"{method_name}\n{int_name}"
                 axes[row_idx, 0].text(
-                    -0.15, 0.5, label, transform=axes[row_idx, 0].transAxes, fontsize=12, fontweight="bold", va="center", ha="right"
+                    -0.15,
+                    0.5,
+                    label,
+                    transform=axes[row_idx, 0].transAxes,
+                    fontsize=12,
+                    fontweight="bold",
+                    va="center",
+                    ha="right",
                 )
                 row_idx += 1
 
@@ -612,7 +644,14 @@ def test_visual_comparison_all_methods(model_components, test_image, make_condit
 
                 label = f"{method_name}\n{int_name}"
                 axes[row_idx, 0].text(
-                    -0.08, 0.5, label, transform=axes[row_idx, 0].transAxes, fontsize=12, fontweight="bold", va="center", ha="right"
+                    -0.08,
+                    0.5,
+                    label,
+                    transform=axes[row_idx, 0].transAxes,
+                    fontsize=12,
+                    fontweight="bold",
+                    va="center",
+                    ha="right",
                 )
                 row_idx += 1
 
@@ -642,7 +681,14 @@ def test_visual_comparison_all_methods(model_components, test_image, make_condit
 
                 label = f"{method_name}\n{int_name}"
                 axes[row_idx, 0].text(
-                    -0.15, 0.5, label, transform=axes[row_idx, 0].transAxes, fontsize=12, fontweight="bold", va="center", ha="right"
+                    -0.15,
+                    0.5,
+                    label,
+                    transform=axes[row_idx, 0].transAxes,
+                    fontsize=12,
+                    fontweight="bold",
+                    va="center",
+                    ha="right",
                 )
                 row_idx += 1
 
@@ -673,4 +719,6 @@ def test_visual_comparison_all_methods(model_components, test_image, make_condit
 
     # Validate reconstruction quality
     img_shape = model_components["img_shape"]
-    assert all(results[combo]["samples"].shape == (n_samples, *img_shape) for combo in results.keys()), "All samples should have correct shape"
+    assert all(results[combo]["samples"].shape == (n_samples, *img_shape) for combo in results.keys()), (
+        "All samples should have correct shape"
+    )

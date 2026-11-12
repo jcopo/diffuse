@@ -20,6 +20,8 @@ import einops
 from diffuse.examples.gaussian_mixtures.mixture import sampler_mixtr
 from diffuse.diffusion.sde import SDEState
 from diffuse.denoisers.denoiser import Denoiser
+from diffuse.integrator.stochastic import EulerMaruyamaIntegrator
+from diffuse.integrator.deterministic import DDIMIntegrator
 
 from .config import get_parametrized_configs, get_conditional_configs, get_test_config
 from .test_utils import (
@@ -119,7 +121,9 @@ def test_forward_sde_mixture(forward_config, plot_if_enabled):
     state_mixt = SDEState(position=samples_mixt, t=t0)
 
     # Run forward process
-    noised_samples = jax.vmap(jax.vmap(forward_config.model.path, in_axes=(0, None, 0)), in_axes=(0, 0, None))(keys, state_mixt, forward_config.ts)
+    noised_samples = jax.vmap(jax.vmap(forward_config.model.path, in_axes=(0, None, 0)), in_axes=(0, 0, None))(
+        keys, state_mixt, forward_config.ts
+    )
     noised_positions = einops.rearrange(noised_samples.position, "n_samples n_steps d -> n_steps n_samples d")
 
     # Create plots using unified plotting function
@@ -138,8 +142,12 @@ def test_backward_sde_mixture(backward_config, plot_if_enabled):
     x0_shape = backward_config.mix_state.means.shape[1]
 
     # Setup denoising process
-    integrator = backward_config.integrator_class(model=backward_config.model, timer=backward_config.timer, **backward_config.integrator_params)
-    denoise = Denoiser(integrator=integrator, model=backward_config.model, predictor=backward_config.predictor, x0_shape=(x0_shape,))
+    integrator = backward_config.integrator_class(
+        model=backward_config.model, timer=backward_config.timer, **backward_config.integrator_params
+    )
+    denoise = Denoiser(
+        integrator=integrator, model=backward_config.model, predictor=backward_config.predictor, x0_shape=(x0_shape,)
+    )
 
     # Generate samples
     key_samples, _ = jax.random.split(backward_config.key)
@@ -147,9 +155,7 @@ def test_backward_sde_mixture(backward_config, plot_if_enabled):
     hist_position = hist_position.squeeze()
 
     # Create plots
-    plot_title = (
-        f"Backward SDE - {backward_config.integrator_class.__name__} (Timer: {backward_config.timer_name}, Schedule: {backward_config.schedule_name})"
-    )
+    plot_title = f"Backward SDE - {backward_config.integrator_class.__name__} (Timer: {backward_config.timer_name}, Schedule: {backward_config.schedule_name})"
     create_plots(backward_config, hist_position, plot_title, plot_if_enabled)
 
     # Generate reference samples from posterior
@@ -181,7 +187,9 @@ def test_backward_sde_conditional_mixture(conditional_config, plot_if_enabled):
     key_gen, key_samples = jax.random.split(conditional_config.key)
 
     # Use pre-configured denoiser directly (with conditional score)
-    state, hist_position = conditional_config.denoiser.generate(key_gen, conditional_config.n_steps, conditional_config.n_samples, keep_history=True)
+    state, hist_position = conditional_config.denoiser.generate(
+        key_gen, conditional_config.n_steps, conditional_config.n_samples, keep_history=True
+    )
     hist_position = hist_position.squeeze()
 
     # Create plots
@@ -240,3 +248,120 @@ def test_backward_conditional_denoisers(cond_denoiser_config, plot_if_enabled):
     mmd_distance = compute_and_store_mmd(cond_denoiser_config, state, samples_from_posterior, result_key_parts, print_result=True)
 
     assert_mmd_threshold(mmd_distance, 0.1)
+
+
+# === Special Conditional Denoiser Tests ===
+
+
+@pytest.fixture
+def special_denoiser_config(request):
+    """Fixture for special denoisers that require custom setup."""
+    return get_test_config(conditional=True, adaptive_percentiles=True, percentile_strategy="fixed", **request.param)
+
+
+def _get_special_denoiser_configs():
+    """Generate configs for special denoisers with compatible integrators."""
+    from diffuse.denoisers.cond import AdaptiveMALADenoiser, StochasticMALADenoiser, UWMDPSDenoiser
+
+    configs = []
+
+    # AdaptiveMALADenoiser works with most integrators
+    for integrator_class, integrator_params in [
+        (EulerMaruyamaIntegrator, {}),
+        (DDIMIntegrator, {"stochastic_churn_rate": 1.0, "churn_min": 0.5, "churn_max": 1.0}),
+    ]:
+        config_dict = {
+            "model_name": "SDE",
+            "schedule_name": "LinearSchedule",
+            "timer_name": "vp",
+            "integrator_class": integrator_class,
+            "integrator_params": integrator_params,
+            "denoiser_class": AdaptiveMALADenoiser,
+        }
+        test_id = f"AdaptiveMALADenoiser_{integrator_class.__name__}"
+        configs.append(pytest.param(config_dict, id=test_id))
+
+    # StochasticMALADenoiser requires EulerMaruyamaIntegrator
+    config_dict = {
+        "model_name": "SDE",
+        "schedule_name": "LinearSchedule",
+        "timer_name": "vp",
+        "integrator_class": EulerMaruyamaIntegrator,
+        "integrator_params": {},
+        "denoiser_class": StochasticMALADenoiser,
+    }
+    configs.append(pytest.param(config_dict, id="StochasticMALADenoiser_EulerMaruyama"))
+
+    # UWMDPSDenoiser works with most integrators
+    for integrator_class, integrator_params in [
+        (EulerMaruyamaIntegrator, {}),
+        (DDIMIntegrator, {"stochastic_churn_rate": 1.0, "churn_min": 0.5, "churn_max": 1.0}),
+    ]:
+        config_dict = {
+            "model_name": "SDE",
+            "schedule_name": "LinearSchedule",
+            "timer_name": "vp",
+            "integrator_class": integrator_class,
+            "integrator_params": integrator_params,
+            "denoiser_class": UWMDPSDenoiser,
+        }
+        test_id = f"UWMDPSDenoiser_{integrator_class.__name__}"
+        configs.append(pytest.param(config_dict, id=test_id))
+
+    return configs
+
+
+@pytest.mark.parametrize("special_denoiser_config", _get_special_denoiser_configs(), indirect=True)
+def test_special_conditional_denoisers(special_denoiser_config, plot_if_enabled):
+    """Test special conditional denoisers with custom state types.
+
+    Tests AdaptiveMALADenoiser, StochasticMALADenoiser, and UWMDPSDenoiser
+    which have custom initialization and state management.
+    """
+    from diffuse.denoisers.cond import UWMDPSDenoiser
+
+    key_gen, key_samples = jax.random.split(special_denoiser_config.key)
+    measurement_state = special_denoiser_config.measurement_state
+
+    # UWMDPSDenoiser has a custom generate signature
+    if special_denoiser_config.denoiser_class == UWMDPSDenoiser:
+        state, hist_position = special_denoiser_config.cond_denoiser.generate(
+            key_gen,
+            measurement_state,
+            special_denoiser_config.n_steps,
+            special_denoiser_config.n_samples,
+            keep_history=True,
+        )
+    else:
+        # AdaptiveMALADenoiser and StochasticMALADenoiser use standard generate
+        state, hist_position = special_denoiser_config.cond_denoiser.generate(
+            key_gen,
+            measurement_state,
+            special_denoiser_config.n_steps,
+            special_denoiser_config.n_samples,
+            keep_history=True,
+        )
+
+    hist_position = hist_position.squeeze()
+
+    # Create plots
+    plot_title = f"{special_denoiser_config.denoiser_class.__name__} - {special_denoiser_config.integrator_class.__name__}"
+    create_plots(special_denoiser_config, hist_position, plot_title, plot_if_enabled)
+
+    # Compute posterior for the actual measurement y
+    samples_from_posterior = sampler_mixtr(
+        key_samples, special_denoiser_config.posterior_state, special_denoiser_config.n_samples
+    )
+
+    # Compute and validate MMD distance
+    result_key_parts = [
+        special_denoiser_config.denoiser_class.__name__,
+        special_denoiser_config.integrator_class.__name__,
+        special_denoiser_config.schedule_name,
+        special_denoiser_config.timer_name,
+    ]
+    mmd_distance = compute_and_store_mmd(
+        special_denoiser_config, state, samples_from_posterior, result_key_parts, print_result=True
+    )
+
+    assert_mmd_threshold(mmd_distance, 0.15)  # Slightly higher threshold for special denoisers

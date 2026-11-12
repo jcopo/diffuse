@@ -50,18 +50,12 @@ class PnPDMDenoiser(CondDenoiser):
         def langevin_step(x, key):
             y_pred = self.forward_model.apply(x, measurement_state)
             residual = y_pred - measurement_state.y
-            grad_likelihood = (
-                self.forward_model.adjoint(residual, measurement_state) / tau_sq
-            )
+            grad_likelihood = self.forward_model.adjoint(residual, measurement_state) / tau_sq
             grad_prior = (x - x0_hat) / sigma_sq
             grad_total = grad_likelihood + grad_prior
 
             noise = jax.random.normal(key, x.shape, dtype=x.dtype)
-            x_next = (
-                x
-                - self.langevin_lr * grad_total
-                + jnp.sqrt(2.0 * self.langevin_lr) * noise
-            )
+            x_next = x - self.langevin_lr * grad_total + jnp.sqrt(2.0 * self.langevin_lr) * noise
             return x_next, None
 
         keys = jax.random.split(rng_key, self.langevin_steps)
@@ -78,9 +72,7 @@ class PnPDMDenoiser(CondDenoiser):
             state_next = mini_integrator(state, self.predictor)
             return state_next, None
 
-        final_state, _ = jax.lax.scan(
-            ode_step, mini_state, xs=None, length=self.diffusion_steps
-        )
+        final_state, _ = jax.lax.scan(ode_step, mini_state, xs=None, length=self.diffusion_steps)
         return final_state.position
 
     def _sigma_to_t(self, sigma: Array) -> Array:
@@ -143,7 +135,5 @@ class PnPDMDenoiser(CondDenoiser):
         # Reverse diffusion from sigma level to clean
         x_next = self.reverse_diffuse(key_diffuse, z_noisy, sigma)
 
-        integrator_state_next = IntegratorState(
-            position=x_next, rng_key=key_diffuse, step=step_idx + 1
-        )
+        integrator_state_next = IntegratorState(position=x_next, rng_key=key_diffuse, step=step_idx + 1)
         return state._replace(integrator_state=integrator_state_next)

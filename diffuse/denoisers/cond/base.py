@@ -35,7 +35,7 @@ class CondDenoiser(BaseDenoiser):
     ess_low: Optional[float] = 0.2
     ess_high: Optional[float] = 0.5
 
-    def init(self, position: Array, rng_key: PRNGKeyArray, n_particles: int) -> CondDenoiserState:
+    def init(self, position: Array, rng_key: PRNGKeyArray) -> CondDenoiserState:
         """
         Initialize the conditional denoiser state.
 
@@ -47,6 +47,7 @@ class CondDenoiser(BaseDenoiser):
         Returns:
             CondDenoiserState: Initialized state with integrator state and log weights.
         """
+        n_particles = position.shape[0]
         log_weights = -jnp.log(n_particles)
         integrator_state = self.integrator.init(position, rng_key)
 
@@ -64,14 +65,19 @@ class CondDenoiser(BaseDenoiser):
         rndm_start = jax.random.normal(rng_key_start, (n_particles, *self.x0_shape))
 
         keys = jax.random.split(rng_key, n_particles)
-        state = jax.vmap(self.init, in_axes=(0, 0, None))(rndm_start, keys, n_particles)
+        state = jax.vmap(self.init)(rndm_start, keys)
 
         def body_fun(state: CondDenoiserState, key: PRNGKeyArray):
-            # state_next = self.batch_step(key, state, posterior, measurement_state)
-            keys = jax.random.split(key, state.integrator_state.position.shape[0])
+            # Split key: one for step(), one for resampler()
+            key_step, key_resample = jax.random.split(key)
+
+            # Use key_step for per-particle keys
+            keys = jax.random.split(key_step, state.integrator_state.position.shape[0])
             state_next = jax.vmap(self.step, in_axes=(0, 0, None))(keys, state, measurement_state)
+
+            # Use key_resample for resampling (independent from step keys)
             if self.resample:
-                state_next = self.resampler(state_next, measurement_state, key)
+                state_next = self.resampler(state_next, measurement_state, key_resample)
             return state_next, state_next.integrator_state.position if keep_history else None
 
         keys = jax.random.split(rng_key, n_steps)

@@ -249,7 +249,9 @@ class FluxVAE(nnx.Module):
             up_block_0_resnets.append(resnet)
         up_block_0.resnets = nnx.List(up_block_0_resnets)
         # FLUX uses interpolation + Conv, not ConvTranspose
-        up_block_0.upsamplers = nnx.List([nnx.Conv(512, 512, kernel_size=(3, 3), padding=(1, 1), param_dtype=param_dtype, rngs=rngs)])
+        up_block_0.upsamplers = nnx.List(
+            [nnx.Conv(512, 512, kernel_size=(3, 3), padding=(1, 1), param_dtype=param_dtype, rngs=rngs)]
+        )
         decoder_up_blocks.append(up_block_0)
 
         # Up block 1: 512 channels throughout (FLUX ResNet structure)
@@ -265,7 +267,9 @@ class FluxVAE(nnx.Module):
             up_block_1_resnets.append(resnet)
         up_block_1.resnets = nnx.List(up_block_1_resnets)
         # FLUX uses interpolation + Conv, not ConvTranspose
-        up_block_1.upsamplers = nnx.List([nnx.Conv(512, 512, kernel_size=(3, 3), padding=(1, 1), param_dtype=param_dtype, rngs=rngs)])
+        up_block_1.upsamplers = nnx.List(
+            [nnx.Conv(512, 512, kernel_size=(3, 3), padding=(1, 1), param_dtype=param_dtype, rngs=rngs)]
+        )
         decoder_up_blocks.append(up_block_1)
 
         # Up block 2: 512 -> 256 transition (FLUX ResNet structure)
@@ -290,7 +294,9 @@ class FluxVAE(nnx.Module):
             up_block_2_resnets.append(resnet)
         up_block_2.resnets = nnx.List(up_block_2_resnets)
         # FLUX uses interpolation + Conv, not ConvTranspose
-        up_block_2.upsamplers = nnx.List([nnx.Conv(256, 256, kernel_size=(3, 3), padding=(1, 1), param_dtype=param_dtype, rngs=rngs)])
+        up_block_2.upsamplers = nnx.List(
+            [nnx.Conv(256, 256, kernel_size=(3, 3), padding=(1, 1), param_dtype=param_dtype, rngs=rngs)]
+        )
         decoder_up_blocks.append(up_block_2)
 
         # Up block 3: 256 -> 128 transition (final, FLUX ResNet structure)

@@ -48,7 +48,6 @@ class EulerIntegrator(ChurnedIntegrator):
             Updated IntegratorState with the next position
         """
         _, rng_key, step = integrator_state
-        _, rng_key_next = jax.random.split(rng_key)
 
         position_churned, t_churned = self._churn_fn(integrator_state)
 

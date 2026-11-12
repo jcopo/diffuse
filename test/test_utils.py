@@ -222,7 +222,9 @@ def compute_mmd(samples_x, samples_y, kernel="rbf", gamma=None, **kernel_kwargs)
     return jnp.sqrt(jnp.maximum(mmd_squared, 0.0))
 
 
-def compute_and_store_mmd(test_config, state, reference_data, result_key_parts: List[str], print_result: bool = False, kernel: str = "rbf") -> float:
+def compute_and_store_mmd(
+    test_config, state, reference_data, result_key_parts: List[str], print_result: bool = False, kernel: str = "rbf"
+) -> float:
     """Compute Maximum Mean Discrepancy (MMD) and store results.
 
     Args:

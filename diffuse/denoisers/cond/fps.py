@@ -1,46 +1,24 @@
-# Copyright 2025 Jacopo Iollo <jacopo.iollo@inria.fr>, Geoffroy Oudoumanessah <geoffroy.oudoumanessah@inria.fr>
-# Licensed under the Apache License, Version 2.0 (the "License");
-# http://www.apache.org/licenses/LICENSE-2.0
 from dataclasses import dataclass
 
-from einops import reduce
 import jax
 import jax.numpy as jnp
-from jaxtyping import PRNGKeyArray
+from jaxtyping import Array, PRNGKeyArray
 
 from diffuse.diffusion.sde import SDEState
 from diffuse.base_forward_model import MeasurementState
 from diffuse.denoisers.cond import CondDenoiser, CondDenoiserState
-from diffuse.denoisers.utils import resample_particles, normalize_log_weights
+from diffuse.denoisers.utils import resample_particles
+from diffuse.predictor import Predictor
 
 
 @dataclass
 class FPSDenoiser(CondDenoiser):
-    """Filtering Posterior Sampling (FPS) Denoiser.
-
-    Implements continuous-time SDE version of FPS for conditional generation
-    with particle filtering and resampling.
-
-    Args:
-        integrator: Numerical integrator for solving the reverse SDE
-        model: Diffusion model defining the forward process
-        predictor: Predictor for computing score/noise/velocity
-        forward_model: Forward measurement operator
-
-    Attributes:
-        resample: Whether to use particle resampling (set in __post_init__)
-        ess_low: Low threshold for effective sample size (0.2)
-        ess_high: High threshold for effective sample size (0.6)
-
-    References:
-        Dou, Z., & Song, Y. (2024). Diffusion Posterior Sampling for Linear Inverse
-        Problem Solving: A Filtering Perspective. arXiv:2407.03981
-    """
+    """Filtering Posterior Sampling Denoiser implementing continuous-time SDE version."""
 
     def __post_init__(self):
-        self.resample = True
-        self.ess_low = 0.2
-        self.ess_high = 0.6
+        self.resample = False
+        self.ess_low = 0.05
+        self.ess_high = 0.9
 
     def step(
         self,
@@ -119,7 +97,7 @@ class FPSDenoiser(CondDenoiser):
 
     def resampler(
         self,
-        state_next: CondDenoiserState,
+        state: CondDenoiserState,
         measurement_state: MeasurementState,
         rng_key: PRNGKeyArray,
     ) -> CondDenoiserState:
@@ -137,25 +115,23 @@ class FPSDenoiser(CondDenoiser):
         Returns:
             CondDenoiserState: Updated state after resampling.
         """
-        integrator_state = state_next.integrator_state
-        x_t = state_next.integrator_state.position
-        rng_key, rng_key_resample = jax.random.split(rng_key)
 
-        t = self.integrator.timer(state_next.integrator_state.step)
+        # weight computation
+        t = self.integrator.timer(state.integrator_state.step)
+        alpha_t, sigma_t = self.model.signal_level(t), self.model.noise_level(t)
+        y_t = alpha_t * jnp.asarray(measurement_state.y)
 
-        keys = jax.random.split(rng_key, x_t.shape[0])
-        y_t = jax.vmap(self.y_noiser, in_axes=(0, 0, None))(keys, t, measurement_state).position
-        f_x_t = jax.vmap(self.forward_model.apply, in_axes=(0, None))(x_t, measurement_state)
+        tweedies = jax.vmap(self.model.tweedie, in_axes=(0, None))(
+            SDEState(state.integrator_state.position, t), self.predictor.score
+        )
+        forwards = jax.vmap(self.forward_model.apply, in_axes=(0, None))(tweedies.position, measurement_state)
 
-        # Compute ||y_t - A(x_t)||² for each particle (shape: n_particles)
-        residual_squared = reduce((y_t - f_x_t) ** 2, "b ... -> b", "sum")
+        residual_norm = jnp.linalg.norm(y_t - alpha_t * forwards)
+        log_weights = -0.5 * residual_norm**2 / (self.forward_model.std**2 * sigma_t**2)
 
-        # Compute log weights from measurement likelihood: log p(y_t|x_t)
-        # For Gaussian noise: log p(y|x) = -||y - Ax||² / (2σ²)
-        # Note: Compute fresh weights at each step (no accumulation) to prevent degeneracy
-        log_weights = -residual_squared / (2 * self.forward_model.std**2)
-        log_weights = normalize_log_weights(log_weights)
-        position, log_weights = resample_particles(integrator_state.position, log_weights, rng_key_resample, self.ess_low, self.ess_high)
-
-        integrator_state_next = state_next.integrator_state._replace(position=position)
+        # resample particles
+        position, log_weights = resample_particles(
+            state.integrator_state.position, log_weights, rng_key, self.ess_low, self.ess_high
+        )
+        integrator_state_next = state.integrator_state._replace(position=position)
         return CondDenoiserState(integrator_state_next, log_weights)

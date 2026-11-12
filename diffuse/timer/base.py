@@ -42,7 +42,7 @@ class VpTimer(Timer):
         Returns:
             float: Interpolated time value between tf and eps
         """
-        return self.tf + step / self.n_steps * (self.eps - self.tf)
+        return jnp.asarray(self.tf + step / self.n_steps * (self.eps - self.tf))
 
 
 @dataclass

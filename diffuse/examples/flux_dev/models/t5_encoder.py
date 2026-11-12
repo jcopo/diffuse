@@ -268,7 +268,9 @@ class T5Attention(nnx.Module):
             )
 
     @staticmethod
-    def _relative_position_bucket(relative_position: jax.Array, bidirectional: bool, num_buckets: int, max_distance: int) -> jax.Array:
+    def _relative_position_bucket(
+        relative_position: jax.Array, bidirectional: bool, num_buckets: int, max_distance: int
+    ) -> jax.Array:
         relative_buckets = 0
         if bidirectional:
             num_buckets //= 2

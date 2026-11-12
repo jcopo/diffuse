@@ -399,10 +399,14 @@ class FluxDoubleBlock(nnx.Module):
         """
         # Compute modulation parameters
         img_mod_params = self.img_mod(nnx.silu(vec))
-        img_shift_msa, img_scale_msa, img_gate_msa, img_shift_mlp, img_scale_mlp, img_gate_mlp = jnp.split(img_mod_params, 6, axis=-1)
+        img_shift_msa, img_scale_msa, img_gate_msa, img_shift_mlp, img_scale_mlp, img_gate_mlp = jnp.split(
+            img_mod_params, 6, axis=-1
+        )
 
         txt_mod_params = self.txt_mod(nnx.silu(vec))
-        txt_shift_msa, txt_scale_msa, txt_gate_msa, txt_shift_mlp, txt_scale_mlp, txt_gate_mlp = jnp.split(txt_mod_params, 6, axis=-1)
+        txt_shift_msa, txt_scale_msa, txt_gate_msa, txt_shift_mlp, txt_scale_mlp, txt_gate_mlp = jnp.split(
+            txt_mod_params, 6, axis=-1
+        )
 
         # Joint attention across text and image tokens
         img_norm = modulate(self.img_norm1(img), img_shift_msa, img_scale_msa)

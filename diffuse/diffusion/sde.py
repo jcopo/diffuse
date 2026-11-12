@@ -198,7 +198,9 @@ class DiffusionModel(ABC):
         signal_level_t = self.signal_level(t)
         return SDEState((x + sigma_t * sigma_t * score_fn(x, t)) / signal_level_t, jnp.zeros_like(t))
 
-    def path(self, key: PRNGKeyArray, state: SDEState, ts: Array, return_noise: bool = False) -> Union[SDEState, tuple[SDEState, Array]]:
+    def path(
+        self, key: PRNGKeyArray, state: SDEState, ts: Array, return_noise: bool = False
+    ) -> Union[SDEState, tuple[SDEState, Array]]:
         """
         Samples from the general interpolation: x_t = α_t x_0 + σ_t ε
         """
