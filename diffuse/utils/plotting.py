@@ -302,7 +302,8 @@ def log_samples(
     # plt.tight_layout()
     plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust 'rect' to accommodate the suptitle
 
-    plt.savefig(f"{logging_path}/samples_{n_meas}.png", bbox_inches="tight")
+    plt.show()
+    #plt.savefig(f"{logging_path}/samples_{n_meas}.png", bbox_inches="tight")
     plt.close()
 
 

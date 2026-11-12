@@ -159,6 +159,7 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
     exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst, dt)
 
     for n_meas in range(num_measurements):
+        key, _ = jax.random.split(key)
         optimal_state, hist = experiment_optimizer.get_design(
             exp_state, key, measurement_state, n_steps=n_opt_steps
         )
@@ -185,7 +186,6 @@ def main(num_measurements: int, key: PRNGKeyArray, plot: bool = False,
             )
 
         exp_state = experiment_optimizer.init(key, n_samples, n_samples_cntrst, dt)
-        key, _ = jax.random.split(key)
 
     return ground_truth, optimal_state, measurement_state.y
 
